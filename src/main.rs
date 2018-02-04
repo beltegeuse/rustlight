@@ -20,7 +20,7 @@ use rayon::prelude::*;
 
 //////////////////
 // Structures
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
@@ -138,6 +138,7 @@ impl Intersectable for Sphere {
     }
 }
 
+#[derive(Debug)]
 pub struct ImageBlock {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
@@ -157,16 +158,12 @@ impl ImageBlock {
     pub fn accum(&mut self, p: Point2<u32>, f: &Color) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        assert!(p.x >= 0);
-        assert!(p.y >= 0);
         self.pixels[(p.y * self.size.y + p.x) as usize] += f;
     }
 
     pub fn get(&self, p: Point2<u32>) -> &Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        assert!(p.x >= 0);
-        assert!(p.y >= 0);
         &self.pixels[(p.y * self.size.y + p.x) as usize]
     }
 }
@@ -195,7 +192,7 @@ pub fn render(scene: &Scene) -> DynamicImage {
     let mut image = DynamicImage::new_rgb8(scene.res.x, scene.res.y);
 
     // Create rendering blocks
-    let mut imageBlocks: Vec<ImageBlock> = Vec::new();
+    let mut image_blocks: Vec<ImageBlock> = Vec::new();
     for ix in StepRangeInt(0,scene.res.x,16) {
         for iy in StepRangeInt(0,scene.res.y,16) {
             let mut block = ImageBlock::new(
@@ -204,22 +201,22 @@ pub fn render(scene: &Scene) -> DynamicImage {
                     x: cmp::min(16, scene.res.x - ix),
                     y: cmp::min(16, scene.res.y - iy),
                 });
-            imageBlocks.push(block);
+            image_blocks.push(block);
         }
     }
 
     // Render the image blocks
-    imageBlocks.par_iter_mut().map(|imBlock|
-        for ix in 0..imBlock.size.x {
-            for iy in 0..imBlock.size.y {
+    image_blocks.par_iter_mut().map(|im_block|
+        for ix in 0..im_block.size.x {
+            for iy in 0..im_block.size.y {
                 let ray = Ray::generate(Point2 {
-                    x: ix + imBlock.pos.x,
-                    y: iy + imBlock.pos.y,
+                    x: ix + im_block.pos.x,
+                    y: iy + im_block.pos.y,
                 }, scene);
                 // Do the intersection
                 let intersection = scene.trace(&ray);
                 match intersection {
-                    Some(x) => imBlock.accum(Point2 { x : ix, y: iy},
+                    Some(x) => im_block.accum(Point2 { x : ix, y: iy},
                                              &x.object.color),
                     None => (),
                 }
@@ -228,11 +225,11 @@ pub fn render(scene: &Scene) -> DynamicImage {
     );
 
     // Fill the image
-    for imBlock in imageBlocks.iter_mut() {
-        for ix in 0..imBlock.size.x {
-            for iy in 0..imBlock.size.y {
-                image.put_pixel(ix + imBlock.pos.x, iy + imBlock.pos.y,
-                                imBlock.get(Point2{x: ix, y: iy}).to_rgba())
+    for im_block in image_blocks.iter() {
+        for ix in 0..im_block.size.x {
+            for iy in 0..im_block.size.y {
+                image.put_pixel(ix + im_block.pos.x, iy + im_block.pos.y,
+                                im_block.get(Point2{x: ix, y: iy}).to_rgba())
             }
         }
     }
