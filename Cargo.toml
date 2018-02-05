@@ -1,9 +1,14 @@
 [package]
 name = "rustlight"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Adrien Gruson <adrien.gruson@gmail.com>"]
+
+[[bin]]
+name = "rustlight"
+doc = false
 
 [dependencies]
 cgmath = "0.16.0"
 image = "0.18.0"
 rayon = "0.9.0"
+rand = "0.4.2"
