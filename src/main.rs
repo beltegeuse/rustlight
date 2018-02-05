@@ -206,7 +206,7 @@ pub fn render(scene: &Scene) -> DynamicImage {
     }
 
     // Render the image blocks
-    image_blocks.par_iter_mut().map(|im_block|
+    image_blocks.par_iter_mut().for_each(|im_block|
         for ix in 0..im_block.size.x {
             for iy in 0..im_block.size.y {
                 let ray = Ray::generate(Point2 {
