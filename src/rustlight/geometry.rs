@@ -8,21 +8,16 @@ pub struct Sphere {
 }
 
 pub struct Intersection<'a> {
-    pub distance: f32,
-    pub object: &'a Sphere,
+    pub bsdf: &'a Color,
 
     // No methods allowed
     _secret: (),
 }
 
 impl<'a> Intersection<'a> {
-    pub fn new<'b>(distance: f32, element: &'b Sphere) -> Intersection<'b> {
-        if !distance.is_finite() {
-            panic!("Intersection must have a finite distance.");
-        }
+    pub fn new<'b>(color: &'b Color) -> Intersection<'b> {
         Intersection {
-            distance: distance,
-            object: element,
+            bsdf: color,
             _secret: (),
         }
     }

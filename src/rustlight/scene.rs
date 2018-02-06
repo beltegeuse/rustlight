@@ -1,25 +1,33 @@
 use std::cmp;
+use std::u32;
+use std::sync::Arc;
+
 use rayon::prelude::*;
 use cgmath::*;
 use image::*;
+use embree;
 
 use rustlight::structure::{Color, Ray};
 use rustlight::geometry::{Sphere, Intersection, Intersectable};
 use rustlight::camera::Camera;
 
-pub struct Scene {
+pub struct Scene<'a> {
     // Camera parameters
     pub camera: Camera,
-    // Primitives
-    pub spheres: Vec<Sphere>,
+    pub embree: &'a embree::Scene<'a>,
+    pub bsdf: Vec<Color>,
 }
 
-impl Scene {
+impl<'a> Scene<'a> {
     pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        self.spheres
-            .iter()
-            .filter_map(|e| e.intersect(ray).map(|d| Intersection::new(d, e)))
-            .min_by(|i1, i2| i1.distance.partial_cmp(&i2.distance).unwrap())
+        let mut embree_ray = embree::Ray::new(&ray.o, &ray.d);
+        self.embree.intersect(&mut embree_ray);
+        if embree_ray.geomID == u32::MAX {
+            return None;
+        }
+
+        let inter = Intersection::new(&self.bsdf[embree_ray.primID as usize]);
+        Some(inter)
     }
 }
 
@@ -75,25 +83,25 @@ impl Iterator for StepRangeInt {
 // Functions
 pub fn render(scene: &Scene) -> DynamicImage {
     // The image that we will render
-    let mut image = DynamicImage::new_rgb8(scene.camera.img.x,
-                                           scene.camera.img.y);
+    let mut image = DynamicImage::new_rgb8(scene.camera.size().x,
+                                           scene.camera.size().y);
 
     // Create rendering blocks
     let mut image_blocks: Vec<ImageBlock> = Vec::new();
-    for ix in StepRangeInt(0, scene.camera.img.x, 16) {
-        for iy in StepRangeInt(0, scene.camera.img.y, 16) {
+    for ix in StepRangeInt(0, scene.camera.size().x, 16) {
+        for iy in StepRangeInt(0, scene.camera.size().y, 16) {
             let mut block = ImageBlock::new(
                 Point2 { x: ix, y: iy },
                 Vector2 {
-                    x: cmp::min(16, scene.camera.img.x - ix),
-                    y: cmp::min(16, scene.camera.img.y - iy),
+                    x: cmp::min(16, scene.camera.size().x - ix),
+                    y: cmp::min(16, scene.camera.size().y - iy),
                 });
             image_blocks.push(block);
         }
     }
 
     // Render the image blocks
-    image_blocks.par_iter_mut().for_each(|im_block|
+    image_blocks.iter_mut().for_each(|im_block|
         for ix in 0..im_block.size.x {
             for iy in 0..im_block.size.y {
                 let pix = ((ix + im_block.pos.x) as f32 + 0.5,
@@ -103,7 +111,7 @@ pub fn render(scene: &Scene) -> DynamicImage {
                 let intersection = scene.trace(&ray);
                 match intersection {
                     Some(x) => im_block.accum(Point2 { x: ix, y: iy },
-                                              &x.object.color),
+                                              x.bsdf),
                     None => (),
                 }
             }
