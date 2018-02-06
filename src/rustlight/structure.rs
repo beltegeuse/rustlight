@@ -33,20 +33,4 @@ pub struct Ray {
     pub d: Vector3<f32>,
 }
 
-impl Ray {
-    pub fn generate(impos: Point2<u32>, res: &Point2<u32>, fov : f32) -> Ray {
-        assert!(res.x > res.y);
-        let fov_adjustment = (fov.to_radians() / 2.0).tan();
-        let aspect_ratio = (res.x as f32) / (res.y as f32);
-
-        let sensor_x = (((impos.x as f32 + 0.5) / res.x as f32) * 2.0 - 1.0) * aspect_ratio * fov_adjustment;
-        let sensor_y = (1.0 - ((impos.y as f32 + 0.5) / res.y as f32) * 2.0) * fov_adjustment;
-
-        Ray {
-            o: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            d: Vector3 { x: sensor_x, y: sensor_y, z: -1.0 }.normalize(),
-        }
-    }
-}
-
 

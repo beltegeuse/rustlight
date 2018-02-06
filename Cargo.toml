@@ -12,3 +12,5 @@ cgmath = "0.16.0"
 image = "0.18.0"
 rayon = "0.9.0"
 rand = "0.4.2"
+tobj = "*"
+embree = { git = "https://github.com/Twinklebear/embree-rs.git" }
