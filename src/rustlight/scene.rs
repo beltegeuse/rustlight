@@ -1,6 +1,5 @@
 use std::cmp;
 use std::u32;
-use std::sync::Arc;
 
 use rayon::prelude::*;
 use cgmath::*;
@@ -8,7 +7,7 @@ use image::*;
 use embree;
 
 use rustlight::structure::{Color, Ray};
-use rustlight::geometry::{Sphere, Intersection, Intersectable};
+use rustlight::geometry::{Intersection, Intersectable};
 use rustlight::camera::Camera;
 
 pub struct Scene<'a> {
@@ -22,7 +21,7 @@ impl<'a> Scene<'a> {
     pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
         let embree_ray = embree::rtcore::Ray::new(&ray.o, &ray.d);
         if let Some(inter) = self.embree.intersect(embree_ray) {
-            let inter = Intersection::new(&self.bsdf[inter.prim_id as usize]);
+            let inter = Intersection::new(&self.bsdf[inter.geom_id as usize]);
             Some(inter)
         } else {
             None
@@ -100,7 +99,7 @@ pub fn render(scene: &Scene) -> DynamicImage {
     }
 
     // Render the image blocks
-    image_blocks.iter_mut().for_each(|im_block|
+    image_blocks.par_iter_mut().for_each(|im_block|
         for ix in 0..im_block.size.x {
             for iy in 0..im_block.size.y {
                 let pix = ((ix + im_block.pos.x) as f32 + 0.5,

@@ -20,67 +20,52 @@ extern crate embree;
 
 extern crate rustlight;
 use rustlight::rustlight::*;
-use rustlight::rustlight::sampler::Sampler;
 use rustlight::rustlight::structure::*;
 
-//fn make_cube<'a>(scene: &'a embree::Scene) -> embree::TriangleMesh<'a> {
-//    let mut mesh = embree::TriangleMesh::unanimated(scene, embree::GeometryFlags::STATIC,
-//                                                    12, 8);
-//    {
-//        let mut verts = mesh.vertex_buffer.map();
-//        let mut tris = mesh.index_buffer.map();
-//
-//        verts[0] = Vector4::new(-1.0, -1.0, -1.0, 0.0);
-//        verts[1] = Vector4::new(-1.0, -1.0, 1.0, 0.0);
-//        verts[2] = Vector4::new(-1.0, 1.0, -1.0, 0.0);
-//        verts[3] = Vector4::new(-1.0, 1.0, 1.0, 0.0);
-//        verts[4] = Vector4::new(1.0, -1.0, -1.0, 0.0);
-//        verts[5] = Vector4::new(1.0, -1.0, 1.0, 0.0);
-//        verts[6] = Vector4::new(1.0, 1.0, -1.0, 0.0);
-//        verts[7] = Vector4::new(1.0, 1.0, 1.0, 0.0);
-//
-//        // left side
-//        tris[0] = Vector3::new(0, 2, 1);
-//        tris[1] = Vector3::new(1, 2, 3);
-//
-//        // right side
-//        tris[2] = Vector3::new(4, 5, 6);
-//        tris[3] = Vector3::new(5, 7, 6);
-//
-//        // bottom side
-//        tris[4] = Vector3::new(0, 1, 4);
-//        tris[5] = Vector3::new(1, 5, 4);
-//
-//        // top side
-//        tris[6] = Vector3::new(2, 6, 3);
-//        tris[7] = Vector3::new(3, 6, 7);
-//
-//        // front side
-//        tris[8] = Vector3::new(0, 4, 2);
-//        tris[9] = Vector3::new(2, 4, 6);
-//
-//        // back side
-//        tris[10] = Vector3::new(1, 3, 5);
-//        tris[11] = Vector3::new(3, 7, 5);
-//    }
-//    mesh
-//}
+fn make_cube<'a,'b>(scene: &'b mut embree::rtcore::Scene<'a>) -> embree::rtcore::GeometryHandle<'a> {
+    let verts = vec![ Vector4::new(-1.0, -1.0, -1.0, 0.0),
+    Vector4::new(-1.0, -1.0, 1.0, 0.0),
+    Vector4::new(-1.0, 1.0, -1.0, 0.0),
+    Vector4::new(-1.0, 1.0, 1.0, 0.0),
+    Vector4::new(1.0, -1.0, -1.0, 0.0),
+    Vector4::new(1.0, -1.0, 1.0, 0.0),
+    Vector4::new(1.0, 1.0, -1.0, 0.0),
+    Vector4::new(1.0, 1.0, 1.0, 0.0)];
 
-//fn make_ground_plane<'a>(scene: &'a embree::Scene) -> embree::QuadMesh<'a> {
-//    let mut mesh = embree::QuadMesh::unanimated(scene, embree::GeometryFlags::STATIC,
-//                                                1, 4);
-//    {
-//        let mut verts = mesh.vertex_buffer.map();
-//        let mut quads = mesh.index_buffer.map();
-//        verts[0] = Vector4::new(-10.0, -2.0, -10.0, 0.0);
-//        verts[1] = Vector4::new(-10.0, -2.0, 10.0, 0.0);
-//        verts[2] = Vector4::new(10.0, -2.0, 10.0, 0.0);
-//        verts[3] = Vector4::new(10.0, -2.0, -10.0, 0.0);
-//
-//        quads[0] = Vector4::<i32>::new(0, 1, 2, 3);
-//    }
-//    mesh
-//}
+    let vidxs = vec![0, 2, 1,
+    1, 2, 3,
+    4, 5, 6,
+    5, 7, 6,
+    0, 1, 4,
+    1, 5, 4,
+    2, 6, 3,
+    3, 6, 7,
+    0, 4, 2,
+    2, 4, 6,
+    1, 3, 5,
+    3, 7, 5];
+
+    let hm: embree::rtcore::GeometryHandle<'a> = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
+                            verts,
+                            vidxs);
+    hm
+}
+
+fn make_ground_plane<'a,'b>(scene: &'b mut embree::rtcore::Scene<'a>) -> embree::rtcore::GeometryHandle<'a> {
+    let verts = vec![
+        Vector4::new(-10.0, -2.0, -10.0, 0.0),
+        Vector4::new(-10.0, -2.0, 10.0, 0.0),
+        Vector4::new(10.0, -2.0, 10.0, 0.0),
+        Vector4::new(10.0, -2.0, -10.0, 0.0)
+    ];
+
+    let vidxs = vec![0, 1, 2, 1, 2, 3];
+
+    let hm: embree::rtcore::GeometryHandle<'a> = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
+                                                                         verts,
+                                                                         vidxs);
+    hm
+}
 
 fn main() {
 
@@ -95,11 +80,12 @@ fn main() {
 
     // Read the geometries
     let mut device = embree::rtcore::Device::new();
-    let mut sceneEmbree = device.new_scene(embree::rtcore::STATIC, embree::rtcore::INTERSECT1);
+    let mut scene_embree = device.new_scene(embree::rtcore::STATIC, embree::rtcore::INTERSECT1);
 
-//    let cube = make_cube(&sceneEmbree);
-//    let ground = make_ground_plane(&sceneEmbree);
-    sceneEmbree.commit(); // Build
+    make_cube(&mut scene_embree);
+    make_ground_plane(& mut scene_embree);
+
+    scene_embree.commit(); // Build
 
     // Read materials
     let face_colors = vec![Color { r: 1.0, g: 0.0, b: 0.0 },
@@ -119,7 +105,7 @@ fn main() {
     // Define a default scene
     let scene = scene::Scene {
         camera: rustlight::rustlight::camera::Camera::new(camera_param),
-        embree: &sceneEmbree,
+        embree: &scene_embree,
         bsdf: face_colors,
     };
 
@@ -128,8 +114,8 @@ fn main() {
     // Generate the thread pool
     let pool = rayon::ThreadPool::new(rayon::Configuration::new()).unwrap();
     // Render the image
-    //let img: DynamicImage = pool.install(|| scene::render(&scene));
-    let img: DynamicImage = scene::render(&scene);
+    let img: DynamicImage = pool.install(|| scene::render(&scene));
+
     assert_eq!(scene.camera.size().x, img.width());
     assert_eq!(scene.camera.size().y, img.height());
     // Compute the rendering time
