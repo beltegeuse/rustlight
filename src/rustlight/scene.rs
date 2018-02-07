@@ -14,20 +14,19 @@ use rustlight::camera::Camera;
 pub struct Scene<'a> {
     // Camera parameters
     pub camera: Camera,
-    pub embree: &'a embree::Scene<'a>,
+    pub embree: &'a embree::rtcore::Scene<'a>,
     pub bsdf: Vec<Color>,
 }
 
 impl<'a> Scene<'a> {
     pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        let mut embree_ray = embree::Ray::new(&ray.o, &ray.d);
-        self.embree.intersect(&mut embree_ray);
-        if embree_ray.geomID == u32::MAX {
-            return None;
+        let embree_ray = embree::rtcore::Ray::new(&ray.o, &ray.d);
+        if let Some(inter) = self.embree.intersect(embree_ray) {
+            let inter = Intersection::new(&self.bsdf[inter.prim_id as usize]);
+            Some(inter)
+        } else {
+            None
         }
-
-        let inter = Intersection::new(&self.bsdf[embree_ray.primID as usize]);
-        Some(inter)
     }
 }
 
