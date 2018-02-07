@@ -10,6 +10,8 @@ extern crate serde;
 extern crate serde_json;
 // For fast intersection
 extern crate embree;
+// For the random number generator
+extern crate rand;
 
 
 pub mod rustlight;

@@ -7,22 +7,6 @@ pub struct Sphere {
     pub color: Color,
 }
 
-pub struct Intersection<'a> {
-    pub bsdf: &'a Color,
-
-    // No methods allowed
-    _secret: (),
-}
-
-impl<'a> Intersection<'a> {
-    pub fn new<'b>(color: &'b Color) -> Intersection<'b> {
-        Intersection {
-            bsdf: color,
-            _secret: (),
-        }
-    }
-}
-
 pub trait Intersectable {
     fn intersect(&self, ray: &Ray) -> Option<f32>;
 }

@@ -37,10 +37,6 @@ fn load_obj(scene: &mut embree::rtcore::Scene, file_name: &std::path::Path) {
                 let mesh = m.mesh;
                 println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
                 let verts = mesh.positions.chunks(3).map(|i| Vector4::new(i[0], i[1], i[2], 1.0)).collect();
-                println!("vertices: {:?}", verts);
-                println!("indices: {:?}", mesh.indices);
-                println!("mem: {}", std::mem::size_of::<Vector4<f32>>());
-
                 scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
                                         verts,
                                         mesh.indices);
@@ -145,6 +141,7 @@ fn main() {
         camera: rustlight::rustlight::camera::Camera::new(camera_param),
         embree: &scene_embree,
         bsdf: vec![Color::new(1.0, 0.0, 0.0), Color::new(0.0, 0.0, 1.0), Color::new(0.0, 1.0, 0.0)],
+        nb_samples: 32,
     };
 
     // To time the rendering time

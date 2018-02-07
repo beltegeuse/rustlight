@@ -1,6 +1,6 @@
 // For random number
-extern crate rand;
-use self::rand::distributions::{IndependentSample, Range};
+use rand;
+use rand::distributions::{IndependentSample, Range};
 
 pub trait Sampler {
     fn next(& mut self) -> f32;
@@ -17,6 +17,7 @@ impl Sampler for IndepSampler {
     }
 }
 
+// TODO: Implement clone
 impl IndepSampler {
     pub fn new() -> IndepSampler {
         IndepSampler {

@@ -1,6 +1,6 @@
 use cgmath::*;
 use image::*;
-use std::ops::{AddAssign};
+use std::ops::{AddAssign, Mul};
 
 //////// Color
 #[derive(Clone, PartialEq, Debug)]
@@ -18,10 +18,27 @@ impl<'b> AddAssign<&'b Color> for Color {
     }
 }
 
+impl Mul<f32> for Color {
+    fn mul(self, other: f32) -> Color {
+        Color {
+            r: self.r * other,
+            g: self.g * other,
+            b: self.b * other,
+        }
+    }
+    type Output = Self;
+}
+
 impl Color {
     pub fn new(r: f32, g: f32, b: f32) -> Color {
         Color {
             r, g, b
+        }
+    }
+
+    pub fn one(v: f32) -> Color {
+        Color {
+            r:v, g:v, b:v
         }
     }
 
@@ -30,6 +47,12 @@ impl Color {
                             (self.g * 255.0) as u8,
                             (self.b * 255.0) as u8,
                             255)
+    }
+
+    pub fn mul(&mut self, v: f32) {
+        self.r *= v;
+        self.g *= v;
+        self.b *= v;
     }
 }
 
