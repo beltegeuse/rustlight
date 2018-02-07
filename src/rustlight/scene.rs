@@ -14,7 +14,7 @@ pub struct Scene<'a> {
     // Camera parameters
     pub camera: Camera,
     pub embree: &'a embree::rtcore::Scene<'a>,
-    pub bsdf: Vec<Color>,
+    pub bsdf: Vec<Color>, // per each objects
 }
 
 impl<'a> Scene<'a> {

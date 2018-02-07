@@ -19,6 +19,12 @@ impl<'b> AddAssign<&'b Color> for Color {
 }
 
 impl Color {
+    pub fn new(r: f32, g: f32, b: f32) -> Color {
+        Color {
+            r, g, b
+        }
+    }
+
     pub fn to_rgba(&self) -> Rgba<u8> {
         Rgba::from_channels((self.r * 255.0) as u8,
                             (self.g * 255.0) as u8,

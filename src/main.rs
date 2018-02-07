@@ -4,67 +4,118 @@ use std::io::prelude::*;
 
 // Vector math library
 extern crate cgmath;
+
 use cgmath::*;
 
 // For saving image (ldr)
 extern crate image;
+
 use image::*;
+
+extern crate tobj;
 
 extern crate rayon;
 
 #[macro_use]
 extern crate serde_json;
+
 use serde_json::Value;
 
 extern crate embree;
 
 extern crate rustlight;
+
 use rustlight::rustlight::*;
 use rustlight::rustlight::structure::*;
 
-fn make_cube<'a,'b>(scene: &'b mut embree::rtcore::Scene<'a>) -> embree::rtcore::GeometryHandle<'a> {
-    let verts = vec![ Vector4::new(-1.0, -1.0, -1.0, 0.0),
-    Vector4::new(-1.0, -1.0, 1.0, 0.0),
-    Vector4::new(-1.0, 1.0, -1.0, 0.0),
-    Vector4::new(-1.0, 1.0, 1.0, 0.0),
-    Vector4::new(1.0, -1.0, -1.0, 0.0),
-    Vector4::new(1.0, -1.0, 1.0, 0.0),
-    Vector4::new(1.0, 1.0, -1.0, 0.0),
-    Vector4::new(1.0, 1.0, 1.0, 0.0)];
+fn load_obj(scene: &mut embree::rtcore::Scene, file_name: &std::path::Path) {
+    println!("Try to load {:?}", file_name);
+    match tobj::load_obj(file_name) {
+        Ok((models, _)) => {
+            for m in models {
+                println!("Loading model {}", m.name);
+                let mesh = m.mesh;
+                println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
+                let verts = mesh.positions.chunks(3).map(|i| Vector4::new(i[0], i[1], i[2], 1.0)).collect();
+                println!("vertices: {:?}", verts);
+                println!("indices: {:?}", mesh.indices);
+                println!("mem: {}", std::mem::size_of::<Vector4<f32>>());
 
-    let vidxs = vec![0, 2, 1,
-    1, 2, 3,
-    4, 5, 6,
-    5, 7, 6,
-    0, 1, 4,
-    1, 5, 4,
-    2, 6, 3,
-    3, 6, 7,
-    0, 4, 2,
-    2, 4, 6,
-    1, 3, 5,
-    3, 7, 5];
-
-    let hm: embree::rtcore::GeometryHandle<'a> = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
-                            verts,
-                            vidxs);
-    hm
+                scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
+                                        verts,
+                                        mesh.indices);
+                // TODO: Load also normals and uv (chunks(3) and chunks(2))
+                // TODO: Only load them by checking if the vec is empty
+            }
+        }
+        Err(e) => {
+            println!("Failed to load {:?} due to {:?}", file_name, e);
+        }
+    };
 }
 
-fn make_ground_plane<'a,'b>(scene: &'b mut embree::rtcore::Scene<'a>) -> embree::rtcore::GeometryHandle<'a> {
-    let verts = vec![
-        Vector4::new(-10.0, -2.0, -10.0, 0.0),
-        Vector4::new(-10.0, -2.0, 10.0, 0.0),
-        Vector4::new(10.0, -2.0, 10.0, 0.0),
-        Vector4::new(10.0, -2.0, -10.0, 0.0)
-    ];
+#[allow(dead_code)]
+fn make_cube(scene: &mut embree::rtcore::Scene) {
+    let verts = vec![Vector4::new(-1.0, -1.0, -1.0, 0.0),
+                     Vector4::new(-1.0, -1.0, 1.0, 0.0),
+                     Vector4::new(-1.0, 1.0, -1.0, 0.0),
+                     Vector4::new(-1.0, 1.0, 1.0, 0.0),
+                     Vector4::new(1.0, -1.0, -1.0, 0.0),
+                     Vector4::new(1.0, -1.0, 1.0, 0.0),
+                     Vector4::new(1.0, 1.0, -1.0, 0.0),
+                     Vector4::new(1.0, 1.0, 1.0, 0.0)];
 
-    let vidxs = vec![0, 1, 2, 1, 2, 3];
+    let vidxs = vec![0, 2, 1,
+                     1, 2, 3,
+                     4, 5, 6,
+                     5, 7, 6,
+                     0, 1, 4,
+                     1, 5, 4,
+                     2, 6, 3,
+                     3, 6, 7,
+                     0, 4, 2,
+                     2, 4, 6,
+                     1, 3, 5,
+                     3, 7, 5];
 
-    let hm: embree::rtcore::GeometryHandle<'a> = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
-                                                                         verts,
-                                                                         vidxs);
-    hm
+    scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
+                            verts,
+                            vidxs);
+}
+
+#[allow(dead_code)]
+fn make_ground_plane(scene: &mut embree::rtcore::Scene) {
+    let vlist: Vec<Vector4<f32>> = vec![Vector4 {
+        x: 1.0,
+        y: 1.0,
+        z: 1.0,
+        w: 1.0,
+    },
+    Vector4 {
+        x: 2.0,
+        y: 1.0,
+        z: 1.0,
+        w: 0.0,
+    },
+    Vector4 {
+        x: 2.0,
+        y: 2.0,
+        z: 1.0,
+        w: 1.0,
+    },
+    Vector4 {
+        x: 1.0,
+        y: 2.0,
+        z: 1.0,
+        w: 1.0,
+    }];
+
+    // Indices
+    let vidxs: Vec<u32> = vec![0, 1, 3, 1, 2, 3];
+
+    scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
+                            vlist,
+                            vidxs);
 }
 
 fn main() {
@@ -82,31 +133,18 @@ fn main() {
     let mut device = embree::rtcore::Device::new();
     let mut scene_embree = device.new_scene(embree::rtcore::STATIC, embree::rtcore::INTERSECT1);
 
-    make_cube(&mut scene_embree);
-    make_ground_plane(& mut scene_embree);
+    //make_cube(&mut scene_embree);
+    //make_ground_plane(&mut scene_embree);
+    let obj_path = std::path::Path::new("./data/dragon.obj");
+    load_obj(&mut scene_embree, obj_path);
 
     scene_embree.commit(); // Build
-
-    // Read materials
-    let face_colors = vec![Color { r: 1.0, g: 0.0, b: 0.0 },
-                           Color { r: 1.0, g: 0.0, b: 0.0 },
-                           Color { r: 0.0, g: 1.0, b: 0.0 },
-                           Color { r: 0.0, g: 1.0, b: 0.0 },
-                           Color { r: 0.5, g: 0.5, b: 0.5 },
-                           Color { r: 0.5, g: 0.5, b: 0.5 },
-                           Color { r: 1.0, g: 1.0, b: 1.0 },
-                           Color { r: 1.0, g: 1.0, b: 1.0 },
-                           Color { r: 0.0, g: 0.0, b: 1.0 },
-                           Color { r: 0.0, g: 0.0, b: 1.0 },
-                           Color { r: 1.0, g: 1.0, b: 0.0 },
-                           Color { r: 1.0, g: 1.0, b: 0.0 },
-    ];
 
     // Define a default scene
     let scene = scene::Scene {
         camera: rustlight::rustlight::camera::Camera::new(camera_param),
         embree: &scene_embree,
-        bsdf: face_colors,
+        bsdf: vec![Color::new(1.0, 0.0, 0.0), Color::new(0.0, 0.0, 1.0), Color::new(0.0, 1.0, 0.0)],
     };
 
     // To time the rendering time
