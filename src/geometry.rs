@@ -1,7 +1,9 @@
 use cgmath::*;
-use rustlight::structure::{Color,Ray};
 use embree;
 use std::sync::Arc;
+
+// my includes
+use structure::{Color,Ray};
 
 pub struct Mesh {
     pub name : String,

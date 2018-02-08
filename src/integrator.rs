@@ -1,9 +1,11 @@
 use cgmath::*;
-use rustlight::scene::*;
-use rustlight::math::*;
-use rustlight::structure::*;
 use embree; // FIXME: Remove this
 use rand;
+
+// my includes
+use scene::*;
+use math::*;
+use structure::*;
 
 /////////////////////////
 // Functions

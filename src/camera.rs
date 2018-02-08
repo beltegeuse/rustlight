@@ -1,6 +1,8 @@
 use cgmath::*;
-use rustlight::structure::{Ray};
 use std::f32;
+
+// my includes
+use structure::{Ray};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CameraParam {

@@ -5,10 +5,12 @@ use cgmath::*;
 use image::*;
 use embree;
 use embree::rtcore::Intersection;
-use rustlight::structure::{Color, Ray};
-use rustlight::camera::Camera;
-use rustlight::integrator::*;
-use rustlight::geometry::*;
+
+// my includes
+use structure::{Color, Ray};
+use camera::Camera;
+use integrator::*;
+use geometry::*;
 
 pub struct Scene<'a> {
     // Camera parameters

@@ -1,33 +1,20 @@
-// For computing the time
-use std::time::Instant;
-use std::io::prelude::*;
-
-// Vector math library
 extern crate cgmath;
-
-use cgmath::*;
-
-// For saving image (ldr)
 extern crate image;
-
-use image::*;
-
 extern crate tobj;
-
 extern crate rayon;
-
-#[macro_use]
 extern crate serde_json;
-
-use serde_json::Value;
-
 extern crate embree;
-
 extern crate rustlight;
 
-use rustlight::rustlight::*;
-use rustlight::rustlight::structure::*;
-use rustlight::rustlight::geometry::*;
+use cgmath::*;
+use image::*;
+use std::time::Instant;
+use std::io::prelude::*;
+use serde_json::Value;
+// rustlight uses
+use rustlight::*;
+use rustlight::structure::*;
+use rustlight::geometry::*;
 
 fn load_obj(scene: &mut embree::rtcore::Scene, file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
@@ -41,11 +28,11 @@ fn load_obj(scene: &mut embree::rtcore::Scene, file_name: &std::path::Path) -> R
         println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
         let verts = mesh.positions.chunks(3).map(|i| Vector4::new(i[0], i[1], i[2], 1.0)).collect();
         let trimesh = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
-                                verts,
-                                mesh.indices);
+                                              verts,
+                                              mesh.indices);
         // Read materials
         let diffuse_color;
-        if let Some(id) = mesh.material_id  {
+        if let Some(id) = mesh.material_id {
             println!("found bsdf id: {}", id);
             let mat = &materials[id];
             diffuse_color = Color::new(mat.diffuse[0],
@@ -58,78 +45,12 @@ fn load_obj(scene: &mut embree::rtcore::Scene, file_name: &std::path::Path) -> R
         // Add the mesh info
         meshes.push(Mesh {
             name: m.name,
-            trimesh ,
+            trimesh,
             bsdf: diffuse_color,
             emission: Color::one(0.0),
         })
-
-
     }
     Ok(meshes)
-}
-
-#[allow(dead_code)]
-fn make_cube(scene: &mut embree::rtcore::Scene) {
-    let verts = vec![Vector4::new(-1.0, -1.0, -1.0, 0.0),
-                     Vector4::new(-1.0, -1.0, 1.0, 0.0),
-                     Vector4::new(-1.0, 1.0, -1.0, 0.0),
-                     Vector4::new(-1.0, 1.0, 1.0, 0.0),
-                     Vector4::new(1.0, -1.0, -1.0, 0.0),
-                     Vector4::new(1.0, -1.0, 1.0, 0.0),
-                     Vector4::new(1.0, 1.0, -1.0, 0.0),
-                     Vector4::new(1.0, 1.0, 1.0, 0.0)];
-
-    let vidxs = vec![0, 2, 1,
-                     1, 2, 3,
-                     4, 5, 6,
-                     5, 7, 6,
-                     0, 1, 4,
-                     1, 5, 4,
-                     2, 6, 3,
-                     3, 6, 7,
-                     0, 4, 2,
-                     2, 4, 6,
-                     1, 3, 5,
-                     3, 7, 5];
-
-    scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
-                            verts,
-                            vidxs);
-}
-
-#[allow(dead_code)]
-fn make_ground_plane(scene: &mut embree::rtcore::Scene) {
-    let vlist: Vec<Vector4<f32>> = vec![Vector4 {
-        x: -10.0,
-        y: -0.3,
-        z: -10.0,
-        w: 1.0,
-    },
-    Vector4 {
-        x: 10.0,
-        y: -0.3,
-        z: -10.0,
-        w: 1.0,
-    },
-    Vector4 {
-        x: 10.0,
-        y: -0.3,
-        z: 10.0,
-        w: 1.0,
-    },
-    Vector4 {
-        x: -10.0,
-        y: -0.3,
-        z: 10.0,
-        w: 1.0,
-    }];
-
-    // Indices
-    let vidxs: Vec<u32> = vec![0, 1, 3, 1, 2, 3];
-
-    scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
-                            vlist,
-                            vidxs);
 }
 
 fn main() {
@@ -180,10 +101,10 @@ fn main() {
 
     // Define a default scene
     let scene = scene::Scene {
-        camera: rustlight::rustlight::camera::Camera::new(camera_param),
+        camera: camera::Camera::new(camera_param),
         embree: &scene_embree,
         meshes,
-        nb_samples: 1024,
+        nb_samples: 128,
     };
 
     println!("Rendering...");
