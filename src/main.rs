@@ -127,13 +127,14 @@ fn main() {
 
     // Read the geometries
     let mut device = embree::rtcore::Device::new();
-    let mut scene_embree = device.new_scene(embree::rtcore::STATIC, embree::rtcore::INTERSECT1);
+    let mut scene_embree = device.new_scene(embree::rtcore::STATIC,
+                                            embree::rtcore::INTERSECT1 | embree::rtcore::INTERPOLATE);
 
     //make_cube(&mut scene_embree);
     //make_ground_plane(&mut scene_embree);
     let obj_path = std::path::Path::new("./data/dragon.obj");
     load_obj(&mut scene_embree, obj_path);
-
+    println!("Build the acceleration structure");
     scene_embree.commit(); // Build
 
     // Define a default scene

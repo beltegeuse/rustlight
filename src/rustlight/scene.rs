@@ -126,7 +126,7 @@ pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
 pub fn basis(n : Vector3<f32>) -> Matrix3<f32> {
     let b1: Vector3<f32>;
     let b2: Vector3<f32>;
-    if(n.z<0.){
+    if n.z<0.0 {
         let a = 1.0 / (1.0 - n.z);
         let b = n.x * n.y * a;
         b1 = Vector3::new(1.0 - n.x * n.x * a, -b, n.x);
@@ -138,9 +138,9 @@ pub fn basis(n : Vector3<f32>) -> Matrix3<f32> {
         b2 = Vector3::new(b, 1.0 - n.y * n.y * a, -n.y);
     }
     Matrix3 {
-        x : n,
-        y : b1,
-        z : b2
+        x : b1,
+        y : b2,
+        z : n
     }
 }
 
@@ -155,28 +155,29 @@ fn render_ao((ix,iy): (u32,u32),scene: &Scene) -> Option<Color> {
     if intersection.is_none() {
         return None;
     }
-    let intersection = intersection.unwrap();
-
-    // Compute an new direction
-    let mut n_g_normalized = intersection.n_g.normalize();
-    if n_g_normalized.dot(ray.d) < 0.0 {
-        n_g_normalized = -n_g_normalized;
-    }
-    let frame = basis(n_g_normalized);
-
-    let d_local = cosine_sample_hemisphere(Point2::new(rand::random::<f32>(),
-                                                 rand::random::<f32>()));
-    let d = frame * d_local;
-
-    let o = intersection.p + d * 0.001;
-    let mut embree_ray_new = embree::rtcore::Ray::new(&o,
-                                                  &d);
-    scene.embree.occluded(&mut embree_ray_new);
-    if embree_ray_new.hit() {
-        Some(Color::one(1.0))
-    } else {
-        None
-    }
+    return Some(Color::one(1.0));
+//    let intersection = intersection.unwrap();
+//
+//    // Compute an new direction
+//    let mut n_g_normalized = intersection.n_g.normalize();
+//    if n_g_normalized.dot(ray.d) < 0.0 {
+//        n_g_normalized = -n_g_normalized;
+//    }
+//    let frame = basis(n_g_normalized);
+//
+//    let d_local = cosine_sample_hemisphere(Point2::new(rand::random::<f32>(),
+//                                                 rand::random::<f32>()));
+//    let d = frame * d_local;
+//
+//    let o = intersection.p + d * 0.001;
+//    let mut embree_ray_new = embree::rtcore::Ray::new(&o,
+//                                                  &d);
+//    scene.embree.occluded(&mut embree_ray_new);
+//    if embree_ray_new.hit() {
+//        Some(Color::one(1.0))
+//    } else {
+//        None
+//    }
 }
 
 pub fn render(scene: &Scene) -> DynamicImage {
@@ -201,7 +202,7 @@ pub fn render(scene: &Scene) -> DynamicImage {
     }
 
     // Render the image blocks
-    image_blocks.par_iter_mut().for_each(|im_block|
+    image_blocks.iter_mut().for_each(|im_block|
         {
             for ix in 0..im_block.size.x {
                 for iy in 0..im_block.size.y {
