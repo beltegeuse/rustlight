@@ -3,7 +3,7 @@ use image::*;
 use std::ops::{AddAssign, Mul};
 
 //////// Color
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
@@ -29,6 +29,17 @@ impl Mul<f32> for Color {
     type Output = Self;
 }
 
+impl<'a> Mul<&'a Color> for Color {
+    fn mul(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r * other.r,
+            g: self.g * other.g,
+            b: self.b * other.b,
+        }
+    }
+    type Output = Self;
+}
+
 impl Color {
     pub fn new(r: f32, g: f32, b: f32) -> Color {
         Color {
@@ -42,10 +53,14 @@ impl Color {
         }
     }
 
+    pub fn is_zero(&self) -> bool {
+        self.r == 0.0 && self.g == 0.0 && self.b == 0.0
+    }
+
     pub fn to_rgba(&self) -> Rgba<u8> {
-        Rgba::from_channels((self.r * 255.0) as u8,
-                            (self.g * 255.0) as u8,
-                            (self.b * 255.0) as u8,
+        Rgba::from_channels((self.r * 255.0).min(255.0) as u8,
+                            (self.g * 255.0).min(255.0) as u8,
+                            (self.b * 255.0).min(255.0) as u8,
                             255)
     }
 
@@ -60,6 +75,15 @@ impl Color {
 pub struct Ray {
     pub o: Point3<f32>,
     pub d: Vector3<f32>,
+}
+
+impl Ray {
+    pub fn new(o: Point3<f32>, d: Vector3<f32>) -> Ray {
+        Ray {
+            o,
+            d,
+        }
+    }
 }
 
 

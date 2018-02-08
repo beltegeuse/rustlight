@@ -27,27 +27,45 @@ extern crate rustlight;
 
 use rustlight::rustlight::*;
 use rustlight::rustlight::structure::*;
+use rustlight::rustlight::geometry::*;
 
-fn load_obj(scene: &mut embree::rtcore::Scene, file_name: &std::path::Path) {
+fn load_obj(scene: &mut embree::rtcore::Scene, file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
-    match tobj::load_obj(file_name) {
-        Ok((models, _)) => {
-            for m in models {
-                println!("Loading model {}", m.name);
-                let mesh = m.mesh;
-                println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
-                let verts = mesh.positions.chunks(3).map(|i| Vector4::new(i[0], i[1], i[2], 1.0)).collect();
-                scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
-                                        verts,
-                                        mesh.indices);
-                // TODO: Load also normals and uv (chunks(3) and chunks(2))
-                // TODO: Only load them by checking if the vec is empty
-            }
+    let (models, materials) = tobj::load_obj(file_name)?;
+
+    // Read models
+    let mut meshes = vec![];
+    for m in models {
+        println!("Loading model {}", m.name);
+        let mesh = m.mesh;
+        println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
+        let verts = mesh.positions.chunks(3).map(|i| Vector4::new(i[0], i[1], i[2], 1.0)).collect();
+        let trimesh = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
+                                verts,
+                                mesh.indices);
+        // Read materials
+        let diffuse_color;
+        if let Some(id) = mesh.material_id  {
+            println!("found bsdf id: {}", id);
+            let mat = &materials[id];
+            diffuse_color = Color::new(mat.diffuse[0],
+                                       mat.diffuse[1],
+                                       mat.diffuse[2]);
+        } else {
+            diffuse_color = Color::one(0.0);
         }
-        Err(e) => {
-            println!("Failed to load {:?} due to {:?}", file_name, e);
-        }
-    };
+
+        // Add the mesh info
+        meshes.push(Mesh {
+            name: m.name,
+            trimesh ,
+            bsdf: diffuse_color,
+            emission: Color::one(0.0),
+        })
+
+
+    }
+    Ok(meshes)
 }
 
 #[allow(dead_code)]
@@ -82,27 +100,27 @@ fn make_cube(scene: &mut embree::rtcore::Scene) {
 #[allow(dead_code)]
 fn make_ground_plane(scene: &mut embree::rtcore::Scene) {
     let vlist: Vec<Vector4<f32>> = vec![Vector4 {
-        x: 1.0,
-        y: 1.0,
-        z: 1.0,
+        x: -10.0,
+        y: -0.3,
+        z: -10.0,
         w: 1.0,
     },
     Vector4 {
-        x: 2.0,
-        y: 1.0,
-        z: 1.0,
-        w: 0.0,
-    },
-    Vector4 {
-        x: 2.0,
-        y: 2.0,
-        z: 1.0,
+        x: 10.0,
+        y: -0.3,
+        z: -10.0,
         w: 1.0,
     },
     Vector4 {
-        x: 1.0,
-        y: 2.0,
-        z: 1.0,
+        x: 10.0,
+        y: -0.3,
+        z: 10.0,
+        w: 1.0,
+    },
+    Vector4 {
+        x: -10.0,
+        y: -0.3,
+        z: 10.0,
         w: 1.0,
     }];
 
@@ -117,23 +135,46 @@ fn make_ground_plane(scene: &mut embree::rtcore::Scene) {
 fn main() {
 
     // Read the scene file
-    let mut fscene = std::fs::File::open("scene.json").expect("scene file not found");
+    let scene_path = std::path::Path::new("./data/cbox.json");
+    let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
     let mut scene_str = String::new();
     fscene.read_to_string(&mut scene_str).expect("impossible to read the file");
     let v: Value = serde_json::from_str(&scene_str).expect("impossible to parse in JSON");
 
-    let json_camera = json!(v.get("camera").unwrap());
-    let camera_param: rustlight::rustlight::camera::CameraParam = serde_json::from_value(json_camera).unwrap();
+    let camera_param: camera::CameraParam = serde_json::from_value(v["camera"].clone()).unwrap();
 
-    // Read the geometries
+    // Prepare embree
     let mut device = embree::rtcore::Device::new();
     let mut scene_embree = device.new_scene(embree::rtcore::STATIC,
                                             embree::rtcore::INTERSECT1 | embree::rtcore::INTERPOLATE);
 
-    //make_cube(&mut scene_embree);
-    //make_ground_plane(&mut scene_embree);
-    let obj_path = std::path::Path::new("./data/dragon.obj");
-    load_obj(&mut scene_embree, obj_path);
+    // Read the object
+    let obj_path_str = v["meshes"].as_str().unwrap();
+    let obj_path = scene_path.parent().unwrap().join(obj_path_str);
+    let mut meshes = load_obj(&mut scene_embree, obj_path.as_path()).unwrap();
+
+    // Add light if needed
+    if let Some(emitters_json) = v.get("emitters") {
+        for e in emitters_json.as_array().unwrap().iter() {
+            let name: String = serde_json::from_value(e["mesh"].clone()).unwrap();
+            let emission: Color = serde_json::from_value(e["emission"].clone()).unwrap();
+
+            let mut found = false;
+            for m in meshes.iter_mut() {
+                if m.name == name {
+                    m.emission = emission.clone();
+                    found = true;
+                }
+            }
+
+            if !found {
+                panic!("Not found {} in the obj list", name);
+            } else {
+                println!("Ligth {:?} emission created", emission);
+            }
+        }
+    }
+
     println!("Build the acceleration structure");
     scene_embree.commit(); // Build
 
@@ -141,10 +182,11 @@ fn main() {
     let scene = scene::Scene {
         camera: rustlight::rustlight::camera::Camera::new(camera_param),
         embree: &scene_embree,
-        bsdf: vec![Color::new(1.0, 0.0, 0.0), Color::new(0.0, 0.0, 1.0), Color::new(0.0, 1.0, 0.0)],
-        nb_samples: 128,
+        meshes,
+        nb_samples: 1024,
     };
 
+    println!("Rendering...");
     // To time the rendering time
     let start = Instant::now();
     // Generate the thread pool

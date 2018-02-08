@@ -1,5 +1,20 @@
 use cgmath::*;
 use rustlight::structure::{Color,Ray};
+use embree;
+use std::sync::Arc;
+
+pub struct Mesh {
+    pub name : String,
+    pub trimesh : Arc<embree::rtcore::TriangleMesh>,
+    pub bsdf : Color, // Diffuse color
+    pub emission : Color,
+}
+
+impl Mesh {
+    pub fn is_light(&self) -> bool {
+        return !self.emission.is_zero();
+    }
+}
 
 pub struct Sphere {
     pub pos: Point3<f32>,
