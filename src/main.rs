@@ -142,7 +142,7 @@ fn main() {
         camera: rustlight::rustlight::camera::Camera::new(camera_param),
         embree: &scene_embree,
         bsdf: vec![Color::new(1.0, 0.0, 0.0), Color::new(0.0, 0.0, 1.0), Color::new(0.0, 1.0, 0.0)],
-        nb_samples: 32,
+        nb_samples: 128,
     };
 
     // To time the rendering time
