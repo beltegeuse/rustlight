@@ -2,42 +2,12 @@ use cgmath::*;
 use image::*;
 use std::ops::{AddAssign, Mul};
 
-//////// Color
+/// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
     pub b: f32,
-}
-
-impl<'b> AddAssign<&'b Color> for Color {
-    fn add_assign(&mut self, other: &'b Color) {
-        self.r += other.r;
-        self.g += other.g;
-        self.b += other.b;
-    }
-}
-
-impl Mul<f32> for Color {
-    fn mul(self, other: f32) -> Color {
-        Color {
-            r: self.r * other,
-            g: self.g * other,
-            b: self.b * other,
-        }
-    }
-    type Output = Self;
-}
-
-impl<'a> Mul<&'a Color> for Color {
-    fn mul(self, other: &'a Color) -> Color {
-        Color {
-            r: self.r * other.r,
-            g: self.g * other.g,
-            b: self.b * other.b,
-        }
-    }
-    type Output = Self;
 }
 
 impl Color {
@@ -71,7 +41,39 @@ impl Color {
     }
 }
 
-///////// Ray
+
+/////////////// Operators
+impl<'b> AddAssign<&'b Color> for Color {
+    fn add_assign(&mut self, other: &'b Color) {
+        self.r += other.r;
+        self.g += other.g;
+        self.b += other.b;
+    }
+}
+impl Mul<f32> for Color {
+    fn mul(self, other: f32) -> Color {
+        Color {
+            r: self.r * other,
+            g: self.g * other,
+            b: self.b * other,
+        }
+    }
+    type Output = Self;
+}
+impl<'a> Mul<&'a Color> for Color {
+    fn mul(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r * other.r,
+            g: self.g * other.g,
+            b: self.b * other.b,
+        }
+    }
+    type Output = Self;
+}
+
+// FIXME: Evaluate if we keep it or not
+// FIXME: If we keep it, add tfar, tmin ...
+/// Ray representation
 pub struct Ray {
     pub o: Point3<f32>,
     pub d: Vector3<f32>,

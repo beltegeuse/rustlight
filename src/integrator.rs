@@ -1,5 +1,4 @@
 use cgmath::*;
-use embree; // FIXME: Remove this
 use rand;
 
 // my includes
@@ -9,7 +8,7 @@ use structure::*;
 
 /////////////////////////
 // Functions
-pub fn compute_ao((ix,iy): (u32,u32),scene: &Scene) -> Option<Color> {
+pub fn compute_ao((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
     let pix = (ix as f32 + rand::random::<f32>(), iy as f32 + rand::random::<f32>());
     let ray = scene.camera.generate(pix);
 
@@ -27,22 +26,18 @@ pub fn compute_ao((ix,iy): (u32,u32),scene: &Scene) -> Option<Color> {
     }
     let frame = basis(n_g_normalized);
 
-    let d_local = cosine_sample_hemisphere(Point2::new(rand::random::<f32>(),
-                                                       rand::random::<f32>()));
-    let d = frame * d_local;
+    let d = frame * cosine_sample_hemisphere(Point2::new(rand::random::<f32>(),
+                                                         rand::random::<f32>()));
 
-    let o = intersection.p + d * 0.001;
-    let mut embree_ray_new = embree::rtcore::Ray::new(&o,
-                                                      &d);
-    scene.embree.occluded(&mut embree_ray_new);
-    if embree_ray_new.hit() {
+    let ray = Ray::new(intersection.p + d * 0.001, d);
+    if scene.hit(&ray) {
         None
     } else {
         Some(Color::one(1.0))
     }
 }
 
-pub fn compute_direct((ix,iy): (u32,u32),scene: &Scene) -> Option<Color> {
+pub fn compute_direct((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
     let pix = (ix as f32 + rand::random::<f32>(), iy as f32 + rand::random::<f32>());
     let ray = scene.camera.generate(pix);
 

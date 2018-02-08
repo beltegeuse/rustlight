@@ -1,10 +1,10 @@
 use cgmath::*;
 
+// This code have been taking from PBRT rust version
 pub const INV_PI: f32 = 0.31830988618379067154;
 pub const INV_2_PI: f32 = 0.15915494309189533577;
 pub const PI_OVER_2: f32 = 1.57079632679489661923;
 pub const PI_OVER_4: f32 = 0.78539816339744830961;
-
 pub fn concentric_sample_disk(u: Point2<f32>) -> Point2<f32> {
     // map uniform random numbers to $[-1,1]^2$
     let u_offset: Point2<f32> = u * 2.0 as f32 - Vector2 { x: 1.0, y: 1.0 };
@@ -27,7 +27,6 @@ pub fn concentric_sample_disk(u: Point2<f32>) -> Point2<f32> {
         y: theta.sin(),
     } * r
 }
-
 pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
     let d: Point2<f32> = concentric_sample_disk(u);
     let z: f32 = (0.0 as f32)
@@ -40,7 +39,10 @@ pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
     }
 }
 
+/// Create an orthogonal basis by taking the normal vector
+/// code based on Pixar paper.
 pub fn basis(n : Vector3<f32>) -> Matrix3<f32> {
+    // TODO: See how to use branchless version (copysignf)
     let b1: Vector3<f32>;
     let b2: Vector3<f32>;
     if n.z<0.0 {

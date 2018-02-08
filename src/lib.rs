@@ -12,6 +12,8 @@ extern crate serde_json;
 extern crate embree;
 // For the random number generator
 extern crate rand;
+// For loading the obj files
+extern crate tobj;
 
 // all the modules
 pub mod structure;

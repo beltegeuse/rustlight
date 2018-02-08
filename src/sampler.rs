@@ -2,6 +2,8 @@
 use rand;
 use rand::distributions::{IndependentSample, Range};
 
+// FIXME: This code is not used for now.
+// FIXME: Found a way to make compatible with multi-threading
 pub trait Sampler {
     fn next(& mut self) -> f32;
 }
