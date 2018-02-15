@@ -1,5 +1,6 @@
 use cgmath::*;
 use rand;
+use std;
 
 // my includes
 use scene::*;
@@ -20,11 +21,11 @@ pub fn compute_ao((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
     let intersection = intersection.unwrap();
 
     // Compute an new direction
-    let mut n_g_normalized = intersection.n_g.normalize();
-    if n_g_normalized.dot(ray.d) > 0.0 {
-        n_g_normalized = -n_g_normalized;
+    let mut n_g = intersection.n_g;
+    if n_g.dot(ray.d) > 0.0 {
+        n_g = -n_g;
     }
-    let frame = basis(n_g_normalized);
+    let frame = basis(n_g);
 
     let d = frame * cosine_sample_hemisphere(Point2::new(rand::random::<f32>(),
                                                          rand::random::<f32>()));
@@ -53,7 +54,7 @@ pub fn compute_direct((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
     //TODO: Select the light source
     let emitter_id = scene.emitters[0];
     let emitter = &scene.meshes[emitter_id];
-    let (p_light, pdf_light) = emitter.sample(rand::random::<f32>(), (rand::random::<f32>(), rand::random::<f32>()));
+    let (p_light, n_light, pdf_light) = emitter.sample(rand::random::<f32>(), (rand::random::<f32>(), rand::random::<f32>()));
 
     if !scene.visible(&intersection.p, &p_light) {
         return None;
@@ -73,7 +74,7 @@ pub fn compute_direct((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
 
     // FIXME: missing normal for the emitter
     // FIXME: use lightPDF
-    Some(bsdf_val * (&emitter.emission) * (1.0 / (dist * dist)))
+    Some(bsdf_val * (&emitter.emission) * (n_light.dot(-d).max(0.0) / (std::f32::consts::PI * dist * dist)))
 
 
 //    // Compute an new direction (diffuse)

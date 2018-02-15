@@ -23,10 +23,29 @@ pub fn load_obj(scene: &mut embree::rtcore::Scene, file_name: & std::path::Path)
     for m in models {
         println!("Loading model {}", m.name);
         let mesh = m.mesh;
+        // Load vertex position
         println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
-        let verts = mesh.positions.chunks(3).map(|i| Vector4::new(i[0], i[1], i[2], 1.0)).collect();
+        let verts = mesh.positions.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
+        // Load normal
+        if mesh.normals.is_empty() {
+            // This is difficult to do...
+            // So raise an error for now
+            panic!("No normal provided, quit");
+            return Err(tobj::LoadError::NormalParseError);
+        }
+        let normals = mesh.normals.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
+
+        let uv;
+        if mesh.texcoords.is_empty() {
+            uv = vec![];
+        } else {
+            uv = mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect();
+        }
+
         let trimesh = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
                                               verts,
+                                              normals,
+                                              uv,
                                               mesh.indices);
         // Read materials
         let diffuse_color;
@@ -84,19 +103,26 @@ impl Mesh {
 
     // FIXME: reuse random number
     // FIXME: need to test
-    pub fn sample(&self, s: f32, v: (f32,f32)) -> (Point3<f32>, f32) {
+    pub fn sample(&self, s: f32, v: (f32,f32)) -> (Point3<f32>, Vector3<f32>, f32) {
         // Select a triangle
         let i = self.cdf.sample(s) * 3;
+
         let v0 = self.trimesh.vertices[self.trimesh.indices[i] as usize];
         let v1 = self.trimesh.vertices[self.trimesh.indices[i+1] as usize];
         let v2 = self.trimesh.vertices[self.trimesh.indices[i+2] as usize];
+
+        let n0 = self.trimesh.normals[self.trimesh.indices[i] as usize];
+        let n1 = self.trimesh.normals[self.trimesh.indices[i+1] as usize];
+        let n2 = self.trimesh.normals[self.trimesh.indices[i+2] as usize];
+
 
         // Select barycentric coordinate on a triangle
         let b = uniform_sample_triangle(v);
 
         // interpol the point
         let p = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
-        (Point3 { x: p.x, y: p.y, z: p.z}, self.cdf.normalization)
+        let n = n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1]);
+        (Point3::new(p.x,p.y,p.z), n, self.cdf.normalization)
     }
 
     pub fn is_light(&self) -> bool {
