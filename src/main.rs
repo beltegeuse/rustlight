@@ -16,7 +16,8 @@ fn main() {
     let mut data = String::new();
     fscene.read_to_string(&mut data).expect("impossible to read the file");
     // - build the scene
-    let scene = rustlight::scene::Scene::new(data, scene_path.parent().unwrap()).expect("error when loading the scene");
+    let wk = scene_path.parent().expect("impossible to extract parent directory for OBJ loading");
+    let scene = rustlight::scene::Scene::new(data, wk).expect("error when loading the scene");
 
     println!("Rendering...");
     let start = Instant::now();

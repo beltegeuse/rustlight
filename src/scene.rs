@@ -13,6 +13,7 @@ use structure::{Color, Ray};
 use camera::{Camera, CameraParam};
 use integrator::*;
 use geometry;
+use tools::StepRangeInt;
 
 /// Image block
 /// for easy paralelisation over the threads
@@ -56,6 +57,7 @@ pub struct Scene<'a> {
     pub camera: Camera,
     // Geometry information
     pub meshes: Vec<geometry::Mesh>,
+    pub emitters: Vec<usize>,
     #[allow(dead_code)]
     embree_device: embree::rtcore::Device<'a>,
     embree_scene: embree::rtcore::Scene<'a>,
@@ -68,7 +70,7 @@ impl<'a> Scene<'a> {
     /// and build the scene representation.
     pub fn new(data: String, wk: &std::path::Path) -> Result<Scene, String> {
         // Read json string
-        let v: serde_json::Value = try!(serde_json::from_str(&data).map_err(|e| e.to_string()));
+        let v: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
 
         // Allocate embree
         let mut device = embree::rtcore::Device::new();
@@ -76,8 +78,8 @@ impl<'a> Scene<'a> {
                                                 embree::rtcore::INTERSECT1 | embree::rtcore::INTERPOLATE);
 
         // Read the object
-        let obj_path = wk.join(v["meshes"].as_str().unwrap());
-        let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path()).unwrap();
+        let obj_path = wk.join(v["meshes"].as_str().expect("impossible to read 'meshes' entry"));
+        let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path()).expect("error during loading OBJ");
 
         // Build embree as we will not geometry for now
         println!("Build the acceleration structure");
@@ -106,6 +108,14 @@ impl<'a> Scene<'a> {
             }
         }
 
+        // Update the list of lights
+        let mut emitters = vec![];
+        for i in 0..meshes.len() {
+            if !meshes[i].emission.is_zero() {
+                emitters.push(i);
+            }
+        }
+
         // Read the camera config
         let camera_param: CameraParam = serde_json::from_value(v["camera"].clone()).unwrap();
 
@@ -115,6 +125,7 @@ impl<'a> Scene<'a> {
             embree_device: device,
             embree_scene: scene_embree,
             meshes,
+            emitters,
             nb_samples: 128,
         })
     }
@@ -136,6 +147,17 @@ impl<'a> Scene<'a> {
         embree_ray.hit()
     }
 
+    pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
+        let d = p1 - p0;
+        let mut embree_ray = embree::rtcore::Ray::new(p0, &d);
+        // FIXME: Use global constants
+        embree_ray.tnear = 0.00001;
+        embree_ray.tfar = 0.9999;
+
+        self.embree_scene.occluded(&mut embree_ray);
+        !embree_ray.hit()
+    }
+
     /// Render the scene
     pub fn render(&self) -> DynamicImage {
         assert!(self.nb_samples != 0);
@@ -146,13 +168,13 @@ impl<'a> Scene<'a> {
 
         // Create rendering blocks
         let mut image_blocks: Vec<ImageBlock> = Vec::new();
-        for ix in StepRangeInt(0, self.camera.size().x, 16) {
-            for iy in StepRangeInt(0, self.camera.size().y, 16) {
+        for ix in StepRangeInt::new(0, self.camera.size().x as usize, 16) {
+            for iy in StepRangeInt::new(0, self.camera.size().y as usize, 16) {
                 let mut block = ImageBlock::new(
-                    Point2 { x: ix, y: iy },
+                    Point2 { x: ix as u32, y: iy as u32},
                     Vector2 {
-                        x: cmp::min(16, self.camera.size().x - ix),
-                        y: cmp::min(16, self.camera.size().y - iy),
+                        x: cmp::min(16, self.camera.size().x - ix as u32),
+                        y: cmp::min(16, self.camera.size().y - iy as u32),
                     });
                 image_blocks.push(block);
             }
@@ -184,22 +206,5 @@ impl<'a> Scene<'a> {
             }
         }
         image
-    }
-}
-
-/// For be able to have range iterators
-struct StepRangeInt(u32, u32, u32);
-impl Iterator for StepRangeInt {
-    type Item = u32;
-
-    # [inline]
-    fn next( & mut self ) -> Option < u32> {
-        if self.0 < self.1 {
-            let v = self.0;
-            self.0 = v + self.2;
-            Some(v)
-        } else {
-            None
-        }
     }
 }

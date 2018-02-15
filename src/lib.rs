@@ -24,3 +24,4 @@ pub mod camera;
 pub mod scene;
 pub mod integrator;
 pub mod math;
+mod tools; // private module

@@ -62,3 +62,73 @@ pub fn basis(n : Vector3<f32>) -> Matrix3<f32> {
         z : n
     }
 }
+
+/// Uniformly distributing samples over isosceles right triangles
+/// actually works for any triangle.
+pub fn uniform_sample_triangle(u: (f32,f32)) -> Point2<f32> {
+    let su0: f32 = u.0.sqrt();
+    Point2 {
+        x: 1.0 as f32 - su0,
+        y: u.1 * su0,
+    }
+}
+
+
+/// Create 1D distribution
+pub struct Distribution1DConstruct {
+    pub elements: Vec<f32>
+}
+
+pub struct Distribution1D {
+    pub cdf: Vec<f32>,
+    pub normalization: f32,
+}
+
+impl Distribution1DConstruct {
+    pub fn new(l : usize) -> Distribution1DConstruct {
+        let elements = Vec::with_capacity(l);
+        Distribution1DConstruct {
+            elements
+        }
+    }
+
+    pub fn add(&mut self, v : f32) {
+        self.elements.push(v);
+    }
+
+    pub fn normalize(&mut self) -> Distribution1D {
+        // Create the new CDF
+        let mut cdf = Vec::with_capacity(self.elements.len() + 1);
+        let mut cur = 0.0;
+        for e in self.elements.iter() {
+            cdf.push(cur);
+            cur += e;
+        }
+        cdf.push(cur);
+
+        // Normalize the cdf
+        cdf.iter_mut().for_each(|x| *x /= cur);
+
+        Distribution1D {
+            cdf ,
+            normalization: cur,
+        }
+    }
+}
+
+impl Distribution1D {
+    pub fn sample(&self, v: f32) -> usize {
+        assert!(v >= 0.0);
+        assert!(v < 1.0);
+
+        match self.cdf.binary_search_by(|probe| probe.partial_cmp(&v).unwrap()) {
+            Ok(x) => x,
+            Err(x) => x - 1
+        }
+    }
+
+    pub fn pdf(&self, i : usize) -> f32 {
+        assert!(i < self.cdf.len() - 1);
+        self.cdf[i+1] - self.cdf[i]
+    }
+}

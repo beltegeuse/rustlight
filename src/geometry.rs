@@ -6,6 +6,8 @@ use tobj;
 
 // my includes
 use structure::{Color,Ray};
+use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
+use tools::StepRangeInt;
 
 // FIXME: Support custom UV
 // FIXME: Support custom normal
@@ -39,12 +41,9 @@ pub fn load_obj(scene: &mut embree::rtcore::Scene, file_name: & std::path::Path)
         }
 
         // Add the mesh info
-        meshes.push(Mesh {
-            name: m.name,
+        meshes.push(Mesh::new(m.name,
             trimesh,
-            bsdf: diffuse_color,
-            emission: Color::one(0.0),
-        })
+            diffuse_color));
     }
     Ok(meshes)
 }
@@ -56,9 +55,50 @@ pub struct Mesh {
     pub trimesh : Arc<embree::rtcore::TriangleMesh>,
     pub bsdf : Color, // FIXME: Only diffuse color for now
     pub emission : Color,
+    pub cdf : Distribution1D,
 }
 
 impl Mesh {
+    pub fn new(name: String, trimesh : Arc<embree::rtcore::TriangleMesh>, bsdf: Color) -> Mesh {
+        // Construct the mesh
+        assert!(trimesh.indices.len() % 3 == 0);
+        let nb_tri = trimesh.indices.len() / 3;
+        let mut dist_const = Distribution1DConstruct::new(nb_tri);
+        for i in StepRangeInt::new(0, trimesh.indices.len() as usize, 3) {
+            let v0 = trimesh.vertices[trimesh.indices[i] as usize];
+            let v1 = trimesh.vertices[trimesh.indices[i+1] as usize];
+            let v2 = trimesh.vertices[trimesh.indices[i+2] as usize];
+
+            let area = (v0 - v1).dot(v0 - v2).abs() * 0.5;
+            dist_const.add(area);
+        }
+
+        Mesh {
+            name,
+            trimesh,
+            bsdf,
+            emission: Color::one(0.0),
+            cdf : dist_const.normalize(),
+        }
+    }
+
+    // FIXME: reuse random number
+    // FIXME: need to test
+    pub fn sample(&self, s: f32, v: (f32,f32)) -> (Point3<f32>, f32) {
+        // Select a triangle
+        let i = self.cdf.sample(s) * 3;
+        let v0 = self.trimesh.vertices[self.trimesh.indices[i] as usize];
+        let v1 = self.trimesh.vertices[self.trimesh.indices[i+1] as usize];
+        let v2 = self.trimesh.vertices[self.trimesh.indices[i+2] as usize];
+
+        // Select barycentric coordinate on a triangle
+        let b = uniform_sample_triangle(v);
+
+        // interpol the point
+        let p = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
+        (Point3 { x: p.x, y: p.y, z: p.z}, self.cdf.normalization)
+    }
+
     pub fn is_light(&self) -> bool {
         return !self.emission.is_zero();
     }
