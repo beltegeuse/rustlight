@@ -17,19 +17,28 @@ use tools::StepRangeInt;
 
 /// Image block
 /// for easy paralelisation over the threads
-pub struct ImageBlock {
+pub struct Bitmap {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
     pub pixels: Vec<Color>,
 }
 
-impl ImageBlock {
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> ImageBlock {
-        ImageBlock {
+impl Bitmap {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap {
+        Bitmap {
             pos: pos,
             size: size,
             pixels: vec![Color { r: 0.0, g: 0.0, b: 0.0 };
                          (size.x * size.y) as usize],
+        }
+    }
+
+    pub fn accum_bitmap(&mut self, o: &Bitmap) {
+        for x in (0..o.size.x) {
+            for y in (0..o.size.y) {
+                let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
+                self.accum(c_p, o.get(Point2::new(x,y)));
+            }
         }
     }
 
@@ -159,18 +168,14 @@ impl<'a> Scene<'a> {
     }
 
     /// Render the scene
-    pub fn render(&self) -> DynamicImage {
+    pub fn render(&self) -> Bitmap {
         assert!(self.nb_samples != 0);
 
-        // The image that we will render
-        let mut image = DynamicImage::new_rgb8(self.camera.size().x,
-                                               self.camera.size().y);
-
         // Create rendering blocks
-        let mut image_blocks: Vec<ImageBlock> = Vec::new();
+        let mut image_blocks: Vec<Bitmap> = Vec::new();
         for ix in StepRangeInt::new(0, self.camera.size().x as usize, 16) {
             for iy in StepRangeInt::new(0, self.camera.size().y as usize, 16) {
-                let mut block = ImageBlock::new(
+                let mut block = Bitmap::new(
                     Point2 { x: ix as u32, y: iy as u32},
                     Vector2 {
                         x: cmp::min(16, self.camera.size().x - ix as u32),
@@ -197,13 +202,9 @@ impl<'a> Scene<'a> {
         );
 
         // Fill the image
+        let mut image = Bitmap::new(Point2::new(0,0), self.camera.size().clone());
         for im_block in image_blocks.iter() {
-            for ix in 0..im_block.size.x {
-                for iy in 0..im_block.size.y {
-                    image.put_pixel(ix + im_block.pos.x, iy + im_block.pos.y,
-                                    im_block.get(Point2 { x: ix, y: iy }).to_rgba())
-                }
-            }
+           image.accum_bitmap(&im_block);
         }
         image
     }
