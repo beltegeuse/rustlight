@@ -37,14 +37,14 @@ fn main() {
         // The image that we will render
         let mut image_ldr = DynamicImage::new_rgb8(scene.camera.size().x,
                                                    scene.camera.size().y);
-        for x in (0..img.size.x) {
-            for y in (0..img.size.y) {
+        for x in 0..img.size.x {
+            for y in 0..img.size.y {
                 image_ldr.put_pixel(x, y,
-                                    img.get(Point2::new(x, y)).to_rgba())
+                                    img.get(Point2::new(img.size.x - x - 1, y)).to_rgba())
             }
         }
-        let ref mut fout = std::fs::File::create("test.png").unwrap();
-        image_ldr.save(fout, image::PNG).expect("failed to write img into file");
+        let ref mut fout = std::fs::File::create("test.ppm").unwrap();
+        image_ldr.save(fout, image::PPM).expect("failed to write img into file");
     }
     // - HDR
     {
@@ -52,9 +52,9 @@ fn main() {
         let header = format!("PF\n{} {}\n-1.0\n",
                              img.size.y, img.size.x);
         file.write(header.as_bytes()).unwrap();
-        for y in (0..img.size.y) {
-            for x in (0..img.size.x) {
-                let p = img.get(Point2::new(x, img.size.y - y - 1));
+        for y in 0..img.size.y {
+            for x in 0..img.size.x {
+                let p = img.get(Point2::new(img.size.x - x - 1, img.size.y - y - 1));
                 file.write_f32::<LittleEndian>(p.r).unwrap();
                 file.write_f32::<LittleEndian>(p.g).unwrap();
                 file.write_f32::<LittleEndian>(p.b).unwrap();

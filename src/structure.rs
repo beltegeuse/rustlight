@@ -50,6 +50,15 @@ impl<'b> AddAssign<&'b Color> for Color {
         self.b += other.b;
     }
 }
+
+impl AddAssign<Color> for Color {
+    fn add_assign(&mut self, other: Color) {
+        self.r += other.r;
+        self.g += other.g;
+        self.b += other.b;
+    }
+}
+
 impl Mul<f32> for Color {
     fn mul(self, other: f32) -> Color {
         Color {
@@ -60,6 +69,7 @@ impl Mul<f32> for Color {
     }
     type Output = Self;
 }
+
 impl<'a> Mul<&'a Color> for Color {
     fn mul(self, other: &'a Color) -> Color {
         Color {

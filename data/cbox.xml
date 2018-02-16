@@ -2,8 +2,8 @@
 
 <scene version="0.5.0">
 	<integrator id="integrator" type="direct">
-		<integer name="emitterSamples" value="0"/>
-		<integer name="bsdfSamples" value="1"/>
+		<integer name="emitterSamples" value="1"/>
+		<integer name="bsdfSamples" value="0"/>
 		<boolean name="strictNormals" value="false"/>
 	</integrator>
 
@@ -17,27 +17,20 @@
 		<float name="farClip" value="100.0"/>
 
 		<sampler id="Camera-camera_sampler" type="independent">
-			<integer name="sampleCount" value="1024"/>
+			<integer name="sampleCount" value="128"/>
 		</sampler>
 
-		<film id="Camera-camera_film" type="ldrfilm">
+		<film id="Camera-camera_film" type="hdrfilm">
 			<integer name="width" value="1024"/>
 			<integer name="height" value="1024"/>
-			<string name="fileFormat" value="png"/>
-			<string name="pixelFormat" value="rgb"/>
-			<string name="tonemapMethod" value="gamma"/>
-			<float name="gamma" value="-1.0"/>
-			<float name="exposure" value="0.0"/>
-			<boolean name="banner" value="false"/>
-			<boolean name="highQualityEdges" value="false"/>
 
 			<rfilter type="box">
 			</rfilter>
 		</film>
 	</sensor>
 
-	<bsdf id="Material.003-material" type="roughdiffuse">
-		<rgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
+	<bsdf id="Material.003-material" type="diffuse">
+		<srgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -51,8 +44,8 @@
 		<ref name="bsdf" id="Material.003-material"/>
 	</shape>
 
-	<bsdf id="Material.002-material" type="roughdiffuse">
-		<rgb name="reflectance" value="0.060088057070970535 0.8000000715255737 0.16093909740447998"/>
+	<bsdf id="Material.002-material" type="diffuse">
+		<srgb name="reflectance" value="0.060088057070970535 0.8000000715255737 0.16093909740447998"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -66,8 +59,8 @@
 		<ref name="bsdf" id="Material.002-material"/>
 	</shape>
 
-	<bsdf id="Material.004-material" type="roughdiffuse">
-		<rgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
+	<bsdf id="Material.004-material" type="diffuse">
+		<srgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -90,8 +83,8 @@
 		<ref name="bsdf" id="Material.004-material"/>
 	</shape>
 
-	<bsdf id="Material.005-material" type="roughdiffuse">
-		<rgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
+	<bsdf id="Material.005-material" type="diffuse">
+		<srgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -110,8 +103,8 @@
 		</emitter>
 	</shape>
 
-	<bsdf id="Material.001-material" type="roughdiffuse">
-		<rgb name="reflectance" value="0.7874122262001038 0.05925353243947029 0.05925353243947029"/>
+	<bsdf id="Material.001-material" type="diffuse">
+		<srgb name="reflectance" value="0.7874122262001038 0.05925353243947029 0.05925353243947029"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>

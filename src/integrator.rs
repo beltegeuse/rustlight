@@ -41,6 +41,7 @@ pub fn compute_ao((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
 pub fn compute_direct((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
     let pix = (ix as f32 + rand::random::<f32>(), iy as f32 + rand::random::<f32>());
     let ray = scene.camera.generate(pix);
+    let mut l_i = Color::one(0.0);
 
     // Do the intersection for the first path
     let intersection = scene.trace(&ray);
@@ -49,6 +50,8 @@ pub fn compute_direct((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
     }
     let intersection = intersection.unwrap();
     let init_mesh = &scene.meshes[intersection.geom_id as usize];
+
+    l_i += &init_mesh.emission;
 
     // Explict connect to the light source
     //TODO: Select the light source
@@ -74,7 +77,12 @@ pub fn compute_direct((ix, iy): (u32, u32), scene: &Scene) -> Option<Color> {
 
     // FIXME: missing normal for the emitter
     // FIXME: use lightPDF
-    Some(bsdf_val * (&emitter.emission) * (n_light.dot(-d).max(0.0) / (std::f32::consts::PI * dist * dist)))
+    l_i += bsdf_val
+        * (&emitter.emission)
+        * ( 1.0 / pdf_light )
+        * (n_light.dot(-d).max(0.0) / (std::f32::consts::PI * dist * dist));
+
+    Some(l_i)
 
 
 //    // Compute an new direction (diffuse)
