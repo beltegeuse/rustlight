@@ -37,7 +37,7 @@ impl Bitmap {
         for x in (0..o.size.x) {
             for y in (0..o.size.y) {
                 let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
-                self.accum(c_p, o.get(Point2::new(x,y)));
+                self.accum(c_p, o.get(Point2::new(x, y)));
             }
         }
     }
@@ -176,7 +176,7 @@ impl<'a> Scene<'a> {
         for ix in StepRangeInt::new(0, self.camera.size().x as usize, 16) {
             for iy in StepRangeInt::new(0, self.camera.size().y as usize, 16) {
                 let mut block = Bitmap::new(
-                    Point2 { x: ix as u32, y: iy as u32},
+                    Point2 { x: ix as u32, y: iy as u32 },
                     Vector2 {
                         x: cmp::min(16, self.camera.size().x - ix as u32),
                         y: cmp::min(16, self.camera.size().y - iy as u32),
@@ -191,9 +191,8 @@ impl<'a> Scene<'a> {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..self.nb_samples {
-                            if let Some(c) = compute_direct((ix + im_block.pos.x, iy + im_block.pos.y), &self) {
-                                im_block.accum(Point2 { x: ix, y: iy }, &c);
-                            }
+                            let c = compute_direct((ix + im_block.pos.x, iy + im_block.pos.y), &self);
+                            im_block.accum(Point2 { x: ix, y: iy }, &c);
                         }
                     }
                 }
@@ -202,9 +201,9 @@ impl<'a> Scene<'a> {
         );
 
         // Fill the image
-        let mut image = Bitmap::new(Point2::new(0,0), self.camera.size().clone());
+        let mut image = Bitmap::new(Point2::new(0, 0), self.camera.size().clone());
         for im_block in image_blocks.iter() {
-           image.accum_bitmap(&im_block);
+            image.accum_bitmap(&im_block);
         }
         image
     }

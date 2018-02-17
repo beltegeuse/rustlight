@@ -30,7 +30,7 @@
 	</sensor>
 
 	<bsdf id="Material.003-material" type="diffuse">
-		<srgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
+		<rgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -45,7 +45,7 @@
 	</shape>
 
 	<bsdf id="Material.002-material" type="diffuse">
-		<srgb name="reflectance" value="0.060088057070970535 0.8000000715255737 0.16093909740447998"/>
+		<rgb name="reflectance" value="0.060088057070970535 0.8000000715255737 0.16093909740447998"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -60,7 +60,7 @@
 	</shape>
 
 	<bsdf id="Material.004-material" type="diffuse">
-		<srgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
+		<rgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -84,7 +84,7 @@
 	</shape>
 
 	<bsdf id="Material.005-material" type="diffuse">
-		<srgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
+		<rgb name="reflectance" value="0.800000011920929 0.800000011920929 0.800000011920929"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>
@@ -104,7 +104,7 @@
 	</shape>
 
 	<bsdf id="Material.001-material" type="diffuse">
-		<srgb name="reflectance" value="0.7874122262001038 0.05925353243947029 0.05925353243947029"/>
+		<rgb name="reflectance" value="0.7874122262001038 0.05925353243947029 0.05925353243947029"/>
 		<float name="alpha" value="0.20000000298023224"/>
 		<boolean name="useFastApprox" value="false"/>
 	</bsdf>

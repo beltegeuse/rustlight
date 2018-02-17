@@ -70,6 +70,17 @@ impl Mul<f32> for Color {
     type Output = Self;
 }
 
+impl Mul<Color> for f32 {
+    fn mul(self, other: Color) -> Color {
+        Color {
+            r: other.r * self,
+            g: other.g * self,
+            b: other.b * self,
+        }
+    }
+    type Output = Color;
+}
+
 impl<'a> Mul<&'a Color> for Color {
     fn mul(self, other: &'a Color) -> Color {
         Color {
