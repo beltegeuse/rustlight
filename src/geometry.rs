@@ -126,7 +126,7 @@ impl Mesh {
         // interpol the point
         let p = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
         let n = n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1]);
-        (Point3::new(p.x,p.y,p.z), n, 1.0 / ( std::f32::consts::PI * self.cdf.normalization))
+        (Point3::new(p.x,p.y,p.z), n, 1.0 / ( self.cdf.normalization))
     }
 
     pub fn is_light(&self) -> bool {

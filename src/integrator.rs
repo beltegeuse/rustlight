@@ -85,7 +85,7 @@ pub fn compute_direct((ix, iy): (u32, u32), scene: &Scene) -> Color {
         // Compute MIS weights
         let pdf_light_sa = pdf_light.clone() * geom_light;
         let pdf_bsdf_sa = n_g.dot(d).max(0.0) / std::f32::consts::PI;
-        let weight_light = 1.0; //mis_weight(pdf_light_sa, pdf_bsdf_sa);
+        let weight_light = mis_weight(pdf_light_sa, pdf_bsdf_sa);
 
         // FIXME: use lightPDF
         l_i += weight_light
