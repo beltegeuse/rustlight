@@ -1,6 +1,6 @@
 use cgmath::*;
 use image::*;
-use std::ops::{AddAssign, Mul};
+use std::ops::{AddAssign, Mul, MulAssign};
 
 /// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -43,6 +43,14 @@ impl Color {
 
 
 /////////////// Operators
+impl<'b> MulAssign<&'b Color> for Color {
+    fn mul_assign(&mut self, other: &'b Color) {
+        self.r *= other.r;
+        self.g *= other.g;
+        self.b *= other.b;
+    }
+}
+
 impl<'b> AddAssign<&'b Color> for Color {
     fn add_assign(&mut self, other: &'b Color) {
         self.r += other.r;
@@ -61,6 +69,7 @@ impl AddAssign<Color> for Color {
 
 impl Mul<f32> for Color {
     fn mul(self, other: f32) -> Color {
+        assert!(other.is_finite());
         Color {
             r: self.r * other,
             g: self.g * other,
@@ -81,8 +90,30 @@ impl Mul<Color> for f32 {
     type Output = Color;
 }
 
+impl<'a> Mul<&'a Color> for f32 {
+    fn mul(self, other: &'a Color) -> Color {
+        Color {
+            r: other.r * self,
+            g: other.g * self,
+            b: other.b * self,
+        }
+    }
+    type Output = Color;
+}
+
 impl<'a> Mul<&'a Color> for Color {
     fn mul(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r * other.r,
+            g: self.g * other.g,
+            b: self.b * other.b,
+        }
+    }
+    type Output = Self;
+}
+
+impl Mul<Color> for Color {
+    fn mul(self, other: Color) -> Color {
         Color {
             r: self.r * other.r,
             g: self.g * other.g,

@@ -72,6 +72,7 @@ pub struct Scene<'a> {
     embree_scene: embree::rtcore::Scene<'a>,
     // Parameters
     pub nb_samples: u32,
+    pub max_depth: u32,
 }
 
 impl<'a> Scene<'a> {
@@ -123,7 +124,7 @@ impl<'a> Scene<'a> {
             if !meshes[i].emission.is_zero() {
                 emitters.push(i);
             }
-        }
+        }128
 
         // Read the camera config
         let camera_param: CameraParam = serde_json::from_value(v["camera"].clone()).unwrap();
@@ -135,7 +136,8 @@ impl<'a> Scene<'a> {
             embree_scene: scene_embree,
             meshes,
             emitters,
-            nb_samples: 128,
+            nb_samples: 1024,
+            max_depth: 10,
         })
     }
 
@@ -191,7 +193,7 @@ impl<'a> Scene<'a> {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..self.nb_samples {
-                            let c = compute_direct((ix + im_block.pos.x, iy + im_block.pos.y), &self);
+                            let c = compute_pathtracing((ix + im_block.pos.x, iy + im_block.pos.y), &self);
                             im_block.accum(Point2 { x: ix, y: iy }, &c);
                         }
                     }
