@@ -31,7 +31,7 @@ pub fn load_obj(scene: &mut embree::rtcore::Scene, file_name: & std::path::Path)
             // This is difficult to do...
             // So raise an error for now
             panic!("No normal provided, quit");
-            return Err(tobj::LoadError::NormalParseError);
+            //return Err(tobj::LoadError::NormalParseError);
         }
         let normals = mesh.normals.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
 

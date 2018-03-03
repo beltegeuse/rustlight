@@ -62,9 +62,6 @@ impl Camera {
         let d = (self.dir_top_left + px.0 / (self.param.img.x as f32) * self.screen_du
             + px.1 / (self.param.img.y as f32) * self.screen_dv).normalize();
 
-        Ray {
-            o: self.param.pos.clone(),
-            d: d,
-        }
+        Ray::new(self.param.pos.clone(), d)
     }
 }

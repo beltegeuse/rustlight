@@ -4,7 +4,6 @@ use std;
 
 use rayon::prelude::*;
 use cgmath::*;
-use image::*;
 use embree;
 use serde_json;
 
@@ -34,8 +33,8 @@ impl Bitmap {
     }
 
     pub fn accum_bitmap(&mut self, o: &Bitmap) {
-        for x in (0..o.size.x) {
-            for y in (0..o.size.y) {
+        for x in 0..o.size.x {
+            for y in 0..o.size.y {
                 let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
                 self.accum(c_p, o.get(Point2::new(x, y)));
             }
@@ -60,6 +59,22 @@ impl Bitmap {
     }
 }
 
+/// Light sample representation
+pub struct LightSampling {
+    pub emitter_id : usize,
+    pub pdf : f32,
+    pub p : Point3<f32>,
+    pub n : Vector3<f32>,
+    pub d : Vector3<f32>,
+    pub weight : Color,
+}
+
+impl LightSampling {
+    pub fn is_valid(&self) -> bool {
+        self.pdf != 0.0
+    }
+}
+
 /// Scene representation
 pub struct Scene<'a> {
     /// Main camera
@@ -70,15 +85,14 @@ pub struct Scene<'a> {
     #[allow(dead_code)]
     embree_device: embree::rtcore::Device<'a>,
     embree_scene: embree::rtcore::Scene<'a>,
-    // Parameters
-    pub nb_samples: u32,
-    pub max_depth: u32,
+    // Integrator
+    integrator : Box<Integrator + Send + Sync>
 }
 
 impl<'a> Scene<'a> {
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: String, wk: &std::path::Path) -> Result<Scene, String> {
+    pub fn new(data: String, wk: &std::path::Path, int: Box<Integrator + Send + Sync>) -> Result<Scene, String> {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
 
@@ -110,10 +124,9 @@ impl<'a> Scene<'a> {
                     }
                 }
 
-                if !found {
-                    panic!("Not found {} in the obj list", name);
-                } else {
-                    println!("Ligth {:?} emission created", emission);
+                match found {
+                    true => println!("Ligth {:?} emission created", emission),
+                    false => panic!("Not found {} in the obj list", name)
                 }
             }
         }
@@ -124,7 +137,7 @@ impl<'a> Scene<'a> {
             if !meshes[i].emission.is_zero() {
                 emitters.push(i);
             }
-        }128
+        }
 
         // Read the camera config
         let camera_param: CameraParam = serde_json::from_value(v["camera"].clone()).unwrap();
@@ -136,42 +149,72 @@ impl<'a> Scene<'a> {
             embree_scene: scene_embree,
             meshes,
             emitters,
-            nb_samples: 1024,
-            max_depth: 10,
+            integrator : int,
         })
     }
 
     /// Intersect and compute intersection informations
     pub fn trace(&self, ray: &Ray) -> Option<embree::rtcore::Intersection> {
-        let embree_ray = embree::rtcore::Ray::new(&ray.o, &ray.d);
-        if let Some(inter) = self.embree_scene.intersect(embree_ray) {
-            Some(inter)
-        } else {
-            None
+        let embree_ray = embree::rtcore::Ray::new(
+            &ray.o, &ray.d,
+            ray.tnear, ray.tfar);
+        match self.embree_scene.intersect(embree_ray) {
+            Some(inter) => Some(inter),
+            None => None,
         }
     }
 
     /// Intersect the scene and return if we had an intersection or not
     pub fn hit(&self, ray: &Ray) -> bool {
-        let mut embree_ray = embree::rtcore::Ray::new(&ray.o, &ray.d);
+        let mut embree_ray = embree::rtcore::Ray::new(
+            &ray.o, &ray.d,
+            ray.tnear, ray.tfar);
         self.embree_scene.occluded(&mut embree_ray);
         embree_ray.hit()
     }
 
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
-        let mut embree_ray = embree::rtcore::Ray::new(p0, &d);
-        // FIXME: Use global constants
-        embree_ray.tnear = 0.00001;
-        embree_ray.tfar = 0.9999;
-
+        let mut embree_ray = embree::rtcore::Ray::new(
+            p0, &d, 0.00001, 0.9999);
         self.embree_scene.occluded(&mut embree_ray);
         !embree_ray.hit()
     }
 
+    pub fn sample_light(&self, p: &Point3<f32>, r: f32, uv: (f32, f32)) -> LightSampling {
+        // Select the point on the light
+        let (pdf_sel, emitter_id) = self.random_select_emitter();
+        let emitter = &self.meshes[emitter_id];
+        let (p_light, n_light, pdf_light) = emitter.sample(r, uv);
+
+        // Compute the distance
+        let mut d: Vector3<f32> = p_light - p;
+        let dist = d.magnitude();
+        d /= dist;
+
+        // Compute the geometry
+        let geom_light = n_light.dot(-d).max(0.0) / (dist * dist);
+        let emission = emitter.emission.clone() * (geom_light / (pdf_sel * pdf_light));
+
+        LightSampling {
+            emitter_id,
+            pdf: pdf_light * pdf_sel * geom_light,
+            p: p_light,
+            n: n_light,
+            d,
+            weight: emission,
+        }
+
+    }
+
+    pub fn random_select_emitter(&self) -> (f32, usize) {
+        assert!(self.emitters.len() == 1);
+        (1.0, 0)
+    }
+
     /// Render the scene
-    pub fn render(&self) -> Bitmap {
-        assert!(self.nb_samples != 0);
+    pub fn render(&self, nb_samples: i32) -> Bitmap {
+        assert!(nb_samples != 0);
 
         // Create rendering blocks
         let mut image_blocks: Vec<Bitmap> = Vec::new();
@@ -192,13 +235,13 @@ impl<'a> Scene<'a> {
             {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
-                        for _ in 0..self.nb_samples {
-                            let c = compute_pathtracing((ix + im_block.pos.x, iy + im_block.pos.y), &self);
+                        for _ in 0..nb_samples {
+                            let c = self.integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y), &self);
                             im_block.accum(Point2 { x: ix, y: iy }, &c);
                         }
                     }
                 }
-                im_block.weight(1.0 / (self.nb_samples as f32));
+                im_block.weight(1.0 / (nb_samples as f32));
             }
         );
 

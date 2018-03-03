@@ -1,6 +1,7 @@
 use cgmath::*;
 use image::*;
 use std::ops::{AddAssign, Mul, MulAssign};
+use std;
 
 /// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -14,6 +15,12 @@ impl Color {
     pub fn new(r: f32, g: f32, b: f32) -> Color {
         Color {
             r, g, b
+        }
+    }
+
+    pub fn zero() -> Color {
+        Color {
+            r: 0.0, g: 0.0, b: 0.0
         }
     }
 
@@ -129,6 +136,8 @@ impl Mul<Color> for Color {
 pub struct Ray {
     pub o: Point3<f32>,
     pub d: Vector3<f32>,
+    pub tnear : f32,
+    pub tfar : f32,
 }
 
 impl Ray {
@@ -136,6 +145,8 @@ impl Ray {
         Ray {
             o,
             d,
+            tnear: 0.0001, // Epsilon
+            tfar: std::f32::MAX
         }
     }
 }
