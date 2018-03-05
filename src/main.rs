@@ -19,6 +19,10 @@ fn main() {
     let int = Box::new(rustlight::integrator::IntergratorPath {
         max_depth : 10
     });
+//    let int = Box::new(rustlight::integrator::IntergratorDirect {
+//        nb_bsdf_samples : 0,
+//        nb_light_samples : 1
+//    });
 
     // Load the scene
     // - read the file

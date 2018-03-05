@@ -13,6 +13,7 @@ use camera::{Camera, CameraParam};
 use integrator::*;
 use geometry;
 use tools::StepRangeInt;
+use sampler;
 
 /// Image block
 /// for easy paralelisation over the threads
@@ -198,7 +199,7 @@ impl<'a> Scene<'a> {
 
         LightSampling {
             emitter_id,
-            pdf: pdf_light * pdf_sel * geom_light,
+            pdf : if geom_light == 0.0 {0.0} else {pdf_light * pdf_sel * ( 1.0 / geom_light )},
             p: p_light,
             n: n_light,
             d,
@@ -209,7 +210,7 @@ impl<'a> Scene<'a> {
 
     pub fn random_select_emitter(&self) -> (f32, usize) {
         assert!(self.emitters.len() == 1);
-        (1.0, 0)
+        (1.0, self.emitters[0])
     }
 
     /// Render the scene
@@ -233,10 +234,12 @@ impl<'a> Scene<'a> {
         // Render the image blocks
         image_blocks.par_iter_mut().for_each(|im_block|
             {
+                let mut sampler = sampler::IndepSampler::new();
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..nb_samples {
-                            let c = self.integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y), &self);
+                            let c = self.integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y),
+                                                            &self, &mut sampler);
                             im_block.accum(Point2 { x: ix, y: iy }, &c);
                         }
                     }

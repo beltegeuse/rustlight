@@ -21,8 +21,8 @@
 		</sampler>
 
 		<film id="Camera-camera_film" type="hdrfilm">
-			<integer name="width" value="1024"/>
-			<integer name="height" value="1024"/>
+			<integer name="width" value="512"/>
+			<integer name="height" value="512"/>
 
 			<rfilter type="box">
 			</rfilter>
