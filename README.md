@@ -10,10 +10,6 @@ For now, only path tracing with next event estimation is implemented. Moreover, 
 
 ![Cornel Box](http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/rustlight/cbox.png)
 
-The scene can be found within the repository
-(`assets/scenes/ganesha.tar.gz`).
-We also include Mitsuba files of the same scene for validate our implementation.
-
 ## Roadmap
 
 Core features: 
