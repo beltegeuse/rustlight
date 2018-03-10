@@ -1,5 +1,4 @@
 use cgmath::*;
-use rand;
 use std;
 
 // my includes
@@ -47,7 +46,7 @@ impl Integrator for IntergratorAO {
             Some(its) => {
                 match self.max_distance {
                     None => Color::zero(),
-                    Some(d) => if its.tfar > d { Color::one(1.0) } else { Color::zero() }
+                    Some(d) => if its.t > d { Color::one(1.0) } else { Color::zero() }
                 }
             }
         }
@@ -78,13 +77,14 @@ impl Integrator for IntergratorDirect {
         if intersection.is_none() { return l_i; }
         let intersection = intersection.unwrap();
 
+        // Check if we go the right orientation
+        if intersection.n_g.dot(ray.d) > 0.0 {
+            return l_i;
+        }
+
         // Add the emission for the light intersection
         let init_mesh = &scene.meshes[intersection.geom_id as usize];
         l_i += &init_mesh.emission;
-
-        // Get the good normal from the interaction
-        let mut n_g = intersection.n_g.normalize();
-        if n_g.dot(ray.d) > 0.0 { n_g = -n_g; }
 
         // Precompute for mis weights
         let weight_nb_bsdf = if self.nb_bsdf_samples == 0 { 0.0 } else { 1.0 / (self.nb_bsdf_samples as f32)};
@@ -100,8 +100,9 @@ impl Integrator for IntergratorDirect {
                                                   sampler.next2d());
             if light_record.is_valid() && scene.visible(&intersection.p, &light_record.p) {
                 // Compute the contribution of direct lighting
-                let bsdf_val: Color = init_mesh.bsdf.clone() * (n_g.dot(light_record.d).max(0.0) / std::f32::consts::PI);
-                let pdf_bsdf = n_g.dot(light_record.d).max(0.0) / std::f32::consts::PI;
+                let cos_light = intersection.n_g.dot(light_record.d).max(0.0);
+                let bsdf_val: Color = init_mesh.bsdf.clone() * (cos_light / std::f32::consts::PI);
+                let pdf_bsdf = cos_light / std::f32::consts::PI;
 
                 // Compute MIS weights
                 let weight_light = mis_weight(light_record.pdf * weight_nb_light,
@@ -117,7 +118,7 @@ impl Integrator for IntergratorDirect {
         // BSDF sampling
         /////////////////////////////////
         // Compute an new direction (diffuse)
-        let frame = basis(n_g);
+        let frame = basis(intersection.n_g);
         for _ in 0..self.nb_bsdf_samples {
             let d_local = cosine_sample_hemisphere(Point2::new(
                 sampler.next(),
@@ -135,16 +136,16 @@ impl Integrator for IntergratorDirect {
 
             // Check that we have intersected a light or not
             if intersected_mesh.is_light() {
-                let cos_light = intersection.n_g.dot(ray.d).max(0.0);
+                let cos_light = intersection.n_g.dot(-ray.d).max(0.0);
                 if cos_light == 0.0 {
                     continue;
                 }
 
                 // Compute MIS weights
                 // FIXME: the pdf for selecting the light
-                let geom_light = cos_light / (intersection.tfar * intersection.tfar);
+                let geom_light = cos_light / (intersection.t * intersection.t);
                 let pdf_light_sa = if geom_light == 0.0 {0.0} else {intersected_mesh.pdf() * (1.0 / geom_light)};
-                let pdf_bsdf_sa = n_g.dot(d).max(0.0) / std::f32::consts::PI;
+                let pdf_bsdf_sa = intersection.n_g.dot(d).max(0.0) / std::f32::consts::PI;
                 let weight_bsdf = mis_weight(pdf_bsdf_sa * weight_nb_bsdf,
                                              pdf_light_sa * weight_nb_light);
 
@@ -178,16 +179,15 @@ impl Integrator for IntergratorPath {
 
         let mut depth = 1;
         while depth < self.max_depth {
+            // Check if we go the right orientation
+            if intersection.n_g.dot(ray.d) > 0.0 {
+                return l_i;
+            }
+
             // Add the emission for the light intersection
             let hit_mesh = &scene.meshes[intersection.geom_id as usize];
             if depth == 1 {
                 l_i += &hit_mesh.emission;
-            }
-
-            // Get the good normal from the interaction
-            let mut n_g = intersection.n_g.normalize();
-            if n_g.dot(ray.d) > 0.0 {
-                n_g = -n_g;
             }
 
             /////////////////////////////////
@@ -199,8 +199,9 @@ impl Integrator for IntergratorPath {
                                                   sampler.next2d());
             if light_record.is_valid() && scene.visible(&intersection.p, &light_record.p) {
                 // Compute the contribution of direct lighting
-                let bsdf_val: Color = hit_mesh.bsdf.clone() * (n_g.dot(light_record.d).max(0.0) / std::f32::consts::PI);
-                let pdf_bsdf = n_g.dot(light_record.d).max(0.0) / std::f32::consts::PI;
+                let cos_light = intersection.n_g.dot(light_record.d).max(0.0);
+                let bsdf_val: Color = hit_mesh.bsdf.clone() * (cos_light / std::f32::consts::PI);
+                let pdf_bsdf = cos_light / std::f32::consts::PI;
 
                 // Compute MIS weights
                 let weight_light = mis_weight(light_record.pdf,
@@ -215,7 +216,7 @@ impl Integrator for IntergratorPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let frame = basis(n_g);
+            let frame = basis(intersection.n_g);
             let d_local = cosine_sample_hemisphere(Point2::new(sampler.next(),
                                                                sampler.next()));
             let d = frame * d_local;
@@ -229,16 +230,20 @@ impl Integrator for IntergratorPath {
             if intersection_opt.is_none() {
                 return l_i;
             }
+            // Save the previous intersection
+            // to be able to compute some values
+            let prev_its = intersection;
+
             intersection = intersection_opt.unwrap();
             let next_mesh = &scene.meshes[intersection.geom_id as usize];
 
             // Check that we have intersected a light or not
-            let cos_light = intersection.n_g.dot(ray.d).max(0.0);
-            let cos_surf = n_g.dot(d).max(0.0);
+            let cos_light = intersection.n_g.dot(-ray.d).max(0.0);
+            let cos_surf = prev_its.n_g.dot(d).max(0.0);
             if next_mesh.is_light() && cos_light != 0.0 && cos_surf != 0.0 {
                 // Compute MIS weights
                 // FIXME: the pdf for selecting the light
-                let geom_light =  cos_light / (intersection.tfar * intersection.tfar);
+                let geom_light =  cos_light / (intersection.t * intersection.t);
                 let pdf_light_sa = next_mesh.pdf() * (1.0 / geom_light);
                 let pdf_bsdf_sa = cos_surf / std::f32::consts::PI;
 

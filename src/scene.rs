@@ -99,8 +99,8 @@ impl<'a> Scene<'a> {
 
         // Allocate embree
         let mut device = embree::rtcore::Device::new();
-        let mut scene_embree = device.new_scene(embree::rtcore::STATIC,
-                                                embree::rtcore::INTERSECT1 | embree::rtcore::INTERPOLATE);
+        let mut scene_embree = device.new_scene(embree::rtcore::SceneFlags::STATIC,
+                                                embree::rtcore::AlgorithmFlags::INTERSECT1);
 
         // Read the object
         let obj_path = wk.join(v["meshes"].as_str().expect("impossible to read 'meshes' entry"));

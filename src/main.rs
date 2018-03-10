@@ -53,8 +53,8 @@ fn main() {
                                     img.get(Point2::new(img.size.x - x - 1, y)).to_rgba())
             }
         }
-        let ref mut fout = std::fs::File::create("test.ppm").unwrap();
-        image_ldr.save(fout, image::PPM).expect("failed to write img into file");
+        let ref mut fout = std::fs::File::create("test.png").unwrap();
+        image_ldr.save(fout, image::PNG).expect("failed to write img into file");
     }
     // - HDR
     {

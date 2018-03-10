@@ -99,7 +99,7 @@
 
 		<emitter type="area">
 			<float name="samplingWeight" value="1.000000"/>
-			<rgb name="radiance" value="1.600000 1.600000 1.600000"/>
+			<rgb name="radiance" value="10.00000 10.00000 10.00000"/>
 		</emitter>
 	</shape>
 
