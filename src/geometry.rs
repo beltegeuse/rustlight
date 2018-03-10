@@ -1,6 +1,6 @@
 use std;
 use cgmath::*;
-use embree;
+use embree_rs;
 use std::sync::Arc;
 use tobj;
 
@@ -14,7 +14,7 @@ use tools::StepRangeInt;
 /// Read obj file format and build a list of meshes
 /// for now, only add diffuse color
 /// custom texcoords or normals are not supported yet
-pub fn load_obj(scene: &mut embree::rtcore::Scene, file_name: & std::path::Path) -> Result<Vec<Mesh>, tobj::LoadError> {
+pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Path) -> Result<Vec<Mesh>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name)?;
 
@@ -42,7 +42,7 @@ pub fn load_obj(scene: &mut embree::rtcore::Scene, file_name: & std::path::Path)
             uv = mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect();
         }
 
-        let trimesh = scene.new_triangle_mesh(embree::rtcore::GeometryFlags::Static,
+        let trimesh = scene.new_triangle_mesh(embree_rs::scene::GeometryFlags::Static,
                                               verts,
                                               normals,
                                               uv,
@@ -71,14 +71,14 @@ pub fn load_obj(scene: &mut embree::rtcore::Scene, file_name: & std::path::Path)
 /// (Triangle) Mesh information
 pub struct Mesh {
     pub name : String,
-    pub trimesh : Arc<embree::rtcore::TriangleMesh>,
+    pub trimesh : Arc<embree_rs::scene::TriangleMesh>,
     pub bsdf : Color, // FIXME: Only diffuse color for now
     pub emission : Color,
     pub cdf : Distribution1D,
 }
 
 impl Mesh {
-    pub fn new(name: String, trimesh : Arc<embree::rtcore::TriangleMesh>, bsdf: Color) -> Mesh {
+    pub fn new(name: String, trimesh : Arc<embree_rs::scene::TriangleMesh>, bsdf: Color) -> Mesh {
         // Construct the mesh
         assert!(trimesh.indices.len() % 3 == 0);
         let nb_tri = trimesh.indices.len() / 3;

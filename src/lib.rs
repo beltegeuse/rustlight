@@ -9,7 +9,7 @@ extern crate image;
 extern crate serde;
 extern crate serde_json;
 // For fast intersection
-extern crate embree;
+extern crate embree_rs;
 // For the random number generator
 extern crate rand;
 // For loading the obj files

@@ -4,7 +4,7 @@ use std;
 
 use rayon::prelude::*;
 use cgmath::*;
-use embree;
+use embree_rs;
 use serde_json;
 
 // my includes
@@ -84,8 +84,8 @@ pub struct Scene<'a> {
     pub meshes: Vec<geometry::Mesh>,
     pub emitters: Vec<usize>,
     #[allow(dead_code)]
-    embree_device: embree::rtcore::Device<'a>,
-    embree_scene: embree::rtcore::Scene<'a>,
+    embree_device: embree_rs::scene::Device<'a>,
+    embree_scene: embree_rs::scene::Scene<'a>,
     // Integrator
     integrator : Box<Integrator + Send + Sync>
 }
@@ -98,9 +98,9 @@ impl<'a> Scene<'a> {
         let v: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
 
         // Allocate embree
-        let mut device = embree::rtcore::Device::new();
-        let mut scene_embree = device.new_scene(embree::rtcore::SceneFlags::STATIC,
-                                                embree::rtcore::AlgorithmFlags::INTERSECT1);
+        let mut device = embree_rs::scene::Device::new();
+        let mut scene_embree = device.new_scene(embree_rs::scene::SceneFlags::STATIC,
+                                                embree_rs::scene::AlgorithmFlags::INTERSECT1);
 
         // Read the object
         let obj_path = wk.join(v["meshes"].as_str().expect("impossible to read 'meshes' entry"));
@@ -155,8 +155,8 @@ impl<'a> Scene<'a> {
     }
 
     /// Intersect and compute intersection informations
-    pub fn trace(&self, ray: &Ray) -> Option<embree::rtcore::Intersection> {
-        let embree_ray = embree::rtcore::Ray::new(
+    pub fn trace(&self, ray: &Ray) -> Option<embree_rs::ray::Intersection> {
+        let embree_ray = embree_rs::ray::Ray::new(
             &ray.o, &ray.d,
             ray.tnear, ray.tfar);
         match self.embree_scene.intersect(embree_ray) {
@@ -167,7 +167,7 @@ impl<'a> Scene<'a> {
 
     /// Intersect the scene and return if we had an intersection or not
     pub fn hit(&self, ray: &Ray) -> bool {
-        let mut embree_ray = embree::rtcore::Ray::new(
+        let mut embree_ray = embree_rs::ray::Ray::new(
             &ray.o, &ray.d,
             ray.tnear, ray.tfar);
         self.embree_scene.occluded(&mut embree_ray);
@@ -176,7 +176,7 @@ impl<'a> Scene<'a> {
 
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
-        let mut embree_ray = embree::rtcore::Ray::new(
+        let mut embree_ray = embree_rs::ray::Ray::new(
             p0, &d, 0.00001, 0.9999);
         self.embree_scene.occluded(&mut embree_ray);
         !embree_ray.hit()
