@@ -26,8 +26,8 @@ pub struct Bitmap {
 impl Bitmap {
     pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap {
         Bitmap {
-            pos: pos,
-            size: size,
+            pos,
+            size,
             pixels: vec![Color { r: 0.0, g: 0.0, b: 0.0 };
                          (size.x * size.y) as usize],
         }
@@ -93,9 +93,9 @@ pub struct Scene<'a> {
 impl<'a> Scene<'a> {
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: String, wk: &std::path::Path, int: Box<Integrator + Send + Sync>) -> Result<Scene, String> {
+    pub fn new(data: &str, wk: &std::path::Path, int: Box<Integrator + Send + Sync>) -> Result<Scene<'a>, String> {
         // Read json string
-        let v: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+        let v: serde_json::Value = serde_json::from_str(data).map_err(|e| e.to_string())?;
 
         // Allocate embree
         let mut device = embree_rs::scene::Device::new();
@@ -118,17 +118,15 @@ impl<'a> Scene<'a> {
                 let emission: Color = serde_json::from_value(e["emission"].clone()).unwrap();
 
                 let mut found = false;
-                for m in meshes.iter_mut() {
+                for m in &mut meshes {
                     if m.name == name {
                         m.emission = emission.clone();
                         found = true;
                     }
                 }
 
-                match found {
-                    true => println!("Ligth {:?} emission created", emission),
-                    false => panic!("Not found {} in the obj list", name)
-                }
+                if found { println!("Ligth {:?} emission created", emission) }
+                    else { panic!("Not found {} in the obj list", name) };
             }
         }
 
@@ -182,7 +180,7 @@ impl<'a> Scene<'a> {
         !embree_ray.hit()
     }
 
-    pub fn sample_light(&self, p: &Point3<f32>, r: f32, uv: (f32, f32)) -> LightSampling {
+    pub fn sample_light(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light
         let (pdf_sel, emitter_id) = self.random_select_emitter();
         let emitter = &self.meshes[emitter_id];
@@ -234,12 +232,12 @@ impl<'a> Scene<'a> {
         // Render the image blocks
         image_blocks.par_iter_mut().for_each(|im_block|
             {
-                let mut sampler = sampler::IndepSampler::new();
+                let mut sampler = sampler::IndepSampler::default();
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..nb_samples {
                             let c = self.integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y),
-                                                            &self, &mut sampler);
+                                                            self, &mut sampler);
                             im_block.accum(Point2 { x: ix, y: iy }, &c);
                         }
                     }
@@ -250,8 +248,8 @@ impl<'a> Scene<'a> {
 
         // Fill the image
         let mut image = Bitmap::new(Point2::new(0, 0), self.camera.size().clone());
-        for im_block in image_blocks.iter() {
-            image.accum_bitmap(&im_block);
+        for im_block in &image_blocks {
+            image.accum_bitmap(im_block);
         }
         image
     }

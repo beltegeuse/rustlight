@@ -33,21 +33,21 @@ impl Camera {
         let screen_du = dx * dim_x;
         let screen_dv = dy * dim_y;
         let dir_top_left = dz - 0.5 * screen_du - 0.5 * screen_dv;
-        Camera { param: param,
-            dir_top_left: dir_top_left,
-            screen_du: screen_du,
-            screen_dv: screen_dv,
+        Camera { param,
+            dir_top_left,
+            screen_du,
+            screen_dv,
         }
     }
 
     pub fn look_at(pos: Point3<f32>, at: Point3<f32>, up: Vector3<f32>, img: Vector2<u32>, fov: f32) -> Camera {
         let dir = at - pos;
         let param = CameraParam {
-            pos : pos,
-            dir : dir,
-            up : up,
-            img : img,
-            fov : fov,
+            pos,
+            dir,
+            up,
+            img,
+            fov,
         };
 
         Camera::new(param)
@@ -62,6 +62,6 @@ impl Camera {
         let d = (self.dir_top_left + px.0 / (self.param.img.x as f32) * self.screen_du
             + px.1 / (self.param.img.y as f32) * self.screen_dv).normalize();
 
-        Ray::new(self.param.pos.clone(), d)
+        Ray::new(self.param.pos, d)
     }
 }

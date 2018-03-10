@@ -35,13 +35,13 @@ pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
     Vector3 {
         x: d.x,
         y: d.y,
-        z: z,
+        z,
     }
 }
 
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
-pub fn basis(n : Vector3<f32>) -> Matrix3<f32> {
+pub fn basis(n : Vector3<f32>) -> Frame {
     // TODO: See how to use branchless version (copysignf)
     let b1: Vector3<f32>;
     let b2: Vector3<f32>;
@@ -56,20 +56,35 @@ pub fn basis(n : Vector3<f32>) -> Matrix3<f32> {
         b1 = Vector3::new(1.0 - n.x * n.x * a, b, -n.x);
         b2 = Vector3::new(b, 1.0 - n.y * n.y * a, -n.y);
     }
-    Matrix3 {
-        x : b1,
-        y : b2,
-        z : n
+    Frame {
+        m: Matrix3 {
+        x: b1,
+        y: b2,
+        z: n
+        }
+    }
+}
+
+pub struct Frame {
+    m : Matrix3<f32>,
+}
+
+impl Frame {
+    pub fn to_world(&self, v: Vector3<f32>) -> Vector3<f32> {
+        self.m.x * v.x + self.m.y * v.y + self.m.z * v.z
+    }
+    pub fn to_local(&self, v: Vector3<f32>) -> Vector3<f32> {
+        Vector3::new(v.dot(self.m.x), v.dot(self.m.y), v.dot(self.m.z))
     }
 }
 
 /// Uniformly distributing samples over isosceles right triangles
 /// actually works for any triangle.
-pub fn uniform_sample_triangle(u: (f32,f32)) -> Point2<f32> {
-    let su0: f32 = u.0.sqrt();
+pub fn uniform_sample_triangle(u: Point2<f32>) -> Point2<f32> {
+    let su0: f32 = u.x.sqrt();
     Point2 {
         x: 1.0 as f32 - su0,
-        y: u.1 * su0,
+        y: u.y * su0,
     }
 }
 
@@ -100,7 +115,7 @@ impl Distribution1DConstruct {
         // Create the new CDF
         let mut cdf = Vec::with_capacity(self.elements.len() + 1);
         let mut cur = 0.0;
-        for e in self.elements.iter() {
+        for e in &self.elements {
             cdf.push(cur);
             cur += e;
         }

@@ -5,9 +5,10 @@ use std::sync::Arc;
 use tobj;
 
 // my includes
-use structure::{Color,Ray};
+use structure::{Color};
 use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
 use tools::StepRangeInt;
+use material::{BSDF,BSDFDiffuse};
 
 // FIXME: Support custom UV
 // FIXME: Support custom normal
@@ -35,12 +36,8 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Pat
         }
         let normals = mesh.normals.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
 
-        let uv;
-        if mesh.texcoords.is_empty() {
-            uv = vec![];
-        } else {
-            uv = mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect();
-        }
+        let uv = if mesh.texcoords.is_empty() { vec![] }
+            else { mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect() };
 
         let trimesh = scene.new_triangle_mesh(embree_rs::scene::GeometryFlags::Static,
                                               verts,
@@ -56,7 +53,7 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Pat
                                        mat.diffuse[1],
                                        mat.diffuse[2]);
         } else {
-            diffuse_color = Color::one(0.0);
+            diffuse_color = Color::zero();
         }
 
         // Add the mesh info
@@ -72,13 +69,13 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Pat
 pub struct Mesh {
     pub name : String,
     pub trimesh : Arc<embree_rs::scene::TriangleMesh>,
-    pub bsdf : Color, // FIXME: Only diffuse color for now
+    pub bsdf : Box<BSDF + Send + Sync>,
     pub emission : Color,
     pub cdf : Distribution1D,
 }
 
 impl Mesh {
-    pub fn new(name: String, trimesh : Arc<embree_rs::scene::TriangleMesh>, bsdf: Color) -> Mesh {
+    pub fn new(name: String, trimesh : Arc<embree_rs::scene::TriangleMesh>, diffuse: Color) -> Mesh {
         // Construct the mesh
         assert!(trimesh.indices.len() % 3 == 0);
         let nb_tri = trimesh.indices.len() / 3;
@@ -95,8 +92,8 @@ impl Mesh {
         Mesh {
             name,
             trimesh,
-            bsdf,
-            emission: Color::one(0.0),
+            bsdf : Box::new(BSDFDiffuse { diffuse }),
+            emission: Color::zero(),
             cdf : dist_const.normalize(),
         }
     }
@@ -107,61 +104,31 @@ impl Mesh {
 
     // FIXME: reuse random number
     // FIXME: need to test
-    pub fn sample(&self, s: f32, v: (f32,f32)) -> (Point3<f32>, Vector3<f32>, f32) {
+    pub fn sample(&self, s: f32, v: Point2<f32>) -> (Point3<f32>, Vector3<f32>, f32) {
         // Select a triangle
         let i = self.cdf.sample(s) * 3;
+        let i0 = self.trimesh.indices[i] as usize;
+        let i1 = self.trimesh.indices[i+1] as usize;
+        let i2 = self.trimesh.indices[i+2] as usize;
 
-        let v0 = self.trimesh.vertices[self.trimesh.indices[i] as usize];
-        let v1 = self.trimesh.vertices[self.trimesh.indices[i+1] as usize];
-        let v2 = self.trimesh.vertices[self.trimesh.indices[i+2] as usize];
+        let v0 = self.trimesh.vertices[i0];
+        let v1 = self.trimesh.vertices[i1];
+        let v2 = self.trimesh.vertices[i2];
 
-        let n0 = self.trimesh.normals[self.trimesh.indices[i] as usize];
-        let n1 = self.trimesh.normals[self.trimesh.indices[i+1] as usize];
-        let n2 = self.trimesh.normals[self.trimesh.indices[i+2] as usize];
-
+        let n0 = self.trimesh.normals[i0];
+        let n1 = self.trimesh.normals[i1];
+        let n2 = self.trimesh.normals[i2];
 
         // Select barycentric coordinate on a triangle
         let b = uniform_sample_triangle(v);
 
         // interpol the point
-        let p = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
-        let n = n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1]);
-        (Point3::new(p.x,p.y,p.z), n, 1.0 / ( self.cdf.normalization))
+        let pos = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
+        let normal = n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1]);
+        (Point3::from_vec(pos), normal, 1.0 / ( self.cdf.normalization))
     }
 
     pub fn is_light(&self) -> bool {
-        return !self.emission.is_zero();
-    }
-}
-
-// FIXME: See how to re-integrate this code
-///////////////////////// Legacy code
-pub struct Sphere {
-    pub pos: Point3<f32>,
-    pub radius: f32,
-    pub color: Color,
-}
-pub trait Intersectable {
-    fn intersect(&self, ray: &Ray) -> Option<f32>;
-}
-impl Intersectable for Sphere {
-    fn intersect(&self, ray: &Ray) -> Option<f32> {
-        let l = self.pos - ray.o;
-        let adj = l.dot(ray.d);
-        let d2 = l.dot(l) - (adj * adj);
-        let radius2 = self.radius * self.radius;
-        if d2 > radius2 {
-            return None;
-        }
-        let thc = (radius2 - d2).sqrt();
-        let t0 = adj - thc;
-        let t1 = adj + thc;
-
-        if t0 < 0.0 && t1 < 0.0 {
-            return None;
-        }
-
-        let distance = if t0 < t1 { t0 } else { t1 };
-        Some(distance)
+        !self.emission.is_zero()
     }
 }

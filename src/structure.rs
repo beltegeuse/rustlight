@@ -13,34 +13,27 @@ pub struct Color {
 
 impl Color {
     pub fn new(r: f32, g: f32, b: f32) -> Color {
-        Color {
-            r, g, b
-        }
+        Color { r, g, b }
     }
-
     pub fn zero() -> Color {
-        Color {
-            r: 0.0, g: 0.0, b: 0.0
-        }
+        Color::new(0.0, 0.0, 0.0 )
     }
-
-    pub fn one(v: f32) -> Color {
-        Color {
-            r:v, g:v, b:v
-        }
+    pub fn one() -> Color {
+        Color::new(1.0, 1.0, 1.0 )
+    }
+    pub fn value(v: f32) -> Color {
+        Color::new(v, v, v)
     }
 
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
     }
-
     pub fn to_rgba(&self) -> Rgba<u8> {
         Rgba::from_channels((self.r.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
                             (self.g.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
                             (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
                             255)
     }
-
     pub fn mul(&mut self, v: f32) {
         self.r *= v;
         self.g *= v;
