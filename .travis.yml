@@ -10,16 +10,16 @@ before_install:
   - sudo apt-get install -y libtbb-dev
   # get embree
   - sudo apt-get install -y alien dpkg-dev debhelper build-essential wget
-  - wget https://github.com/embree/embree/releases/download/v3.0.0/embree-3.0.0.x86_64.rpm.tar.gz -O /tmp/embree.tar.gz
+  - wget https://github.com/embree/embree/releases/download/v2.17.2/embree-2.17.2.x86_64.rpm.tar.gz -O /tmp/embree.tar.gz
   - cd /tmp
   - tar -xvf embree.tar.gz
   - ls -la
-  - sudo alien embree3-lib-3.0.0-1.x86_64.rpm
-  - sudo alien embree3-devel-3.0.0-1.noarch.rpm
-  - sudo dpkg -i embree3-devel_3.0.0-2_all.deb
-  - sudo dpkg -i embree3-lib_3.0.0-2_amd64.deb
+  - sudo alien embree-lib-2.17.2-1.x86_64.rpm
+  - sudo alien embree-devel-2.17.2-1.noarch.rpm
+  - sudo dpkg -i embree-lib_2.17.2-2_amd64.deb
+  - sudo dpkg -i embree-devel_2.17.2-2_all.deb
   - cd - # Go back to the working directory
-  - rustup install stable # Maybe unecessary
+  - rustup install stable
 
 script:
   - cargo build --verbose --all
