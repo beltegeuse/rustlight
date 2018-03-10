@@ -1,6 +1,6 @@
 # rustlight
 
-[![Build Status](https://travis-ci.org/beltegeuse/rustlight.svg?branch=master)](https://travis-ci.org/wahn/rs_pbrt)
+[![Build Status](https://travis-ci.org/beltegeuse/rustlight.svg?branch=master)](https://travis-ci.org/beltegeuse/rustlight)
 
 Physically-based rendering engine implemented with **Rust**.
 
