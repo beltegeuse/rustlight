@@ -9,13 +9,14 @@ use structure::{Color};
 use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
 use tools::StepRangeInt;
 use material::{BSDF,BSDFDiffuse};
+use structure::Ray;
 
 // FIXME: Support custom UV
 // FIXME: Support custom normal
 /// Read obj file format and build a list of meshes
 /// for now, only add diffuse color
 /// custom texcoords or normals are not supported yet
-pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Path) -> Result<Vec<Mesh>, tobj::LoadError> {
+pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Path) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name)?;
 
@@ -57,9 +58,9 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Pat
         }
 
         // Add the mesh info
-        meshes.push(Mesh::new(m.name,
+        meshes.push(Box::new(Mesh::new(m.name,
             trimesh,
-            diffuse_color));
+            diffuse_color)));
     }
     Ok(meshes)
 }
@@ -130,5 +131,16 @@ impl Mesh {
 
     pub fn is_light(&self) -> bool {
         !self.emission.is_zero()
+    }
+
+    /// PDF value when we intersect the light
+    pub fn direct_pdf(&self, ray: &Ray, its: &embree_rs::ray::Intersection) -> f32 {
+        let cos_light = its.n_g.dot(-ray.d).max(0.0);
+        if cos_light == 0.0 {
+            0.0
+        } else {
+            let geom_inv = (its.t * its.t) / cos_light;
+            self.pdf() * geom_inv
+        }
     }
 }

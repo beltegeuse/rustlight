@@ -1,6 +1,7 @@
 use std::cmp;
 use std::u32;
 use std;
+use std::sync::Arc;
 
 use rayon::prelude::*;
 use cgmath::*;
@@ -61,8 +62,8 @@ impl Bitmap {
 }
 
 /// Light sample representation
-pub struct LightSampling {
-    pub emitter_id : usize,
+pub struct LightSampling<'a> {
+    pub emitter : &'a geometry::Mesh,
     pub pdf : f32,
     pub p : Point3<f32>,
     pub n : Vector3<f32>,
@@ -70,8 +71,8 @@ pub struct LightSampling {
     pub weight : Color,
 }
 
-impl LightSampling {
-    pub fn is_valid(&self) -> bool {
+impl<'a> LightSampling<'a> {
+    pub fn is_valid(&'a self) -> bool {
         self.pdf != 0.0
     }
 }
@@ -81,8 +82,8 @@ pub struct Scene<'a> {
     /// Main camera
     pub camera: Camera,
     // Geometry information
-    pub meshes: Vec<geometry::Mesh>,
-    pub emitters: Vec<usize>,
+    pub meshes: Vec<Arc<geometry::Mesh>>,
+    pub emitters: Vec<Arc<geometry::Mesh>>,
     #[allow(dead_code)]
     embree_device: embree_rs::scene::Device<'a>,
     embree_scene: embree_rs::scene::Scene<'a>,
@@ -130,11 +131,14 @@ impl<'a> Scene<'a> {
             }
         }
 
+        // Transform the scene mesh from Box to Arc
+        let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
+
         // Update the list of lights
         let mut emitters = vec![];
         for i in 0..meshes.len() {
             if !meshes[i].emission.is_zero() {
-                emitters.push(i);
+                emitters.push(meshes[i].clone());
             }
         }
 
@@ -182,8 +186,7 @@ impl<'a> Scene<'a> {
 
     pub fn sample_light(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light
-        let (pdf_sel, emitter_id) = self.random_select_emitter();
-        let emitter = &self.meshes[emitter_id];
+        let (pdf_sel, emitter) = self.random_select_emitter();
         let (p_light, n_light, pdf_light) = emitter.sample(r, uv);
 
         // Compute the distance
@@ -196,7 +199,7 @@ impl<'a> Scene<'a> {
         let emission = emitter.emission.clone() * (geom_light / (pdf_sel * pdf_light));
 
         LightSampling {
-            emitter_id,
+            emitter,
             pdf : if geom_light == 0.0 {0.0} else {pdf_light * pdf_sel * ( 1.0 / geom_light )},
             p: p_light,
             n: n_light,
@@ -206,9 +209,9 @@ impl<'a> Scene<'a> {
 
     }
 
-    pub fn random_select_emitter(&self) -> (f32, usize) {
+    pub fn random_select_emitter(&self) -> (f32, &geometry::Mesh) {
         assert!(self.emitters.len() == 1);
-        (1.0, self.emitters[0])
+        (1.0, &self.emitters[0])
     }
 
     /// Render the scene
