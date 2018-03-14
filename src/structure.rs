@@ -39,6 +39,9 @@ impl Color {
         self.g *= v;
         self.b *= v;
     }
+    pub fn channel_max(&self) -> f32 {
+        self.r.max(self.g.max(self.b))
+    }
 }
 
 
