@@ -3,7 +3,7 @@ extern crate rayon;
 extern crate rustlight;
 extern crate cgmath;
 extern crate byteorder;
-extern crate clap;
+#[macro_use] extern crate clap;
 
 use image::*;
 use std::time::Instant;
@@ -26,46 +26,58 @@ fn main() {
         .arg(Arg::with_name("output")
             .takes_value(true)
             .short("o")
-            .default_value("test.pfm")
             .help("output image file"))
-        .arg(Arg::with_name("integrator")
-            .takes_value(true)
-            .default_value("path")
-            .help("integration technique"))
         .arg(Arg::with_name("nbsamples")
             .short("n")
             .takes_value(true)
-            .default_value("128")
             .help("integration technique"))
+        .subcommand(SubCommand::with_name("path")
+            .about("path tracing")
+            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("10")))
+        .subcommand(SubCommand::with_name("ao")
+            .about("ambiant occlusion")
+            .arg(Arg::with_name("distance").takes_value(true).short("d").default_value("inf")))
+        .subcommand(SubCommand::with_name("direct")
+            .about("direct lighting")
+            .arg(Arg::with_name("bsdf").takes_value(true).short("b").default_value("1"))
+            .arg(Arg::with_name("light").takes_value(true).short("l").default_value("1")))
         .get_matches();
 
     /////////////// Check output extension
-    let imgout_path_str = matches.value_of("output").unwrap();
+    let imgout_path_str = matches.value_of("output").unwrap_or("test.pfm");
     let output_ext = match std::path::Path::new(imgout_path_str).extension() {
         None => panic!("No file extension provided"),
-        Some(x) => std::ffi::OsStr::to_str(x).unwrap(),
+        Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
     };
 
     //////////////// Load the rendering configuration
     // Create the integrator
-    let nb_samples = match matches.value_of("nbsamples").unwrap().parse::<i32>() {
-        Err(e) => panic!("Error while parsing the number of samples"),
-        Ok(x) => x,
-    };
-    let int: Box<rustlight::integrator::Integrator + Sync + Send> = match matches.value_of("integrator").unwrap() {
-        "path" => Box::new(rustlight::integrator::IntergratorPath {
-            max_depth: 10
+    let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), i32);
+
+    let int: Box<rustlight::integrator::Integrator + Sync + Send> = match matches.subcommand() {
+        ("path", Some(m)) => Box::new(rustlight::integrator::IntergratorPath {
+            max_depth: value_t_or_exit!(m.value_of("max"), i32),
         }),
-        "ao" => Box::new(rustlight::integrator::IntergratorAO { max_distance: None, }),
-        "direct" => Box::new(rustlight::integrator::IntergratorDirect {
-            nb_bsdf_samples: 1,
-            nb_light_samples: 1
+        ("ao", Some(m)) => {
+            let dist_str = m.value_of("max").unwrap_or("inf");
+            let dist: Option<f32> = match dist_str {
+                "inf" => None,
+                _ => Some(dist_str.parse::<f32>().expect("wrong distance"))
+            };
+            Box::new(rustlight::integrator::IntergratorAO {
+                max_distance: dist,
+            })
+        },
+        ("direct", Some(m)) => Box::new(rustlight::integrator::IntergratorDirect {
+            nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
+            nb_light_samples: value_t_or_exit!(m.value_of("light"), u32)
         }),
         _ => panic!("unknown integrator"),
     };
 
     //////////////// Load the scene
-    let scene_path = std::path::Path::new(matches.value_of("scene").unwrap());
+    let scene_path_str = matches.value_of("scene").expect("no scene parameter provided");
+    let scene_path = std::path::Path::new(scene_path_str);
     // - read the file
     let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
     let mut data = String::new();
@@ -74,7 +86,7 @@ fn main() {
     let wk = scene_path.parent().expect("impossible to extract parent directory for OBJ loading");
     let scene = rustlight::scene::Scene::new(&data, wk, int).expect("error when loading the scene");
 
-
+    ////////////// Do the rendering
     println!("Rendering...");
     let start = Instant::now();
     let pool = rayon::ThreadPool::new(rayon::Configuration::new()).unwrap();

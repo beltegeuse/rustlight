@@ -102,6 +102,7 @@ impl Mesh {
     pub fn pdf(&self) -> f32 {
         1.0 / ( self.cdf.normalization)
     }
+    pub fn flux(&self) -> f32 { self.cdf.normalization * self.emission.channel_max()}
 
     // FIXME: reuse random number
     // FIXME: need to test

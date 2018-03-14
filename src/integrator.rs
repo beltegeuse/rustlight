@@ -53,8 +53,8 @@ impl Integrator for IntergratorAO {
 
 //////////// Direct
 pub struct IntergratorDirect {
-    pub nb_bsdf_samples : i32,
-    pub nb_light_samples : i32
+    pub nb_bsdf_samples : u32,
+    pub nb_light_samples : u32
 }
 
 fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
@@ -100,6 +100,7 @@ impl Integrator for IntergratorDirect {
         for _ in 0..self.nb_light_samples {
             let light_record = scene.sample_light(&intersection.p,
                                                   sampler.next(),
+                                                  sampler.next(),
                                                   sampler.next2d());
             let d_out_local = frame.to_local(light_record.d);
             if light_record.is_valid() && scene.visible(&intersection.p, &light_record.p) && d_out_local.z > 0.0 {
@@ -135,9 +136,8 @@ impl Integrator for IntergratorDirect {
 
             // Check that we have intersected a light or not
             if intersected_mesh.is_light() && intersection.n_g.dot(-ray.d) > 0.0 {
-                // FIXME: the pdf for selecting the light
                 // FIXME: Found an elegant way to retreive incomming Le
-                let light_pdf = intersected_mesh.direct_pdf(&ray,&intersection);
+                let light_pdf = scene.direct_pdf(&ray,&intersection);
 
                 // Compute MIS weights
                 let weight_bsdf = mis_weight(bsdf_pdf * weight_nb_bsdf,
@@ -193,6 +193,7 @@ impl Integrator for IntergratorPath {
             // Explict connect to the light source
             let light_record = scene.sample_light(&intersection.p,
                                                   sampler.next(),
+                                                  sampler.next(),
                                                   sampler.next2d());
             let d_out_local = frame.to_local(light_record.d);
             if light_record.is_valid() && scene.visible(&intersection.p, &light_record.p) && d_out_local.z > 0.0 {
@@ -231,7 +232,7 @@ impl Integrator for IntergratorPath {
             // Check that we have intersected a light or not
             let cos_light = intersection.n_g.dot(-ray.d).max(0.0); // FIXME
             if next_mesh.is_light() && cos_light != 0.0 {
-                let light_pdf = next_mesh.direct_pdf(&ray, &intersection);
+                let light_pdf = scene.direct_pdf(&ray, &intersection);
 
                 let weight_bsdf = mis_weight(bsdf_pdf, light_pdf);
                 l_i +=  (throughput.clone()) * (&next_mesh.emission) * weight_bsdf;

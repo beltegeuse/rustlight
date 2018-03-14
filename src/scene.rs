@@ -15,6 +15,7 @@ use integrator::*;
 use geometry;
 use tools::StepRangeInt;
 use sampler;
+use math::{Distribution1DConstruct,Distribution1D};
 
 /// Image block
 /// for easy paralelisation over the threads
@@ -84,6 +85,7 @@ pub struct Scene<'a> {
     // Geometry information
     pub meshes: Vec<Arc<geometry::Mesh>>,
     pub emitters: Vec<Arc<geometry::Mesh>>,
+    emitters_cdf: Distribution1D,
     #[allow(dead_code)]
     embree_device: embree_rs::scene::Device<'a>,
     embree_scene: embree_rs::scene::Scene<'a>,
@@ -113,8 +115,9 @@ impl<'a> Scene<'a> {
 
         // Update meshes informations
         //  - which are light?
+        // TODO: Make impossible to add twice a light
         if let Some(emitters_json) = v.get("emitters") {
-            for e in emitters_json.as_array().unwrap().iter() {
+            for e in emitters_json.as_array().unwrap() {
                 let name: String = serde_json::from_value(e["mesh"].clone()).unwrap();
                 let emission: Color = serde_json::from_value(e["emission"].clone()).unwrap();
 
@@ -123,24 +126,25 @@ impl<'a> Scene<'a> {
                     if m.name == name {
                         m.emission = emission.clone();
                         found = true;
+                        println!("Ligth {:?} emission created", emission)
                     }
                 }
 
-                if found { println!("Ligth {:?} emission created", emission) }
-                    else { panic!("Not found {} in the obj list", name) };
+                if !found { panic!("Not found {} in the obj list", name) };
             }
         }
 
         // Transform the scene mesh from Box to Arc
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
-        // Update the list of lights
-        let mut emitters = vec![];
-        for i in 0..meshes.len() {
-            if !meshes[i].emission.is_zero() {
-                emitters.push(meshes[i].clone());
-            }
-        }
+        // Update the list of lights & construct the CDF
+        let emitters = meshes.iter().filter(|m| !m.emission.is_zero())
+            .map(|m| m.clone()).collect::<Vec<_>>();
+        let emitters_cdf = {
+            let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
+            emitters.iter().map(|e| e.flux()).for_each(|f| cdf_construct.add(f));
+            cdf_construct.normalize()
+        };
 
         // Read the camera config
         let camera_param: CameraParam = serde_json::from_value(v["camera"].clone()).unwrap();
@@ -152,6 +156,7 @@ impl<'a> Scene<'a> {
             embree_scene: scene_embree,
             meshes,
             emitters,
+            emitters_cdf,
             integrator : int,
         })
     }
@@ -161,10 +166,7 @@ impl<'a> Scene<'a> {
         let embree_ray = embree_rs::ray::Ray::new(
             &ray.o, &ray.d,
             ray.tnear, ray.tfar);
-        match self.embree_scene.intersect(embree_ray) {
-            Some(inter) => Some(inter),
-            None => None,
-        }
+        self.embree_scene.intersect(embree_ray)
     }
 
     /// Intersect the scene and return if we had an intersection or not
@@ -184,9 +186,14 @@ impl<'a> Scene<'a> {
         !embree_ray.hit()
     }
 
-    pub fn sample_light(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
+    pub fn direct_pdf(&self, ray: &Ray, its: &embree_rs::ray::Intersection) -> f32 {
+        let mesh = &self.meshes[its.geom_id as usize];
+        let emitter_id = self.emitters.iter().position(|m| Arc::ptr_eq(&mesh,&m)).unwrap();
+        mesh.direct_pdf(&ray, &its) * self.emitters_cdf.pdf(emitter_id)
+    }
+    pub fn sample_light(&self, p: &Point3<f32>, r_sel: f32, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light
-        let (pdf_sel, emitter) = self.random_select_emitter();
+        let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
         let (p_light, n_light, pdf_light) = emitter.sample(r, uv);
 
         // Compute the distance
@@ -208,10 +215,9 @@ impl<'a> Scene<'a> {
         }
 
     }
-
-    pub fn random_select_emitter(&self) -> (f32, &geometry::Mesh) {
-        assert!(self.emitters.len() == 1);
-        (1.0, &self.emitters[0])
+    pub fn random_select_emitter(&self, v: f32) -> (f32, &geometry::Mesh) {
+        let id_light = self.emitters_cdf.sample(v);
+        (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
     }
 
     /// Render the scene
