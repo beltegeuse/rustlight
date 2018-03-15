@@ -16,6 +16,7 @@ use geometry;
 use tools::StepRangeInt;
 use sampler;
 use math::{Distribution1DConstruct,Distribution1D};
+use material::*;
 
 /// Image block
 /// for easy paralelisation over the threads
@@ -133,8 +134,30 @@ impl<'a> Scene<'a> {
                 if !found { panic!("Not found {} in the obj list", name) };
             }
         }
+        // - BSDF
+        if let Some(bsdfs_json) = v.get("bsdfs") {
+            for b in bsdfs_json.as_array().unwrap() {
+                let name: String = serde_json::from_value(b["mesh"].clone()).unwrap();
+                let new_bsdf_type: String = serde_json::from_value(b["type"].clone()).unwrap();
+                let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
+                    "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone()).unwrap()),
+                    "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone()).unwrap()),
+                    _ => panic!("Unknown BSDF type {}", new_bsdf_type),
+                };
 
-        // Transform the scene mesh from Box to Arc
+                let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
+                match matched_meshes.len() {
+                    0 =>  panic!("Not found {} in the obj list", name),
+                    1 => {
+                        matched_meshes[0].bsdf = new_bsdf;
+                    },
+                    _ => panic!("Several {} in the obj list", name),
+                };
+            }
+        }
+
+
+            // Transform the scene mesh from Box to Arc
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
         // Update the list of lights & construct the CDF
