@@ -75,6 +75,12 @@ pub struct Mesh {
     pub cdf : Distribution1D,
 }
 
+pub struct SampledPosition {
+    pub p: Point3<f32>,
+    pub n: Vector3<f32>,
+    pub pdf: f32,
+}
+
 impl Mesh {
     pub fn new(name: String, trimesh : Arc<embree_rs::scene::TriangleMesh>, diffuse: Color) -> Mesh {
         // Construct the mesh
@@ -105,8 +111,7 @@ impl Mesh {
     pub fn flux(&self) -> f32 { self.cdf.normalization * self.emission.channel_max()}
 
     // FIXME: reuse random number
-    // FIXME: need to test
-    pub fn sample(&self, s: f32, v: Point2<f32>) -> (Point3<f32>, Vector3<f32>, f32) {
+    pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
         // Select a triangle
         let i = self.cdf.sample(s) * 3;
         let i0 = self.trimesh.indices[i] as usize;
@@ -127,7 +132,11 @@ impl Mesh {
         // interpol the point
         let pos = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
         let normal = n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1]);
-        (Point3::from_vec(pos), normal, 1.0 / ( self.cdf.normalization))
+        SampledPosition {
+            p: Point3::from_vec(pos),
+            n: normal,
+            pdf: 1.0 / ( self.cdf.normalization),
+        }
     }
 
     pub fn is_light(&self) -> bool {

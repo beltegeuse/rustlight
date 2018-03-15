@@ -188,28 +188,27 @@ impl<'a> Scene<'a> {
 
     pub fn direct_pdf(&self, ray: &Ray, its: &embree_rs::ray::Intersection) -> f32 {
         let mesh = &self.meshes[its.geom_id as usize];
-        let emitter_id = self.emitters.iter().position(|m| Arc::ptr_eq(&mesh,&m)).unwrap();
-        mesh.direct_pdf(&ray, &its) * self.emitters_cdf.pdf(emitter_id)
+        let emitter_id = self.emitters.iter().position(|m| Arc::ptr_eq(mesh,m)).unwrap();
+        mesh.direct_pdf(ray, its) * self.emitters_cdf.pdf(emitter_id)
     }
     pub fn sample_light(&self, p: &Point3<f32>, r_sel: f32, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light
         let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
-        let (p_light, n_light, pdf_light) = emitter.sample(r, uv);
+        let sampled_pos = emitter.sample(r, uv);
 
         // Compute the distance
-        let mut d: Vector3<f32> = p_light - p;
+        let mut d: Vector3<f32> = sampled_pos.p - p;
         let dist = d.magnitude();
         d /= dist;
 
         // Compute the geometry
-        let geom_light = n_light.dot(-d).max(0.0) / (dist * dist);
-        let emission = emitter.emission.clone() * (geom_light / (pdf_sel * pdf_light));
-
+        let geom_light = sampled_pos.n.dot(-d).max(0.0) / (dist * dist);
+        let emission = emitter.emission.clone() * (geom_light / (pdf_sel * sampled_pos.pdf));
         LightSampling {
             emitter,
-            pdf : if geom_light == 0.0 {0.0} else {pdf_light * pdf_sel * ( 1.0 / geom_light )},
-            p: p_light,
-            n: n_light,
+            pdf : if geom_light == 0.0 {0.0} else {sampled_pos.pdf * pdf_sel * ( 1.0 / geom_light )},
+            p: sampled_pos.p,
+            n: sampled_pos.n,
             d,
             weight: emission,
         }
@@ -221,7 +220,7 @@ impl<'a> Scene<'a> {
     }
 
     /// Render the scene
-    pub fn render(&self, nb_samples: i32) -> Bitmap {
+    pub fn render(&self, nb_samples: u32) -> Bitmap {
         assert!(nb_samples != 0);
 
         // Create rendering blocks

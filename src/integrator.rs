@@ -153,7 +153,7 @@ impl Integrator for IntergratorDirect {
 
 ////////////// Path tracing
 pub struct IntergratorPath {
-    pub max_depth : i32
+    pub max_depth : Option<u32>
 }
 
 impl Integrator for IntergratorPath {
@@ -170,8 +170,8 @@ impl Integrator for IntergratorPath {
             None => return l_i,
         };
 
-        let mut depth = 1;
-        while depth < self.max_depth {
+        let mut depth: u32 = 1;
+        while self.max_depth.is_none() || (depth < self.max_depth.unwrap()) {
             // Check if we go the right orientation
             if intersection.n_g.dot(ray.d) > 0.0 {
                 return l_i;
@@ -238,6 +238,12 @@ impl Integrator for IntergratorPath {
                 l_i +=  (throughput.clone()) * (&next_mesh.emission) * weight_bsdf;
             }
 
+            // Russian roulette
+            let rr_pdf = throughput.channel_max().min(0.95);
+            if rr_pdf < sampler.next() {
+                break;
+            }
+            throughput /= rr_pdf;
             // Increase the depth of the current path
             depth += 1;
         }

@@ -33,7 +33,7 @@ fn main() {
             .help("integration technique"))
         .subcommand(SubCommand::with_name("path")
             .about("path tracing")
-            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("10")))
+            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf")))
         .subcommand(SubCommand::with_name("ao")
             .about("ambiant occlusion")
             .arg(Arg::with_name("distance").takes_value(true).short("d").default_value("inf")))
@@ -52,14 +52,21 @@ fn main() {
 
     //////////////// Load the rendering configuration
     // Create the integrator
-    let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), i32);
+    let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), u32);
 
     let int: Box<rustlight::integrator::Integrator + Sync + Send> = match matches.subcommand() {
-        ("path", Some(m)) => Box::new(rustlight::integrator::IntergratorPath {
-            max_depth: value_t_or_exit!(m.value_of("max"), i32),
-        }),
+        ("path", Some(m)) => {
+            let max_str = m.value_of("max").unwrap();
+            let max_depth: Option<u32> = match max_str {
+                "inf" => None,
+                _ => Some(max_str.parse::<u32>().expect("wrong distance"))
+            };
+            Box::new(rustlight::integrator::IntergratorPath {
+                max_depth,
+            })
+        },
         ("ao", Some(m)) => {
-            let dist_str = m.value_of("max").unwrap_or("inf");
+            let dist_str = m.value_of("distance").unwrap();
             let dist: Option<f32> = match dist_str {
                 "inf" => None,
                 _ => Some(dist_str.parse::<f32>().expect("wrong distance"))
@@ -89,7 +96,7 @@ fn main() {
     ////////////// Do the rendering
     println!("Rendering...");
     let start = Instant::now();
-    let pool = rayon::ThreadPool::new(rayon::Configuration::new()).unwrap();
+    let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
     let img = pool.install(|| scene.render(nb_samples));
     let elapsed = start.elapsed();
     println!("Elapsed: {} ms",

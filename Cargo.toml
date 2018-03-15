@@ -9,7 +9,7 @@ doc = false
 
 [dependencies]
 image = "0.18.0"
-rayon = "0.9.0"
+rayon = "1.0.0"
 rand = "0.4.2"
 tobj = "*"
 embree-rs = { git = "https://github.com/beltegeuse/embree-rs.git" }

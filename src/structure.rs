@@ -1,6 +1,6 @@
 use cgmath::*;
 use image::*;
-use std::ops::{AddAssign, Mul, MulAssign};
+use std::ops::{AddAssign, Mul, MulAssign, DivAssign};
 use std;
 
 /// Pixel color representation
@@ -46,6 +46,14 @@ impl Color {
 
 
 /////////////// Operators
+impl DivAssign<f32> for Color {
+    fn div_assign(&mut self, other: f32) {
+        self.r /= other;
+        self.g /= other;
+        self.b /= other;
+    }
+}
+
 impl<'b> MulAssign<&'b Color> for Color {
     fn mul_assign(&mut self, other: &'b Color) {
         self.r *= other.r;
