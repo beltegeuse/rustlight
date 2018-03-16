@@ -239,11 +239,13 @@ impl<'a> Scene<'a> {
     }
 
     /// Render the scene
-    pub fn render(&self, integrator: Box<Integrator + Sync + Send>, nb_samples: u32) -> Bitmap<Color> {
+    pub fn render<T: Default + AddAssign + Scale<f32> + Clone + Send>(&self,
+                                                               integrator: Box<Integrator<T> + Sync + Send>,
+                                                               nb_samples: u32) -> Bitmap<T> {
         assert!(nb_samples != 0);
 
         // Create rendering blocks
-        let mut image_blocks: Vec<Bitmap<Color>> = Vec::new();
+        let mut image_blocks: Vec<Box<Bitmap<T>>> = Vec::new();
         for ix in StepRangeInt::new(0, self.camera.size().x as usize, 16) {
             for iy in StepRangeInt::new(0, self.camera.size().y as usize, 16) {
                 let mut block = Bitmap::new(
@@ -252,7 +254,7 @@ impl<'a> Scene<'a> {
                         x: cmp::min(16, self.camera.size().x - ix as u32),
                         y: cmp::min(16, self.camera.size().y - iy as u32),
                     });
-                image_blocks.push(block);
+                image_blocks.push(Box::new(block));
             }
         }
 

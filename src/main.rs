@@ -3,7 +3,8 @@ extern crate rayon;
 extern crate rustlight;
 extern crate cgmath;
 extern crate byteorder;
-#[macro_use] extern crate clap;
+#[macro_use]
+extern crate clap;
 
 use image::*;
 use std::time::Instant;
@@ -11,6 +12,23 @@ use std::io::prelude::*;
 use cgmath::Point2;
 use byteorder::{WriteBytesExt, LittleEndian};
 use clap::{Arg, App, SubCommand};
+use rustlight::structure::Color;
+use rustlight::scene::Bitmap;
+
+fn classical_mc_integration(scene: &rustlight::scene::Scene,
+                            nb_samples: u32,
+                            int: Box<rustlight::integrator::Integrator<Color> + Sync + Send>) -> Bitmap<Color> {
+    ////////////// Do the rendering
+    println!("Rendering...");
+    let start = Instant::now();
+    let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
+    let img = pool.install(|| scene.render(int, nb_samples));
+    let elapsed = start.elapsed();
+    println!("Elapsed: {} ms",
+             (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
+
+    return img;
+}
 
 fn main() {
     // Read input args
@@ -51,36 +69,7 @@ fn main() {
     };
 
     //////////////// Load the rendering configuration
-    // Create the integrator
     let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), u32);
-
-    let int: Box<rustlight::integrator::Integrator + Sync + Send> = match matches.subcommand() {
-        ("path", Some(m)) => {
-            let max_str = m.value_of("max").unwrap();
-            let max_depth: Option<u32> = match max_str {
-                "inf" => None,
-                _ => Some(max_str.parse::<u32>().expect("wrong distance"))
-            };
-            Box::new(rustlight::integrator::IntergratorPath {
-                max_depth,
-            })
-        },
-        ("ao", Some(m)) => {
-            let dist_str = m.value_of("distance").unwrap();
-            let dist: Option<f32> = match dist_str {
-                "inf" => None,
-                _ => Some(dist_str.parse::<f32>().expect("wrong distance"))
-            };
-            Box::new(rustlight::integrator::IntergratorAO {
-                max_distance: dist,
-            })
-        },
-        ("direct", Some(m)) => Box::new(rustlight::integrator::IntergratorDirect {
-            nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
-            nb_light_samples: value_t_or_exit!(m.value_of("light"), u32)
-        }),
-        _ => panic!("unknown integrator"),
-    };
 
     //////////////// Load the scene
     let scene_path_str = matches.value_of("scene").expect("no scene parameter provided");
@@ -93,14 +82,38 @@ fn main() {
     let wk = scene_path.parent().expect("impossible to extract parent directory for OBJ loading");
     let scene = rustlight::scene::Scene::new(&data, wk).expect("error when loading the scene");
 
-    ////////////// Do the rendering
-    println!("Rendering...");
-    let start = Instant::now();
-    let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
-    let img = pool.install(|| scene.render(int, nb_samples));
-    let elapsed = start.elapsed();
-    println!("Elapsed: {} ms",
-             (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
+    let img = match matches.subcommand() {
+        ("path", Some(m)) => {
+            let max_str = m.value_of("max").unwrap();
+            let max_depth: Option<u32> = match max_str {
+                "inf" => None,
+                _ => Some(max_str.parse::<u32>().expect("wrong distance"))
+            };
+
+            classical_mc_integration(&scene, nb_samples,
+                                     Box::new(rustlight::integrator::IntegratorPath {
+                max_depth,
+            }))
+        }
+        ("ao", Some(m)) => {
+            let dist_str = m.value_of("distance").unwrap();
+            let dist: Option<f32> = match dist_str {
+                "inf" => None,
+                _ => Some(dist_str.parse::<f32>().expect("wrong distance"))
+            };
+            classical_mc_integration( &scene, nb_samples,
+                                     Box::new(rustlight::integrator::IntergratorAO {
+                max_distance: dist,
+            }))
+        }
+        ("direct", Some(m)) => classical_mc_integration(&scene,
+                                                        nb_samples,
+                                                        Box::new(rustlight::integrator::IntergratorDirect {
+                                                            nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
+                                                            nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
+                                                        })),
+        _ => panic!("unknown integrator"),
+    };
 
     // Save the image (HDR and LDF)
     // -- LDR
@@ -118,7 +131,7 @@ fn main() {
                     file.write_f32::<LittleEndian>(p.b).unwrap();
                 }
             }
-        },
+        }
         "png" => {
             // The image that we will render
             let mut image_ldr = DynamicImage::new_rgb8(scene.camera.size().x,

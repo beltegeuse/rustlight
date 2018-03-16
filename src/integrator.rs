@@ -5,9 +5,10 @@ use scene::*;
 use math::*;
 use structure::*;
 use sampler::*;
+use embree_rs::ray::Intersection;
 
-pub trait Integrator {
-    fn compute(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color;
+pub trait Integrator<T> {
+    fn compute(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> T;
 }
 
 //////////// AO
@@ -15,7 +16,7 @@ pub struct IntergratorAO {
     pub max_distance : Option<f32>
 }
 
-impl Integrator for IntergratorAO {
+impl Integrator<Color> for IntergratorAO {
     fn compute(&self, (ix,iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
@@ -64,7 +65,7 @@ fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
     pdf_a / (pdf_a + pdf_b)
 }
 
-impl Integrator for IntergratorDirect {
+impl Integrator<Color> for IntergratorDirect {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
@@ -152,11 +153,10 @@ impl Integrator for IntergratorDirect {
 }
 
 ////////////// Path tracing
-pub struct IntergratorPath {
+pub struct IntegratorPath {
     pub max_depth : Option<u32>
 }
-
-impl Integrator for IntergratorPath {
+impl Integrator<Color> for IntegratorPath {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         // Generate the first ray
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
@@ -251,3 +251,71 @@ impl Integrator for IntergratorPath {
         l_i
     }
 }
+
+pub struct IntegratorGradientPath {
+    pub max_depth: Option<u32>,
+}
+pub struct ColorGradient {
+    pub main: Color,
+    pub gradients: [Color; 4],
+}
+impl Default for ColorGradient {
+    fn default() -> Self {
+        ColorGradient {
+            main: Color::zero(),
+            gradients: [Color::zero(); 4],
+        }
+    }
+}
+struct RayState {
+    pub pdf: f32,
+    pub ray: Ray,
+    pub its: Intersection,
+    pub throughput: Color,
+}
+impl RayState {
+    pub fn new((x, y): (f32, f32), (xoff, yoff): (i32, i32), scene: &Scene) -> Option<RayState> {
+        let pix = (x + xoff as f32, y + yoff as f32);
+        if  pix.0 < 0.0 || pix.0 > (scene.camera.size().x as f32) ||
+            pix.1 < 0.0 || pix.1 > (scene.camera.size().y as f32) {
+            return None;
+        }
+
+        let ray = scene.camera.generate(pix);
+        let its = match scene.trace(&ray) {
+            Some(x) => x,
+            None => return None,
+        };
+
+        Some(RayState {
+            pdf: 1.0, // FIXME: need somehow use cos^3
+            ray,
+            its,
+            throughput: Color::one(),
+        })
+    }
+}
+
+impl Integrator<ColorGradient> for IntegratorPath {
+    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> ColorGradient {
+        let l_i = ColorGradient::default();
+        let pix =  (ix as f32 + sampler.next(), iy as f32 + sampler.next());
+        let main = match RayState::new(pix, (0,0), &scene) {
+            None => return l_i,
+            Some(x) => x,
+        };
+        let offset: Vec<Option<RayState>> = {
+            let indices = [(0,1), (0, -1), (1, 0), (-1, 0)];
+            indices.iter().map(|e| RayState::new(pix, *e, &scene)).collect()
+        };
+
+        // For now, just replay the random numbers
+        
+
+        return l_i;
+
+    }
+}
+
+
+

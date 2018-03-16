@@ -4,7 +4,7 @@ use std::ops::{AddAssign, Mul, MulAssign, DivAssign, Div};
 use std;
 
 /// Pixel color representation
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
