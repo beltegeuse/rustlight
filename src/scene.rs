@@ -2,6 +2,7 @@ use std::cmp;
 use std::u32;
 use std;
 use std::sync::Arc;
+use std::error::Error;
 
 use rayon::prelude::*;
 use cgmath::*;
@@ -97,9 +98,9 @@ pub struct Scene<'a> {
 impl<'a> Scene<'a> {
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: &str, wk: &std::path::Path, int: Box<Integrator + Send + Sync>) -> Result<Scene<'a>, String> {
+    pub fn new(data: &str, wk: &std::path::Path, int: Box<Integrator + Send + Sync>) -> Result<Scene<'a>, Box<Error>> {
         // Read json string
-        let v: serde_json::Value = serde_json::from_str(data).map_err(|e| e.to_string())?;
+        let v: serde_json::Value = serde_json::from_str(data)?;
 
         // Allocate embree
         let mut device = embree_rs::scene::Device::new();
@@ -107,8 +108,9 @@ impl<'a> Scene<'a> {
                                                 embree_rs::scene::AlgorithmFlags::INTERSECT1);
 
         // Read the object
-        let obj_path = wk.join(v["meshes"].as_str().expect("impossible to read 'meshes' entry"));
-        let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path()).expect("error during loading OBJ");
+        let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
+        let obj_path = wk.join(obj_path_str);
+        let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path())?;
 
         // Build embree as we will not geometry for now
         println!("Build the acceleration structure");
@@ -116,32 +118,29 @@ impl<'a> Scene<'a> {
 
         // Update meshes informations
         //  - which are light?
-        // TODO: Make impossible to add twice a light
         if let Some(emitters_json) = v.get("emitters") {
             for e in emitters_json.as_array().unwrap() {
-                let name: String = serde_json::from_value(e["mesh"].clone()).unwrap();
-                let emission: Color = serde_json::from_value(e["emission"].clone()).unwrap();
-
-                let mut found = false;
-                for m in &mut meshes {
-                    if m.name == name {
-                        m.emission = emission.clone();
-                        found = true;
-                        println!("Ligth {:?} emission created", emission)
-                    }
-                }
-
-                if !found { panic!("Not found {} in the obj list", name) };
+                let name: String = e["mesh"].as_str().unwrap().to_string();
+                let emission: Color = serde_json::from_value(e["emission"].clone())?;
+                // Get the set of matched meshes
+                let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
+                match matched_meshes.len() {
+                    0 =>  panic!("Not found {} in the obj list", name),
+                    1 => {
+                        matched_meshes[0].emission = emission;
+                    },
+                    _ => panic!("Several {} in the obj list", name),
+                };
             }
         }
         // - BSDF
         if let Some(bsdfs_json) = v.get("bsdfs") {
             for b in bsdfs_json.as_array().unwrap() {
-                let name: String = serde_json::from_value(b["mesh"].clone()).unwrap();
-                let new_bsdf_type: String = serde_json::from_value(b["type"].clone()).unwrap();
+                let name: String = serde_json::from_value(b["mesh"].clone())?;
+                let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
                 let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
-                    "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone()).unwrap()),
-                    "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone()).unwrap()),
+                    "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
+                    "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
                     _ => panic!("Unknown BSDF type {}", new_bsdf_type),
                 };
 
@@ -155,9 +154,8 @@ impl<'a> Scene<'a> {
                 };
             }
         }
-
-
-            // Transform the scene mesh from Box to Arc
+        
+        // Transform the scene mesh from Box to Arc
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
         // Update the list of lights & construct the CDF
