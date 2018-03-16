@@ -14,6 +14,7 @@ use byteorder::{WriteBytesExt, LittleEndian};
 use clap::{Arg, App, SubCommand};
 use rustlight::structure::Color;
 use rustlight::scene::Bitmap;
+use rustlight::integrator::ColorGradient;
 
 fn classical_mc_integration(scene: &rustlight::scene::Scene,
                             nb_samples: u32,
@@ -28,6 +29,29 @@ fn classical_mc_integration(scene: &rustlight::scene::Scene,
              (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
 
     return img;
+}
+
+fn gradient_domain_integration(scene: &rustlight::scene::Scene,
+                               nb_samples: u32,
+                               int: Box<rustlight::integrator::Integrator<ColorGradient> + Sync + Send>) -> Bitmap<Color> {
+
+    println!("Rendering...");
+    let start = Instant::now();
+    let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
+    let img_grad = pool.install(|| scene.render(int, nb_samples));
+    let elapsed = start.elapsed();
+    println!("Elapsed: {} ms",
+             (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
+
+    // Do the reconstruction
+    let mut image = Bitmap::new(Point2::new(0, 0), scene.camera.size().clone());
+    for x in 0..img_grad.size.x {
+        for y in 0..img_grad.size.y {
+            let c_p = Point2::new(img_grad.pos.x + x, img_grad.pos.y + y);
+            image.accum(c_p, &img_grad.get(Point2::new(x, y)).main);
+        }
+    }
+    image
 }
 
 fn main() {
@@ -51,6 +75,9 @@ fn main() {
             .help("integration technique"))
         .subcommand(SubCommand::with_name("path")
             .about("path tracing")
+            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf")))
+        .subcommand(SubCommand::with_name("gd-path")
+            .about("gradient-domain path tracing")
             .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf")))
         .subcommand(SubCommand::with_name("ao")
             .about("ambiant occlusion")
@@ -94,7 +121,19 @@ fn main() {
                                      Box::new(rustlight::integrator::IntegratorPath {
                 max_depth,
             }))
-        }
+        },
+        ("gd-path", Some(m)) => {
+            let max_str = m.value_of("max").unwrap();
+            let max_depth: Option<u32> = match max_str {
+                "inf" => None,
+                _ => Some(max_str.parse::<u32>().expect("wrong distance"))
+            };
+
+            gradient_domain_integration(&scene, nb_samples,
+                                     Box::new(rustlight::integrator::IntegratorPath {
+                                         max_depth,
+                                     }))
+        },
         ("ao", Some(m)) => {
             let dist_str = m.value_of("distance").unwrap();
             let dist: Option<f32> = match dist_str {
