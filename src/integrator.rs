@@ -203,7 +203,7 @@ impl Integrator<Color> for IntegratorPath {
                 // Compute MIS weights
                 let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
                 l_i += weight_light
-                    * throughput.clone()
+                    * throughput
                     * hit_mesh.bsdf.eval(&d_in_local, &d_out_local)
                     * light_record.weight;
             }
@@ -235,7 +235,7 @@ impl Integrator<Color> for IntegratorPath {
                 let light_pdf = scene.direct_pdf(&ray, &intersection);
 
                 let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
-                l_i +=  (throughput.clone()) * (&next_mesh.emission) * weight_bsdf;
+                l_i += throughput * (&next_mesh.emission) * weight_bsdf;
             }
 
             // Russian roulette
@@ -314,7 +314,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> ColorGradient {
         let mut l_i = ColorGradient::default();
         let pix =  (ix as f32 + sampler.next(), iy as f32 + sampler.next());
-        let mut main = match RayState::new(pix, (0,0), &scene) {
+        let mut main = match RayState::new(pix, (0,0), scene) {
             None => return l_i,
             Some(x) => x,
         };
@@ -357,7 +357,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 // Compute MIS weights
                 let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
                 l_i.main += weight_light
-                    * main.throughput.clone()
+                    * main.throughput
                     * hit_mesh.bsdf.eval(&d_in_local, &d_out_local)
                     * light_record.weight;
             }
@@ -389,7 +389,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 let light_pdf = scene.direct_pdf(&main.ray, &main.its);
 
                 let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
-                l_i.main +=  (main.throughput.clone()) * (&next_mesh.emission) * weight_bsdf;
+                l_i.main +=  main.throughput * (&next_mesh.emission) * weight_bsdf;
             }
 
             // Russian roulette
@@ -402,7 +402,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
             depth += 1;
         }
 
-        return l_i;
+        l_i
     }
 }
 

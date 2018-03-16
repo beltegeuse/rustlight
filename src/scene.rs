@@ -222,7 +222,7 @@ impl<'a> Scene<'a> {
 
         // Compute the geometry
         let geom_light = sampled_pos.n.dot(-d).max(0.0) / (dist * dist);
-        let emission = emitter.emission.clone() * (geom_light / (pdf_sel * sampled_pos.pdf));
+        let emission = emitter.emission * (geom_light / (pdf_sel * sampled_pos.pdf));
         LightSampling {
             emitter,
             pdf : if geom_light == 0.0 {0.0} else {sampled_pos.pdf * pdf_sel * ( 1.0 / geom_light )},
@@ -276,7 +276,7 @@ impl<'a> Scene<'a> {
         );
 
         // Fill the image
-        let mut image = Bitmap::new(Point2::new(0, 0), self.camera.size().clone());
+        let mut image = Bitmap::new(Point2::new(0, 0), *self.camera.size());
         for im_block in &image_blocks {
             image.accum_bitmap(im_block);
         }

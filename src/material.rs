@@ -35,7 +35,7 @@ impl BSDF for BSDFDiffuse {
         } else {
             let d_out = cosine_sample_hemisphere(sample);
             Some(SampledDirection {
-                weight: self.diffuse.clone(),
+                weight: self.diffuse,
                 d: d_out,
                 pdf:  d_out.z * std::f32::consts::FRAC_1_PI,
             })
@@ -51,7 +51,7 @@ impl BSDF for BSDFDiffuse {
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
         assert!(d_in.z > 0.0);
         if d_out.z > 0.0 {
-            self.diffuse.clone() * d_out.z * std::f32::consts::FRAC_1_PI
+            self.diffuse * d_out.z * std::f32::consts::FRAC_1_PI
         } else {
             Color::zero()
         }
@@ -82,7 +82,7 @@ impl BSDF for BSDFPhong {
                 Some(SampledDirection {
                     weight: self.eval(d_in, &d_out) / pdf,
                     d: d_out,
-                    pdf:  pdf,
+                    pdf,
                 })
             }
         }
@@ -99,7 +99,7 @@ impl BSDF for BSDFPhong {
         assert!(d_in.z > 0.0);
         assert!(d_out.z > 0.0);
         let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
-        self.specular.clone() * ( std::f32::consts::FRAC_1_PI * 0.5 * alpha.powf(self.exponent) )
+        self.specular * ( std::f32::consts::FRAC_1_PI * 0.5 * alpha.powf(self.exponent) )
     }
 }
 impl BSDFPhong {
