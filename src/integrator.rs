@@ -123,27 +123,27 @@ impl Integrator for IntergratorDirect {
         // Compute an new direction (diffuse)
         for _ in 0..self.nb_bsdf_samples {
             let d_in_local = frame.to_local(-ray.d);
-            let (d_out_local, bsdf_pdf, bsdf_value) = init_mesh.bsdf.sample(&d_in_local, sampler.next2d());
+            if let Some(sampled_bsdf) = init_mesh.bsdf.sample(&d_in_local, sampler.next2d()) {
+                // Generate the new ray and do the intersection
+                let d_out_world = frame.to_world(sampled_bsdf.d);
+                let ray = Ray::new(intersection.p, d_out_world);
+                let intersection = match scene.trace(&ray) {
+                    Some(x) => x,
+                    None => continue,
+                };
+                let intersected_mesh = &scene.meshes[intersection.geom_id as usize];
 
-            // Generate the new ray and do the intersection
-            let d_out_world = frame.to_world(d_out_local);
-            let ray = Ray::new(intersection.p, d_out_world);
-            let intersection = match scene.trace(&ray) {
-                Some(x) => x,
-                None => continue,
-            };
-            let intersected_mesh = &scene.meshes[intersection.geom_id as usize];
+                // Check that we have intersected a light or not
+                if intersected_mesh.is_light() && intersection.n_g.dot(-ray.d) > 0.0 {
+                    // FIXME: Found an elegant way to retreive incomming Le
+                    let light_pdf = scene.direct_pdf(&ray, &intersection);
 
-            // Check that we have intersected a light or not
-            if intersected_mesh.is_light() && intersection.n_g.dot(-ray.d) > 0.0 {
-                // FIXME: Found an elegant way to retreive incomming Le
-                let light_pdf = scene.direct_pdf(&ray,&intersection);
-
-                // Compute MIS weights
-                let weight_bsdf = mis_weight(bsdf_pdf * weight_nb_bsdf,
+                    // Compute MIS weights
+                    let weight_bsdf = mis_weight(sampled_bsdf.pdf * weight_nb_bsdf,
                                                  light_pdf * weight_nb_light);
 
-                l_i += weight_bsdf * bsdf_value * (&intersected_mesh.emission) * weight_nb_bsdf;
+                    l_i += weight_bsdf * sampled_bsdf.weight * (&intersected_mesh.emission) * weight_nb_bsdf;
+                }
             }
         }
 
@@ -212,16 +212,16 @@ impl Integrator for IntergratorPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let (d_out_local, bsdf_pdf, bsdf_value) = hit_mesh.bsdf.sample(&d_in_local, sampler.next2d());
-            if bsdf_value.is_zero() {
-                return l_i;
-            }
+            let sampled_bsdf = match hit_mesh.bsdf.sample(&d_in_local, sampler.next2d()) {
+                Some(x) => x,
+                None => return l_i,
+            };
 
             // Update the throughput
-            throughput *= &bsdf_value;
+            throughput *= &sampled_bsdf.weight;
 
             // Generate the new ray and do the intersection
-            let d_out_global = frame.to_world(d_out_local);
+            let d_out_global = frame.to_world(sampled_bsdf.d);
             ray = Ray::new(intersection.p, d_out_global);
             intersection = match scene.trace(&ray) {
                 Some(x) => x,
@@ -234,7 +234,7 @@ impl Integrator for IntergratorPath {
             if next_mesh.is_light() && cos_light != 0.0 {
                 let light_pdf = scene.direct_pdf(&ray, &intersection);
 
-                let weight_bsdf = mis_weight(bsdf_pdf, light_pdf);
+                let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
                 l_i +=  (throughput.clone()) * (&next_mesh.emission) * weight_bsdf;
             }
 

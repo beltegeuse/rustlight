@@ -154,7 +154,7 @@ impl<'a> Scene<'a> {
                 };
             }
         }
-        
+
         // Transform the scene mesh from Box to Arc
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 

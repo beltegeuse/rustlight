@@ -6,12 +6,18 @@ use math::basis;
 use structure::Color;
 use math::cosine_sample_hemisphere;
 
+pub struct SampledDirection {
+    pub weight: Color,
+    pub d: Vector3<f32>,
+    pub pdf: f32,
+}
+
 pub trait BSDF {
     /// sample an random direction based on the BSDF value
     /// @d_in: the incomming direction in the local space
     /// @sample: random number 2D
     /// @return: the outgoing direction, the pdf and the bsdf value $fs(...) * | n . d_out |$
-    fn sample(&self, d_in: & Vector3<f32>, sample : Point2<f32>) -> (Vector3<f32>, f32, Color);
+    fn sample(&self, d_in: & Vector3<f32>, sample : Point2<f32>) -> Option<SampledDirection>;
     /// eval the bsdf pdf value in solid angle
     fn pdf(&self, d_in: & Vector3<f32>, d_out: & Vector3<f32>) -> f32;
     /// eval the bsdf value : $fs(...)$
@@ -23,10 +29,17 @@ pub struct BSDFDiffuse {
     pub diffuse : Color,
 }
 impl BSDF for BSDFDiffuse {
-    fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> (Vector3<f32>, f32, Color) {
-        assert!(d_in.z > 0.0);
-        let d_out = cosine_sample_hemisphere(sample);
-        (d_out, d_out.z * std::f32::consts::FRAC_1_PI, self.diffuse.clone())
+    fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
+        if d_in.z <= 0.0 {
+            None
+        } else {
+            let d_out = cosine_sample_hemisphere(sample);
+            Some(SampledDirection {
+                weight: self.diffuse.clone(),
+                d: d_out,
+                pdf:  d_out.z * std::f32::consts::FRAC_1_PI,
+            })
+        }
     }
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32 {
@@ -51,7 +64,7 @@ pub struct BSDFPhong {
     pub exponent: f32,
 }
 impl BSDF for BSDFPhong {
-    fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> (Vector3<f32>, f32, Color) {
+    fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
         let sin_alpha = 1.0 - sample.y.powf(2.0 / (self.exponent + 1.0));
         let cos_alpha = sample.y.powf( 1.0 / (self.exponent + 1.0));
         let phi = 2.0 * std::f32::consts::PI * sample.x;
@@ -60,13 +73,17 @@ impl BSDF for BSDFPhong {
         let frame = basis(BSDFPhong::reflect(d_in));
         let d_out = frame.to_world(local_dir);
         if d_out.z <= 0.0 {
-            (d_out, 0.0, Color::zero())
+            None
         } else {
             let pdf = self.pdf(d_in, &d_out);
             if pdf == 0.0 {
-                (d_out, 0.0, Color::zero())
+                None
             } else {
-                (d_out, pdf, self.eval(d_in, &d_out) / pdf)
+                Some(SampledDirection {
+                    weight: self.eval(d_in, &d_out) / pdf,
+                    d: d_out,
+                    pdf:  pdf,
+                })
             }
         }
     }
