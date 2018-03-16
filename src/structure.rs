@@ -11,6 +11,10 @@ pub struct Color {
     pub b: f32,
 }
 
+pub trait Scale<T> {
+    fn scale(&mut self, v: T);
+}
+
 impl Color {
     pub fn new(r: f32, g: f32, b: f32) -> Color {
         Color { r, g, b }
@@ -34,16 +38,22 @@ impl Color {
                             (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
                             255)
     }
-    pub fn mul(&mut self, v: f32) {
-        self.r *= v;
-        self.g *= v;
-        self.b *= v;
-    }
     pub fn channel_max(&self) -> f32 {
         self.r.max(self.g.max(self.b))
     }
 }
-
+impl Default for Color {
+    fn default() -> Self {
+        Color::zero()
+    }
+}
+impl Scale<f32> for Color {
+    fn scale(&mut self, v: f32) {
+        self.r *= v;
+        self.g *= v;
+        self.b *= v;
+    }
+}
 
 /////////////// Operators
 impl DivAssign<f32> for Color {

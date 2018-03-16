@@ -3,6 +3,7 @@ use std::u32;
 use std;
 use std::sync::Arc;
 use std::error::Error;
+use std::ops::{AddAssign};
 
 use rayon::prelude::*;
 use cgmath::*;
@@ -10,7 +11,7 @@ use embree_rs;
 use serde_json;
 
 // my includes
-use structure::{Color, Ray};
+use structure::*;
 use camera::{Camera, CameraParam};
 use integrator::*;
 use geometry;
@@ -21,23 +22,23 @@ use material::*;
 
 /// Image block
 /// for easy paralelisation over the threads
-pub struct Bitmap {
+pub struct Bitmap<T: Default + AddAssign + Scale<f32> + Clone> {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
-    pub pixels: Vec<Color>,
+    pub pixels: Vec<T>,
 }
 
-impl Bitmap {
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap {
+impl<T: Default + AddAssign + Scale<f32> + Clone > Bitmap<T> {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap<T> {
         Bitmap {
             pos,
             size,
-            pixels: vec![Color { r: 0.0, g: 0.0, b: 0.0 };
+            pixels: vec![T::default();
                          (size.x * size.y) as usize],
         }
     }
 
-    pub fn accum_bitmap(&mut self, o: &Bitmap) {
+    pub fn accum_bitmap(&mut self, o: &Bitmap<T>) {
         for x in 0..o.size.x {
             for y in 0..o.size.y {
                 let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
@@ -46,13 +47,13 @@ impl Bitmap {
         }
     }
 
-    pub fn accum(&mut self, p: Point2<u32>, f: &Color) {
+    pub fn accum(&mut self, p: Point2<u32>, f: &T) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        self.pixels[(p.y * self.size.y + p.x) as usize] += f;
+        self.pixels[(p.y * self.size.y + p.x) as usize] += f.clone(); // FIXME: Not good for performance
     }
 
-    pub fn get(&self, p: Point2<u32>) -> &Color {
+    pub fn get(&self, p: Point2<u32>) -> &T {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         &self.pixels[(p.y * self.size.y + p.x) as usize]
@@ -60,7 +61,7 @@ impl Bitmap {
 
     pub fn weight(&mut self, f: f32) {
         assert!(f > 0.0);
-        self.pixels.iter_mut().for_each(|v| v.mul(f));
+        self.pixels.iter_mut().for_each(|v| v.scale(f));
     }
 }
 
@@ -91,14 +92,12 @@ pub struct Scene<'a> {
     #[allow(dead_code)]
     embree_device: embree_rs::scene::Device<'a>,
     embree_scene: embree_rs::scene::Scene<'a>,
-    // Integrator
-    integrator : Box<Integrator + Send + Sync>
 }
 
 impl<'a> Scene<'a> {
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: &str, wk: &std::path::Path, int: Box<Integrator + Send + Sync>) -> Result<Scene<'a>, Box<Error>> {
+    pub fn new(data: &str, wk: &std::path::Path) -> Result<Scene<'a>, Box<Error>> {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(data)?;
 
@@ -178,7 +177,6 @@ impl<'a> Scene<'a> {
             meshes,
             emitters,
             emitters_cdf,
-            integrator : int,
         })
     }
 
@@ -241,11 +239,11 @@ impl<'a> Scene<'a> {
     }
 
     /// Render the scene
-    pub fn render(&self, nb_samples: u32) -> Bitmap {
+    pub fn render(&self, integrator: Box<Integrator + Sync + Send>, nb_samples: u32) -> Bitmap<Color> {
         assert!(nb_samples != 0);
 
         // Create rendering blocks
-        let mut image_blocks: Vec<Bitmap> = Vec::new();
+        let mut image_blocks: Vec<Bitmap<Color>> = Vec::new();
         for ix in StepRangeInt::new(0, self.camera.size().x as usize, 16) {
             for iy in StepRangeInt::new(0, self.camera.size().y as usize, 16) {
                 let mut block = Bitmap::new(
@@ -265,7 +263,7 @@ impl<'a> Scene<'a> {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..nb_samples {
-                            let c = self.integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y),
+                            let c = integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y),
                                                             self, &mut sampler);
                             im_block.accum(Point2 { x: ix, y: iy }, &c);
                         }

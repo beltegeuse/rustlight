@@ -91,13 +91,13 @@ fn main() {
     fscene.read_to_string(&mut data).expect("impossible to read the file");
     // - build the scene
     let wk = scene_path.parent().expect("impossible to extract parent directory for OBJ loading");
-    let scene = rustlight::scene::Scene::new(&data, wk, int).expect("error when loading the scene");
+    let scene = rustlight::scene::Scene::new(&data, wk).expect("error when loading the scene");
 
     ////////////// Do the rendering
     println!("Rendering...");
     let start = Instant::now();
     let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
-    let img = pool.install(|| scene.render(nb_samples));
+    let img = pool.install(|| scene.render(int, nb_samples));
     let elapsed = start.elapsed();
     println!("Elapsed: {} ms",
              (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
