@@ -1,6 +1,6 @@
 use cgmath::*;
 use image::*;
-use std::ops::{AddAssign, Mul, MulAssign, DivAssign, Div};
+use std::ops::*;
 use std;
 
 /// Pixel color representation
@@ -103,11 +103,15 @@ impl Div<f32> for Color {
 
 impl Mul<f32> for Color {
     fn mul(self, other: f32) -> Color {
-        assert!(other.is_finite());
-        Color {
-            r: self.r * other,
-            g: self.g * other,
-            b: self.b * other,
+        //assert!(other.is_finite());
+        if other.is_finite() {
+            Color {
+                r: self.r * other,
+                g: self.g * other,
+                b: self.b * other,
+            }
+        } else {
+            Color::zero()
         }
     }
     type Output = Self;
@@ -155,6 +159,26 @@ impl Mul<Color> for Color {
         }
     }
     type Output = Self;
+}
+impl Sub<Color> for Color {
+    fn sub(self, other: Color) -> Color {
+        Color {
+            r: self.r - other.r,
+            g: self.g - other.g,
+            b: self.b - other.b,
+        }
+    }
+    type Output = Self;
+}
+impl Add<Color> for Color {
+    type Output = Self;
+    fn add(self, other: Color) -> Color {
+        Color {
+            r: self.r + other.r,
+            g: self.g + other.g,
+            b: self.b + other.b,
+        }
+    }
 }
 
 // FIXME: Evaluate if we keep it or not

@@ -12,9 +12,24 @@ use std::io::prelude::*;
 use cgmath::Point2;
 use byteorder::{WriteBytesExt, LittleEndian};
 use clap::{Arg, App, SubCommand};
-use rustlight::structure::Color;
+use rustlight::structure::{Color,Scale};
 use rustlight::scene::Bitmap;
 use rustlight::integrator::ColorGradient;
+
+fn save_pfm(imgout_path_str: &str, img: &Bitmap<Color>) {
+    let mut file = std::fs::File::create(std::path::Path::new(imgout_path_str)).unwrap();
+    let header = format!("PF\n{} {}\n-1.0\n",
+                         img.size.y, img.size.x);
+    file.write(header.as_bytes()).unwrap();
+    for y in 0..img.size.y {
+        for x in 0..img.size.x {
+            let p = img.get(Point2::new(img.size.x - x - 1, img.size.y - y - 1));
+            file.write_f32::<LittleEndian>(p.r.abs()).unwrap();
+            file.write_f32::<LittleEndian>(p.g.abs()).unwrap();
+            file.write_f32::<LittleEndian>(p.b.abs()).unwrap();
+        }
+    }
+}
 
 fn classical_mc_integration(scene: &rustlight::scene::Scene,
                             nb_samples: u32,
@@ -43,12 +58,93 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
     println!("Elapsed: {} ms",
              (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
 
-    // Do the reconstruction
-    let mut image = Bitmap::new(Point2::new(0, 0), scene.camera.size().clone());
+    // Generates images buffers (dx, dy, primal)
+    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0,0), *scene.camera.size());
+    let mut dx_image = Bitmap::new(Point2::new(0,0), *scene.camera.size());
+    let mut dy_image = Bitmap::new(Point2::new(0,0), *scene.camera.size());
     for x in 0..img_grad.size.x {
         for y in 0..img_grad.size.y {
-            let c_p = Point2::new(img_grad.pos.x + x, img_grad.pos.y + y);
-            image.accum(c_p, &img_grad.get(Point2::new(x, y)).main);
+            let pos = Point2::new(x,y);
+            let curr = img_grad.get(pos);
+            primal_image.accum(pos, &curr.main);
+            for (i, off) in rustlight::integrator::GRADIENT_ORDER.iter().enumerate() {
+                let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
+                primal_image.accum_safe(pos_off, curr.radiances[i].clone());
+                match rustlight::integrator::GRADIENT_DIRECTION[i] {
+                    rustlight::integrator::GradientDirection::X(v) => match v {
+                        1 => dx_image.accum(pos, &curr.gradients[i]),
+                        -1 => dx_image.accum_safe(pos_off, curr.gradients[i].clone() * -1.0),
+                        _ => panic!("wrong displacement X"), // FIXME: Fix the enum
+                    },
+                    rustlight::integrator::GradientDirection::Y(v) => match v {
+                        1 => dy_image.accum(pos, &curr.gradients[i]),
+                        -1 => dy_image.accum_safe(pos_off, (curr.gradients[i].clone() * -1.0)),
+                        _ => panic!("wrong displacement Y"),
+                    }
+                        ,
+                }
+            }
+        }
+    }
+    // Scale the throughtput image
+    primal_image.scale(1.0 / 4.0 ); // TODO: Wrong at the corners, need to fix it
+
+    // Output the images
+    {
+        save_pfm("out_primal.pfm", &primal_image);
+        save_pfm("out_dx.pfm", &dx_image);
+        save_pfm("out_dy.pfm", &dy_image);
+    }
+
+    // Reconstruction (image-space covariate, uniform reconstruction)
+    let mut current: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
+    let mut next: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
+    // 1) Init
+    for x in 0..img_grad.size.x {
+        for y in 0..img_grad.size.y {
+            let pos = Point2::new(x,y);
+            current.accum(pos, primal_image.get(pos));
+        }
+    }
+    for _iter in 0..50 { // FIXME: Do it multi-threaded
+        next.reset(); // Reset all to black
+        for x in 0..img_grad.size.x {
+            for y in 0..img_grad.size.y {
+                let pos = Point2::new(x,y);
+                let mut c = current.get(pos).clone();
+                let mut w = 1.0;
+                if x > 0 {
+                    let pos_off = Point2::new(x - 1, y );
+                    c += current.get(pos_off).clone() + dx_image.get(pos_off).clone();
+                    w += 1.0;
+                }
+                if x < img_grad.size.x - 1 {
+                    let pos_off = Point2::new(x + 1, y );
+                    c += current.get(pos_off).clone() - dx_image.get(pos).clone();
+                    w += 1.0;
+                }
+                if y > 0 {
+                    let pos_off = Point2::new(x, y - 1);
+                    c += current.get(pos_off).clone() + dy_image.get(pos_off).clone();
+                    w += 1.0;
+                }
+                if y < img_grad.size.y - 1 {
+                    let pos_off = Point2::new(x, y + 1);
+                    c += current.get(pos_off).clone() - dy_image.get(pos).clone();
+                    w += 1.0;
+                }
+                c.scale( 1.0 / w);
+                next.accum(pos, &c);
+            }
+        }
+        std::mem::swap(&mut current, &mut next);
+    }
+            // Export the reconstruction
+    let mut image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), scene.camera.size().clone());
+    for x in 0..img_grad.size.x {
+        for y in 0..img_grad.size.y {
+            let pos = Point2::new(x, y);
+            image.accum(pos, next.get(pos));
         }
     }
     image
@@ -158,18 +254,7 @@ fn main() {
     // -- LDR
     match output_ext {
         "pfm" => {
-            let mut file = std::fs::File::create(std::path::Path::new(imgout_path_str)).unwrap();
-            let header = format!("PF\n{} {}\n-1.0\n",
-                                 img.size.y, img.size.x);
-            file.write(header.as_bytes()).unwrap();
-            for y in 0..img.size.y {
-                for x in 0..img.size.x {
-                    let p = img.get(Point2::new(img.size.x - x - 1, img.size.y - y - 1));
-                    file.write_f32::<LittleEndian>(p.r).unwrap();
-                    file.write_f32::<LittleEndian>(p.g).unwrap();
-                    file.write_f32::<LittleEndian>(p.b).unwrap();
-                }
-            }
+            save_pfm(imgout_path_str, &img);
         }
         "png" => {
             // The image that we will render

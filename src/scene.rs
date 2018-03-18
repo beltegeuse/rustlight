@@ -53,13 +53,28 @@ impl<T: Default + AddAssign + Scale<f32> + Clone > Bitmap<T> {
         self.pixels[(p.y * self.size.y + p.x) as usize] += f.clone(); // FIXME: Not good for performance
     }
 
+    pub fn accum_safe(&mut self, p: Point2<i32>, f: T) {
+        if p.x >= 0
+            && p.y >= 0
+            && p.x < (self.size.x as i32)
+            && p.y < (self.size.y as i32) {
+            self.pixels[((p.y as u32) * self.size.y + p.x as u32) as usize] += f.clone(); // FIXME: Bad performance?
+        }
+    }
+
     pub fn get(&self, p: Point2<u32>) -> &T {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         &self.pixels[(p.y * self.size.y + p.x) as usize]
     }
 
-    pub fn weight(&mut self, f: f32) {
+    pub fn reset(&mut self) {
+        self.pixels.iter_mut().for_each(|x| *x = T::default());
+    }
+}
+
+impl<T: Default + AddAssign + Scale<f32> + Clone> Scale<f32> for Bitmap<T> {
+    fn scale(&mut self, f: f32) {
         assert!(f > 0.0);
         self.pixels.iter_mut().for_each(|v| v.scale(f));
     }
@@ -271,7 +286,7 @@ impl<'a> Scene<'a> {
                         }
                     }
                 }
-                im_block.weight(1.0 / (nb_samples as f32));
+                im_block.scale(1.0 / (nb_samples as f32));
             }
         );
 

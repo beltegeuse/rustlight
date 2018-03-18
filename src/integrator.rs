@@ -255,12 +255,27 @@ impl Integrator<Color> for IntegratorPath {
 #[derive(Clone, Debug, Copy)]
 pub struct ColorGradient {
     pub main: Color,
+    pub radiances: [Color; 4],
     pub gradients: [Color; 4],
 }
+pub enum GradientDirection {
+    X(i32),
+    Y(i32)
+}
+pub static GRADIENT_ORDER: [Point2<i32>; 4] = [Point2 {x:0, y:1 },
+    Point2{x: 0, y: -1},
+    Point2{x:1, y: 0},
+    Point2{x: -1, y:0}];
+pub static GRADIENT_DIRECTION: [GradientDirection; 4] = [
+    GradientDirection::Y(1), GradientDirection::Y(-1),
+    GradientDirection::X(1), GradientDirection::X(-1)
+];
+
 impl Default for ColorGradient {
     fn default() -> Self {
         ColorGradient {
             main: Color::zero(),
+            radiances: [Color::zero(); 4],
             gradients: [Color::zero(); 4],
         }
     }
@@ -269,7 +284,8 @@ impl AddAssign<ColorGradient> for ColorGradient {
     fn add_assign(&mut self, other: ColorGradient) {
         self.main += other.main;
         for i in 0..self.gradients.len() {
-            self.gradients[i] = other.gradients[i];
+            self.radiances[i] += other.radiances[i];
+            self.gradients[i] += other.gradients[i];
         }
     }
 }
@@ -277,32 +293,49 @@ impl Scale<f32> for ColorGradient {
     fn scale(&mut self, v: f32) {
         self.main.scale(v);
         for i in 0..self.gradients.len() {
+            self.radiances[i].scale(v);
             self.gradients[i].scale(v);
         }
     }
 }
-struct RayState {
+struct RayStateData {
     pub pdf: f32,
     pub ray: Ray,
     pub its: Intersection,
     pub throughput: Color,
 }
+enum RayState {
+    NotConnected(RayStateData),
+    Dead,
+}
+
 impl RayState {
-    pub fn new((x, y): (f32, f32), (xoff, yoff): (i32, i32), scene: &Scene) -> Option<RayState> {
-        let pix = (x + xoff as f32, y + yoff as f32);
+    pub fn check_normal(self) -> RayState {
+        match self {
+            RayState::NotConnected(e) => if e.its.n_g.dot(e.ray.d) > 0.0 {
+                RayState::Dead
+            } else {
+                RayState::NotConnected(e)
+            },
+            RayState::Dead => RayState::Dead,
+        }
+    }
+
+    pub fn new((x, y): (f32, f32), off: &Point2<i32>, scene: &Scene) -> RayState {
+        let pix = (x + off.x as f32, y + off.y as f32);
         if  pix.0 < 0.0 || pix.0 > (scene.camera.size().x as f32) ||
             pix.1 < 0.0 || pix.1 > (scene.camera.size().y as f32) {
-            return None;
+            return RayState::Dead;
         }
 
         let ray = scene.camera.generate(pix);
         let its = match scene.trace(&ray) {
             Some(x) => x,
-            None => return None,
+            None => return RayState::Dead,
         };
 
-        Some(RayState {
-            pdf: 1.0, // FIXME: need somehow use cos^3
+        RayState::NotConnected(RayStateData {
+            pdf: 1.0,
             ray,
             its,
             throughput: Color::one(),
@@ -314,92 +347,142 @@ impl Integrator<ColorGradient> for IntegratorPath {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> ColorGradient {
         let mut l_i = ColorGradient::default();
         let pix =  (ix as f32 + sampler.next(), iy as f32 + sampler.next());
-        let mut main = match RayState::new(pix, (0,0), scene) {
-            None => return l_i,
-            Some(x) => x,
+        let mut main = match RayState::new(pix, &Point2::new(0,0), scene) {
+            RayState::Dead => return l_i,
+            RayState::NotConnected(x) => x,
         };
-        let mut offset: Vec<Option<RayState>> = {
-            let indices = [(0,1), (0, -1), (1, 0), (-1, 0)];
-            indices.iter().map(|e| RayState::new(pix, *e, &scene)).collect()
+        let mut offsets: Vec<RayState> = {
+            GRADIENT_ORDER.iter().map(|e| RayState::new(pix, e, &scene)).collect()
         };
 
         // For now, just replay the random numbers
         let mut depth: u32 = 1;
         while self.max_depth.is_none() || (depth < self.max_depth.unwrap()) {
             // Check if we go the right orientation
+            // -- main path
             if main.its.n_g.dot(main.ray.d) > 0.0 {
                 return l_i;
             }
+            offsets = offsets.into_iter().map(|e| e.check_normal()).collect();
 
             // Add the emission for the light intersection
-            let hit_mesh = &scene.meshes[main.its.geom_id as usize];
-            if depth == 1 {
-                l_i.main += &hit_mesh.emission;
-            }
+            let main_hit_mesh = &scene.meshes[main.its.geom_id as usize];
+            // TODO: Do not put direct lighting for now because it might leads to too much reconstruction error
+//            if depth == 1 {
+//                l_i.main += &hit_mesh.emission;
+//                for (i,o) in offsets.iter_mut().enumerate() {
+//                    let hit_mesh = &scene.meshes[main.its.geom_id as usize];
+//                    l_i.gradients[i] += &hit_mesh.emission;
+//                }
+//            }
+
 
             // Construct local frame
-            let frame = basis(main.its.n_g);
-            let d_in_local = frame.to_local(-main.ray.d);
+            let main_frame = basis(main.its.n_g);
+            let main_d_in_local = main_frame.to_local(-main.ray.d);
 
             /////////////////////////////////
             // Light sampling
             /////////////////////////////////
             // Explict connect to the light source
-            let light_record = scene.sample_light(&main.its.p,
-                                                  sampler.next(),
-                                                  sampler.next(),
-                                                  sampler.next2d());
-            let d_out_local = frame.to_local(light_record.d);
-            if light_record.is_valid() && scene.visible(&main.its.p, &light_record.p) && d_out_local.z > 0.0 {
-                // Compute the contribution of direct lighting
-                let pdf_bsdf = hit_mesh.bsdf.pdf(&d_in_local, &d_out_local);
+            {
+                // FIXME: Zero contributon handling: BSDF and others
+                let (r_sel_rand, r_rand, uv_rand) = (sampler.next(),
+                                                     sampler.next(),
+                                                     sampler.next2d());
+                let main_light_record = scene.sample_light(&main.its.p,
+                                                      r_sel_rand, r_rand, uv_rand);
+                let main_light_visible = scene.visible(&main.its.p, &main_light_record.p);
+                let main_emitter_rad = if main_light_visible { main_light_record.weight * main_light_record.pdf } else { Color::zero() };
+                let main_d_out_local = main_frame.to_local(main_light_record.d);
+                // Evaluate BSDF values
+                let main_bsdf_value = main_hit_mesh.bsdf.eval(&main_d_in_local, &main_d_out_local); // f(...) * cos(...)
+                let main_bsdf_pdf = if main_light_visible { main_hit_mesh.bsdf.pdf(&main_d_in_local, &main_d_out_local) } else { 0.0 };
+                // Cache PDF / throughput values
+                let main_weight_num = main.pdf * main_light_record.pdf;
+                let main_weight_dem = (main.pdf.powi(2)) *
+                    ((main_light_record.pdf.powi(2)) + main_bsdf_pdf.powi(2));
+                let main_contrib = main.throughput * main_bsdf_value * main_emitter_rad;
+                // Cache geometric informations
+                let main_geom_dsquared = (main.its.p - main_light_record.p).magnitude2();
+                let main_geom_cos_light = main_light_record.n.dot(main_light_record.d);
+                for (i,offset) in offsets.iter().enumerate() {
+                    let (weight, shift_contrib) = match offset {
+                        &RayState::Dead => { ( main_weight_num / (0.0001 + main_weight_dem), Color::zero()) },
+                        &RayState::NotConnected(ref s) => {
+                            // Get intersection informations
+                            let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
+                            let shift_frame = basis(s.its.n_g);
+                            let shift_d_in_local = shift_frame.to_local(-s.ray.d);
+                            // Sample the light from the point
+                            let shift_light_record = scene.sample_light(&s.its.p,
+                                                                        r_sel_rand,
+                                                                        r_rand,
+                                                                        uv_rand);
+                            let shift_light_visible = scene.visible(&s.its.p,
+                                                                    &shift_light_record.p);
+                            let shift_emitter_rad = if shift_light_visible { shift_light_record.weight * shift_light_record.pdf } else { Color::zero() };
+                            let shift_d_out_local = shift_frame.to_local(shift_light_record.d);
+                            // BSDF
+                            let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
+                            let shift_bsdf_pdf = if shift_light_visible { shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) } else { 0.0 };
+                            // Compute Jacobian: Here the ratio of geometry terms
+                            let jacobian = ( shift_light_record.n.dot(shift_light_record.d) * main_geom_dsquared).abs()
+                                / (0.0001 + (main_geom_cos_light * (s.its.p - shift_light_record.p).magnitude2()).abs()); // FIXME: Inf jacobian?
+                            // Bake the final results
+                            let shift_weight_dem = (jacobian * s.pdf).powi(2) *
+                                (shift_light_record.pdf.powi(2) + shift_bsdf_pdf.powi(2));
+                            let shift_contrib = jacobian * s.throughput * shift_bsdf_value * shift_emitter_rad;
+                            let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
+                            (weight, shift_contrib)
+                        },
+                    };
+                    l_i.main += main_contrib * weight;
+                    l_i.radiances[i] += shift_contrib * weight;
+                    l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
+                }
 
-                // Compute MIS weights
-                let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
-                l_i.main += weight_light
-                    * main.throughput
-                    * hit_mesh.bsdf.eval(&d_in_local, &d_out_local)
-                    * light_record.weight;
             }
 
-            /////////////////////////////////
-            // BSDF sampling
-            /////////////////////////////////
-            // Compute an new direction (diffuse)
-            let sampled_bsdf = match hit_mesh.bsdf.sample(&d_in_local, sampler.next2d()) {
-                Some(x) => x,
-                None => return l_i,
-            };
-
-            // Update the throughput
-            main.throughput *= &sampled_bsdf.weight;
-
-            // Generate the new ray and do the intersection
-            let d_out_global = frame.to_world(sampled_bsdf.d);
-            main.ray = Ray::new(main.its.p, d_out_global);
-            main.its = match scene.trace(&main.ray) {
-                Some(x) => x,
-                None => return l_i,
-            };
-            let next_mesh = &scene.meshes[main.its.geom_id as usize];
-
-            // Check that we have intersected a light or not
-            let cos_light = main.its.n_g.dot(-main.ray.d).max(0.0); // FIXME
-            if next_mesh.is_light() && cos_light != 0.0 {
-                let light_pdf = scene.direct_pdf(&main.ray, &main.its);
-
-                let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
-                l_i.main +=  main.throughput * (&next_mesh.emission) * weight_bsdf;
-            }
-
-            // Russian roulette
-            let rr_pdf = main.throughput.channel_max().min(0.95);
-            if rr_pdf < sampler.next() {
-                break;
-            }
-            main.throughput /= rr_pdf;
-            // Increase the depth of the current path
-            depth += 1;
+            break;
+//            /////////////////////////////////
+//            // BSDF sampling
+//            /////////////////////////////////
+//            // Compute an new direction (diffuse)
+//            let sampled_bsdf = match hit_mesh.bsdf.sample(&d_in_local, sampler.next2d()) {
+//                Some(x) => x,
+//                None => return l_i,
+//            };
+//
+//            // Update the throughput
+//            main.throughput *= &sampled_bsdf.weight;
+//
+//            // Generate the new ray and do the intersection
+//            let d_out_global = frame.to_world(sampled_bsdf.d);
+//            main.ray = Ray::new(main.its.p, d_out_global);
+//            main.its = match scene.trace(&main.ray) {
+//                Some(x) => x,
+//                None => return l_i,
+//            };
+//            let next_mesh = &scene.meshes[main.its.geom_id as usize];
+//
+//            // Check that we have intersected a light or not
+//            let cos_light = main.its.n_g.dot(-main.ray.d).max(0.0); // FIXME
+//            if next_mesh.is_light() && cos_light != 0.0 {
+//                let light_pdf = scene.direct_pdf(&main.ray, &main.its);
+//
+//                let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
+//                l_i.main +=  main.throughput * (&next_mesh.emission) * weight_bsdf;
+//            }
+//
+//            // Russian roulette
+//            let rr_pdf = main.throughput.channel_max().min(0.95);
+//            if rr_pdf < sampler.next() {
+//                break;
+//            }
+//            main.throughput /= rr_pdf;
+//            // Increase the depth of the current path
+//            depth += 1;
         }
 
         l_i

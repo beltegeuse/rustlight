@@ -44,8 +44,7 @@ impl BSDF for BSDFDiffuse {
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32 {
         assert!(d_in.z > 0.0);
-        assert!(d_out.z > 0.0);
-        d_out.z * std::f32::consts::FRAC_1_PI
+        if d_out.z <= 0.0 { 0.0 } else { d_out.z * std::f32::consts::FRAC_1_PI }
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
@@ -90,16 +89,23 @@ impl BSDF for BSDFPhong {
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32 {
         assert!(d_in.z > 0.0);
-        assert!(d_out.z > 0.0);
-        let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
-        alpha.powf(self.exponent) * (self.exponent + 1.0) / (2.0 * std::f32::consts::PI)
+        if d_out.z <= 0.0 {
+            0.0
+        } else {
+            let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
+            alpha.powf(self.exponent) * (self.exponent + 1.0) / (2.0 * std::f32::consts::PI)
+        }
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
         assert!(d_in.z > 0.0);
-        assert!(d_out.z > 0.0);
-        let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
-        self.specular * ( std::f32::consts::FRAC_1_PI * 0.5 * alpha.powf(self.exponent) )
+        if d_out.z <= 0.0 {
+            Color::zero()
+        } else {
+            let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
+            self.specular * ( std::f32::consts::FRAC_1_PI * 0.5 * alpha.powf(self.exponent) )
+        }
+
     }
 }
 impl BSDFPhong {
