@@ -4,30 +4,33 @@
 
 Physically-based rendering engine implemented with **Rust**.
 
-## Cornel box
+## Features
 
-For now, only path tracing with next event estimation is implemented. Moreover, only diffuse material and only one surfacique light source is supported.
+For now, only path tracing with next event estimation is implemented. These are the following features implemented:
+
+- Materials: Diffuse and Phong lobe
+- Emitters: multiple surface lights support
+
+## Rendering 
 
 ![Cornel Box](http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/rustlight/cbox.png)
 
 ## Roadmap
 
-Core features: 
+Rendering algorithms for path-tracing:
+- Gradient-domain path tracing with image-space control variate reconstruction.
+- MCMC using PSSMLT
 
-- Add more materials (Specular, Dielectric, ...)
-- Support multiple light and add environmental light support.
-- Add blender script exporter
+Other rendering features: 
 
-Rendering algorithms:
-
-- PSSMLT (with only path tracing)
-- BDPT
-- (Stocastic) Progressive photon mapping
+- Materials: Specular (mirror and glass), microfacet with Beckert distribution.
+- Emitters: Environmental lights
+- Tools: Blender exporter script (based on cycle)
 
 ## Inspirations
 
-The code have been inspired from several repositories:
+This code has been inspired from several repositories:
 
 - rs_pbrt project: https://github.com/wahn/rs_pbrt
-- blog post from Brook Heisler: https://bheisler.github.io/post/writing-raytracer-in-rust-part-1/
+- the blog post from Brook Heisler: https://bheisler.github.io/post/writing-raytracer-in-rust-part-1/
 - tray_rust project: https://github.com/Twinklebear/tray_rust
