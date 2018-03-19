@@ -137,7 +137,8 @@ impl Integrator<Color> for IntergratorDirect {
                 // Check that we have intersected a light or not
                 if intersected_mesh.is_light() && intersection.n_g.dot(-ray.d) > 0.0 {
                     // FIXME: Found an elegant way to retreive incomming Le
-                    let light_pdf = scene.direct_pdf(&ray, &intersection);
+                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(scene,
+                                                                           &ray, &intersection));
 
                     // Compute MIS weights
                     let weight_bsdf = mis_weight(sampled_bsdf.pdf * weight_nb_bsdf,
@@ -232,7 +233,8 @@ impl Integrator<Color> for IntegratorPath {
             // Check that we have intersected a light or not
             let cos_light = intersection.n_g.dot(-ray.d).max(0.0); // FIXME
             if next_mesh.is_light() && cos_light != 0.0 {
-                let light_pdf = scene.direct_pdf(&ray, &intersection);
+                let light_pdf = scene.direct_pdf(LightSamplingPDF::new(scene,
+                                                                       &ray, &intersection));
 
                 let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
                 l_i += throughput * (&next_mesh.emission) * weight_bsdf;
@@ -306,17 +308,33 @@ struct RayStateData {
 }
 enum RayState {
     NotConnected(RayStateData),
+    RecentlyConnected(RayStateData),
+    Connected(RayStateData), // FIXME: Do we need to store all the data?
     Dead,
 }
 
 impl RayState {
     pub fn check_normal(self) -> RayState {
+        // FIXME: Change how this works .... to avoid duplicated code
         match self {
-            RayState::NotConnected(e) => if e.its.n_g.dot(e.ray.d) > 0.0 {
-                RayState::Dead
-            } else {
-                RayState::NotConnected(e)
-            },
+            RayState::NotConnected(e) =>
+                if e.its.n_g.dot(e.ray.d) > 0.0 {
+                    RayState::Dead
+                } else {
+                    RayState::NotConnected(e)
+                },
+            RayState::RecentlyConnected(e) =>
+                if e.its.n_g.dot(e.ray.d) > 0.0 {
+                    RayState::Dead
+                } else {
+                    RayState::RecentlyConnected(e)
+                },
+            RayState::Connected(e) => {
+                // FIXME: Maybe not a good idea...
+                // FIXME: As the shift path may be not used anymore
+                assert!(e.its.n_g.dot(e.ray.d) <= 0.0);
+                RayState::Connected(e)
+            }
             RayState::Dead => RayState::Dead,
         }
     }
@@ -348,8 +366,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
         let mut l_i = ColorGradient::default();
         let pix =  (ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let mut main = match RayState::new(pix, &Point2::new(0,0), scene) {
-            RayState::Dead => return l_i,
             RayState::NotConnected(x) => x,
+            _ => return l_i,
         };
         let mut offsets: Vec<RayState> = {
             GRADIENT_ORDER.iter().map(|e| RayState::new(pix, e, &scene)).collect()
@@ -409,6 +427,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 for (i,offset) in offsets.iter().enumerate() {
                     let (weight, shift_contrib) = match offset {
                         &RayState::Dead => { ( main_weight_num / (0.0001 + main_weight_dem), Color::zero()) },
+                        &RayState::Connected(ref s) => {
+                            unimplemented!();
+                        },
+                        &RayState::RecentlyConnected(ref s) => {
+                            unimplemented!();
+                        }
                         &RayState::NotConnected(ref s) => {
                             // Get intersection informations
                             let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
@@ -445,35 +469,97 @@ impl Integrator<ColorGradient> for IntegratorPath {
             }
 
             break;
-//            /////////////////////////////////
-//            // BSDF sampling
-//            /////////////////////////////////
-//            // Compute an new direction (diffuse)
-//            let sampled_bsdf = match hit_mesh.bsdf.sample(&d_in_local, sampler.next2d()) {
-//                Some(x) => x,
-//                None => return l_i,
-//            };
-//
-//            // Update the throughput
-//            main.throughput *= &sampled_bsdf.weight;
-//
-//            // Generate the new ray and do the intersection
-//            let d_out_global = frame.to_world(sampled_bsdf.d);
-//            main.ray = Ray::new(main.its.p, d_out_global);
-//            main.its = match scene.trace(&main.ray) {
-//                Some(x) => x,
-//                None => return l_i,
-//            };
-//            let next_mesh = &scene.meshes[main.its.geom_id as usize];
-//
-//            // Check that we have intersected a light or not
-//            let cos_light = main.its.n_g.dot(-main.ray.d).max(0.0); // FIXME
-//            if next_mesh.is_light() && cos_light != 0.0 {
-//                let light_pdf = scene.direct_pdf(&main.ray, &main.its);
-//
-//                let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
-//                l_i.main +=  main.throughput * (&next_mesh.emission) * weight_bsdf;
-//            }
+            /////////////////////////////////
+            // BSDF sampling
+            /////////////////////////////////
+            // Compute an new direction (diffuse)
+            let main_sampled_bsdf = match main_hit_mesh.bsdf.sample(&main_d_in_local, sampler.next2d()) {
+                Some(x) => x,
+                None => return l_i,
+            };
+
+            // Generate the new ray and do the intersection
+            let main_d_out_global = main_frame.to_world(main_sampled_bsdf.d);
+            main.ray = Ray::new(main.its.p, main_d_out_global);
+            main.its = match scene.trace(&main.ray) {
+                Some(x) => x,
+                None => return l_i,
+            };
+            let main_next_mesh = &scene.meshes[main.its.geom_id as usize];
+
+            // Check that we have intersected a light or not
+            let (main_light_pdf, main_emitter_rad) = {
+                if main_next_mesh.is_light() && main.its.n_g.dot(-main.ray.d).max(0.0) != 0.0 {
+                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(scene,
+                                                                           &main.ray, &main.its));
+                    (light_pdf, main_next_mesh.emission.clone())
+                } else {
+                    (0.0, Color::zero())
+                }
+            };
+
+            // Update the main path
+            let main_pdf_pred = main.pdf; // FIXME
+            main.throughput *= &(main_sampled_bsdf.weight * main_sampled_bsdf.pdf);
+            main.pdf *= main_sampled_bsdf.pdf;
+
+            let main_weight_num = main_pdf_pred * main_sampled_bsdf.pdf;
+            let main_weight_dem = (main_pdf_pred.powi(2)) *
+                ((main_sampled_bsdf.pdf.powi(2)) + main_light_pdf.powi(2));
+            let main_contrib = main.throughput * main_emitter_rad;
+
+            offsets = offsets.iter()
+                .enumerate().map(|(i,offset)| {
+                let (weight, shift_contrib, new_state) = match offset {
+                    &RayState::Dead => ( main_weight_num / (0.0001 + main_weight_dem),
+                                         Color::zero(), RayState::Dead),
+                    &RayState::Connected(ref s) => {
+                      unimplemented!();
+                    },
+                    &RayState::RecentlyConnected(ref s) => {
+                        unimplemented!(); // TODO: Does it possible?
+                    }
+                    &RayState::NotConnected(ref s) => {
+                        // FIXME: Always do a reconnection here
+                        if !scene.visible(&s.its.p, &main.its.p) {
+                            ( main_weight_num / (0.0001 + main_weight_dem),
+                              Color::zero(), RayState::Dead ) // FIXME: Found a way to do it in an elegant way
+                        } else {
+                            // The current mesh that we do the intersection
+                            let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
+                            // Compute the ratio of geometry factors
+                            let shift_d_out_global = (main.its.p - s.its.p).normalize();
+                            let shift_frame = basis(s.its.n_g);
+                            let shift_d_out_local = shift_frame.to_local(shift_d_out_global);
+                            let shift_d_in_local = shift_frame.to_local(-s.ray.d);
+                            // FIXME: Inf jacobian?
+                            let jacobian = ( s.its.n_g.dot(shift_d_out_global) * main.its.t.powi(2)).abs()
+                                / (0.0001 + (main.its.n_g.dot(-main.ray.d) * (s.its.p - main.its.p).magnitude2()).abs());
+                            // BSDF
+                            let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
+                            let shift_bsdf_pdf= shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local);
+                            // Two case:
+                            // - the main are on a emitter, need to do MIS
+                            // - the main are not on a emitter, just do a reconnection
+                            if main_light_pdf != 0.0 {
+
+                            }
+                            unimplemented!();
+                            // FIXME: Continue the code with the explicit connection
+                            ( main_weight_num / (0.0001 + main_weight_dem),
+                              Color::zero(), RayState::Dead ) // FIXME: Found a way to do it in an elegant way
+                        }
+                    },
+                };
+                // Update the contributions
+                l_i.main += main_contrib * weight;
+                l_i.radiances[i] += shift_contrib * weight;
+                l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
+                // Return the new state
+                new_state
+            }).collect();
+
+            break;
 //
 //            // Russian roulette
 //            let rr_pdf = main.throughput.channel_max().min(0.95);

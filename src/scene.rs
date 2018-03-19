@@ -89,10 +89,30 @@ pub struct LightSampling<'a> {
     pub d : Vector3<f32>,
     pub weight : Color,
 }
-
 impl<'a> LightSampling<'a> {
     pub fn is_valid(&'a self) -> bool {
         self.pdf != 0.0
+    }
+}
+
+pub struct LightSamplingPDF<'a> {
+    pub mesh: &'a Arc<geometry::Mesh>,
+    pub o : Point3<f32>,
+    pub p : Point3<f32>,
+    pub n : Vector3<f32>,
+    pub dir: Vector3<f32>
+}
+impl<'a> LightSamplingPDF<'a> {
+    pub fn new(scene: &'a Scene,
+               ray: &Ray,
+               its: &embree_rs::ray::Intersection) -> LightSamplingPDF<'a> {
+        LightSamplingPDF {
+            mesh: &scene.meshes[its.geom_id as usize],
+            o: ray.o,
+            p: its.p,
+            n: its.n_g,
+            dir: ray.d,
+        }
     }
 }
 
@@ -220,10 +240,10 @@ impl<'a> Scene<'a> {
         !embree_ray.hit()
     }
 
-    pub fn direct_pdf(&self, ray: &Ray, its: &embree_rs::ray::Intersection) -> f32 {
-        let mesh = &self.meshes[its.geom_id as usize];
-        let emitter_id = self.emitters.iter().position(|m| Arc::ptr_eq(mesh,m)).unwrap();
-        mesh.direct_pdf(ray, its) * self.emitters_cdf.pdf(emitter_id)
+    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
+        let emitter_id = self.emitters.iter()
+            .position(|m| Arc::ptr_eq(light_sampling.mesh,m)).unwrap();
+        light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id)
     }
     pub fn sample_light(&self, p: &Point3<f32>, r_sel: f32, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light

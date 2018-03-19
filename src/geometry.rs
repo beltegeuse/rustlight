@@ -10,6 +10,7 @@ use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
 use tools::StepRangeInt;
 use material::{BSDF,BSDFDiffuse};
 use structure::Ray;
+use scene::LightSamplingPDF;
 
 // FIXME: Support custom UV
 // FIXME: Support custom normal
@@ -144,12 +145,12 @@ impl Mesh {
     }
 
     /// PDF value when we intersect the light
-    pub fn direct_pdf(&self, ray: &Ray, its: &embree_rs::ray::Intersection) -> f32 {
-        let cos_light = its.n_g.dot(-ray.d).max(0.0);
+    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
+        let cos_light = light_sampling.n.dot(-light_sampling.dir).max(0.0);
         if cos_light == 0.0 {
             0.0
         } else {
-            let geom_inv = (its.t * its.t) / cos_light;
+            let geom_inv = (light_sampling.p - light_sampling.o).magnitude2() / cos_light;
             self.pdf() * geom_inv
         }
     }
