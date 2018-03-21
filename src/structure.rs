@@ -180,6 +180,16 @@ impl Add<Color> for Color {
         }
     }
 }
+impl<'a> Add<&'a Color> for Color {
+    type Output = Self;
+    fn add(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r + other.r,
+            g: self.g + other.g,
+            b: self.b + other.b,
+        }
+    }
+}
 
 // FIXME: Evaluate if we keep it or not
 // FIXME: If we keep it, add tfar, tmin ...

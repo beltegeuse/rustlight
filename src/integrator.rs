@@ -180,7 +180,7 @@ impl Integrator<Color> for IntegratorPath {
 
             // Add the emission for the light intersection
             let hit_mesh = &scene.meshes[intersection.geom_id as usize];
-            if depth == 1 {
+            if depth == 1 { // TODO: Add throughput
                 l_i += &hit_mesh.emission;
             }
 
@@ -256,6 +256,7 @@ impl Integrator<Color> for IntegratorPath {
 
 #[derive(Clone, Debug, Copy)]
 pub struct ColorGradient {
+    pub very_direct: Color,
     pub main: Color,
     pub radiances: [Color; 4],
     pub gradients: [Color; 4],
@@ -276,6 +277,7 @@ pub static GRADIENT_DIRECTION: [GradientDirection; 4] = [
 impl Default for ColorGradient {
     fn default() -> Self {
         ColorGradient {
+            very_direct: Color::zero(),
             main: Color::zero(),
             radiances: [Color::zero(); 4],
             gradients: [Color::zero(); 4],
@@ -284,6 +286,7 @@ impl Default for ColorGradient {
 }
 impl AddAssign<ColorGradient> for ColorGradient {
     fn add_assign(&mut self, other: ColorGradient) {
+        self.very_direct += other.very_direct;
         self.main += other.main;
         for i in 0..self.gradients.len() {
             self.radiances[i] += other.radiances[i];
@@ -293,6 +296,7 @@ impl AddAssign<ColorGradient> for ColorGradient {
 }
 impl Scale<f32> for ColorGradient {
     fn scale(&mut self, v: f32) {
+        self.very_direct.scale(v);
         self.main.scale(v);
         for i in 0..self.gradients.len() {
             self.radiances[i].scale(v);
@@ -385,14 +389,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
             // Add the emission for the light intersection
             let main_hit_mesh = &scene.meshes[main.its.geom_id as usize];
-            // TODO: Do not put direct lighting for now because it might leads to too much reconstruction error
-//            if depth == 1 {
-//                l_i.main += &hit_mesh.emission;
-//                for (i,o) in offsets.iter_mut().enumerate() {
-//                    let hit_mesh = &scene.meshes[main.its.geom_id as usize];
-//                    l_i.gradients[i] += &hit_mesh.emission;
-//                }
-//            }
+            if depth == 1 {
+                l_i.very_direct += &main_hit_mesh.emission; // TODO: Add throughput
+            }
 
 
             // Construct local frame
@@ -428,9 +427,21 @@ impl Integrator<ColorGradient> for IntegratorPath {
                     let (weight, shift_contrib) = match offset {
                         &RayState::Dead => { ( main_weight_num / (0.0001 + main_weight_dem), Color::zero()) },
                         &RayState::Connected(ref s) => {
-                            unimplemented!();
+                            // FIXME: See if we can simplify the structure, as we need to know:
+                            //  - throughput
+                            //  - pdf
+                            // only
+                            let shift_weight_dem = s.pdf.powi(2) *
+                                (main_light_record.pdf.powi(2) + main_bsdf_pdf.powi(2));
+                            let shift_contrib = s.throughput * main_bsdf_value * main_emitter_rad;
+                            (main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem), shift_contrib)
                         },
                         &RayState::RecentlyConnected(ref s) => {
+                            // Need to re-evaluate the BSDF as the incomming direction is different
+                            // FIXME: We only need to know:
+                            //  - throughput
+                            //  - pdf
+                            //  - incomming direction (in world space)
                             unimplemented!();
                         }
                         &RayState::NotConnected(ref s) => {
@@ -438,6 +449,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
                             let shift_frame = basis(s.its.n_g);
                             let shift_d_in_local = shift_frame.to_local(-s.ray.d);
+                            // FIXME: We need to check the light source type in order to continue or not
+                            // FIXME: the ray tracing...
+
                             // Sample the light from the point
                             let shift_light_record = scene.sample_light(&s.its.p,
                                                                         r_sel_rand,
@@ -468,7 +482,6 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
             }
 
-            break;
             /////////////////////////////////
             // BSDF sampling
             /////////////////////////////////
@@ -499,7 +512,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
             };
 
             // Update the main path
-            let main_pdf_pred = main.pdf; // FIXME
+            let main_pdf_pred = main.pdf; // FIXME: need to compute the MIS weight after this point
             main.throughput *= &(main_sampled_bsdf.weight * main_sampled_bsdf.pdf);
             main.pdf *= main_sampled_bsdf.pdf;
 
@@ -508,19 +521,30 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 ((main_sampled_bsdf.pdf.powi(2)) + main_light_pdf.powi(2));
             let main_contrib = main.throughput * main_emitter_rad;
 
-            offsets = offsets.iter()
+            offsets = offsets.into_iter()
                 .enumerate().map(|(i,offset)| {
                 let (weight, shift_contrib, new_state) = match offset {
-                    &RayState::Dead => ( main_weight_num / (0.0001 + main_weight_dem),
+                    RayState::Dead => ( main_weight_num / (0.0001 + main_weight_dem),
                                          Color::zero(), RayState::Dead),
-                    &RayState::Connected(ref s) => {
-                      unimplemented!();
+                    RayState::Connected(mut s) => {
+                        let shift_pdf_pred = s.pdf;
+                        // Update the shifted path
+                        s.throughput *= &(main_sampled_bsdf.weight * main_sampled_bsdf.pdf);
+                        s.pdf *= main_sampled_bsdf.pdf;
+                        // Compute the return values
+                        let shift_weight_dem = shift_pdf_pred.powi(2) *
+                            (main_sampled_bsdf.pdf.powi(2) + main_light_pdf.powi(2));
+                        let shift_contrib = s.throughput * main_emitter_rad;
+                        (main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem),
+                         shift_contrib, RayState::Connected(s))
                     },
-                    &RayState::RecentlyConnected(ref s) => {
+                    RayState::RecentlyConnected(mut s) => {
                         unimplemented!(); // TODO: Does it possible?
+                        // FIXME: The change category to RayState::Connected
                     }
-                    &RayState::NotConnected(ref s) => {
+                    RayState::NotConnected(mut s) => {
                         // FIXME: Always do a reconnection here
+                        // FIXME: Implement half-vector copy
                         if !scene.visible(&s.its.p, &main.its.p) {
                             ( main_weight_num / (0.0001 + main_weight_dem),
                               Color::zero(), RayState::Dead ) // FIXME: Found a way to do it in an elegant way
@@ -538,16 +562,38 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             // BSDF
                             let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
                             let shift_bsdf_pdf= shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local);
+                            // FIXME: Dead path? if pdf == 0.0, maybe add inside a check
+                            // Update shift path
+                            let shift_pdf_pred = s.pdf;
+                            s.throughput *= &(shift_bsdf_value * jacobian);
+                            s.pdf *= shift_bsdf_pdf * jacobian;
+
                             // Two case:
                             // - the main are on a emitter, need to do MIS
                             // - the main are not on a emitter, just do a reconnection
-                            if main_light_pdf != 0.0 {
+                            let (shift_emitter_rad, shift_emitter_pdf) = if main_light_pdf == 0.0 {
+                                // The base path did not hit a light source
+                                // FIXME: Do not use the trick of 0 PDF
+                                (Color::zero(), 0.0)
+                            } else {
+                                let shift_emitter_pdf = scene.direct_pdf(LightSamplingPDF {
+                                    mesh: main_next_mesh,
+                                    o: s.its.p,
+                                    p: main.its.p,
+                                    n: main.its.n_g,
+                                    dir: shift_d_out_global,
+                                });
+                                // FIXME: We return without the cos as the light
+                                // FIXME: does not change, does it true for non uniform light?
+                                (main_emitter_rad.clone(), shift_emitter_pdf)
+                            };
 
-                            }
-                            unimplemented!();
-                            // FIXME: Continue the code with the explicit connection
-                            ( main_weight_num / (0.0001 + main_weight_dem),
-                              Color::zero(), RayState::Dead ) // FIXME: Found a way to do it in an elegant way
+                            // Return the shift path updated + MIS weights
+                            let shift_weight_dem = shift_pdf_pred.powi(2)
+                                * (shift_bsdf_pdf.powi(2) + shift_emitter_pdf.powi(2) );
+                            let shift_contrib = s.throughput * shift_emitter_rad;
+                            ( main_weight_num / (0.0001 + shift_weight_dem + main_weight_dem),
+                              shift_contrib, RayState::RecentlyConnected(s))
                         }
                     },
                 };
@@ -560,6 +606,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
             }).collect();
 
             break;
+            // FIXME: the RR apply to all the paths. It is not a probability.
 //
 //            // Russian roulette
 //            let rr_pdf = main.throughput.channel_max().min(0.95);

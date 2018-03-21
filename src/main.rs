@@ -144,7 +144,8 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
     for x in 0..img_grad.size.x {
         for y in 0..img_grad.size.y {
             let pos = Point2::new(x, y);
-            image.accum(pos, next.get(pos));
+            let pix_value = next.get(pos).clone() + img_grad.get(pos).very_direct.clone();
+            image.accum(pos, &pix_value);
         }
     }
     image

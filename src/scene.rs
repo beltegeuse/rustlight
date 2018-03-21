@@ -256,17 +256,17 @@ impl<'a> Scene<'a> {
         d /= dist;
 
         // Compute the geometry
-        let geom_light = sampled_pos.n.dot(-d).max(0.0) / (dist * dist);
-        let emission = emitter.emission * (geom_light / (pdf_sel * sampled_pos.pdf));
+        let cos_light = sampled_pos.n.dot(-d).max(0.0);
+        let pdf = if cos_light == 0.0 { 0.0 } else { (pdf_sel * sampled_pos.pdf * dist * dist) / cos_light };
+        let emission = if pdf == 0.0 { Color::zero() } else { emitter.emission / pdf };
         LightSampling {
             emitter,
-            pdf : if geom_light == 0.0 {0.0} else {sampled_pos.pdf * pdf_sel * ( 1.0 / geom_light )},
+            pdf,
             p: sampled_pos.p,
             n: sampled_pos.n,
             d,
             weight: emission,
         }
-
     }
     pub fn random_select_emitter(&self, v: f32) -> (f32, &geometry::Mesh) {
         let id_light = self.emitters_cdf.sample(v);
