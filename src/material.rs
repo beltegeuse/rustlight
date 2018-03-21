@@ -64,7 +64,7 @@ pub struct BSDFPhong {
 }
 impl BSDF for BSDFPhong {
     fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
-        let sin_alpha = 1.0 - sample.y.powf(2.0 / (self.exponent + 1.0));
+        let sin_alpha = (1.0 - sample.y.powf(2.0 / (self.exponent + 1.0))).sqrt();
         let cos_alpha = sample.y.powf( 1.0 / (self.exponent + 1.0));
         let phi = 2.0 * std::f32::consts::PI * sample.x;
         let local_dir = Vector3::new(sin_alpha * phi.cos(), sin_alpha * phi.sin(), cos_alpha);
@@ -93,7 +93,11 @@ impl BSDF for BSDFPhong {
             0.0
         } else {
             let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
-            alpha.powf(self.exponent) * (self.exponent + 1.0) / (2.0 * std::f32::consts::PI)
+            if alpha > 0.0 {
+                alpha.powf(self.exponent) * (self.exponent + 1.0) / (2.0 * std::f32::consts::PI)
+            } else {
+                0.0
+            }
         }
     }
 
@@ -103,7 +107,12 @@ impl BSDF for BSDFPhong {
             Color::zero()
         } else {
             let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
-            self.specular * ( std::f32::consts::FRAC_1_PI * 0.5 * alpha.powf(self.exponent) )
+            if alpha > 0.0 {
+                self.specular *
+                    (alpha.powf(self.exponent) * (self.exponent + 2.0) / (2.0 * std::f32::consts::PI))
+            } else {
+                Color::zero()
+            }
         }
 
     }
