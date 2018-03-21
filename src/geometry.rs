@@ -93,7 +93,7 @@ impl Mesh {
             let v1 = trimesh.vertices[trimesh.indices[i+1] as usize];
             let v2 = trimesh.vertices[trimesh.indices[i+2] as usize];
 
-            let area = (v0 - v1).dot(v0 - v2).abs() * 0.5;
+            let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
             dist_const.add(area);
         }
 
