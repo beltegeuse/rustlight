@@ -343,6 +343,17 @@ impl RayState {
         }
     }
 
+    pub fn apply_russian_roulette(&mut self, rr_prob: f32) {
+        match self {
+            &mut RayState::Dead => {},
+            &mut RayState::NotConnected(ref mut e) |
+            &mut RayState::Connected(ref mut e) |
+            &mut RayState::RecentlyConnected(ref mut e) => {
+                e.throughput /= rr_prob;
+            }
+        }
+    }
+
     pub fn new((x, y): (f32, f32), off: &Point2<i32>, scene: &Scene) -> RayState {
         let pix = (x + off.x as f32, y + off.y as f32);
         if  pix.0 < 0.0 || pix.0 > (scene.camera.size().x as f32) ||
@@ -424,7 +435,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 let main_geom_dsquared = (main.its.p - main_light_record.p).magnitude2();
                 let main_geom_cos_light = main_light_record.n.dot(main_light_record.d);
                 for (i,offset) in offsets.iter().enumerate() {
-                    let (weight, shift_contrib) = match offset {
+                    let (shift_weight_dem, shift_contrib) = match offset {
                         &RayState::Dead => { ( main_weight_num / (0.0001 + main_weight_dem), Color::zero()) },
                         &RayState::Connected(ref s) => {
                             // FIXME: See if we can simplify the structure, as we need to know:
@@ -434,7 +445,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_weight_dem = s.pdf.powi(2) *
                                 (main_light_record.pdf.powi(2) + main_bsdf_pdf.powi(2));
                             let shift_contrib = s.throughput * main_bsdf_value * main_emitter_rad;
-                            (main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem), shift_contrib)
+                            (shift_weight_dem, shift_contrib)
                         },
                         &RayState::RecentlyConnected(ref s) => {
                             // Need to re-evaluate the BSDF as the incomming direction is different
@@ -442,7 +453,18 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             //  - throughput
                             //  - pdf
                             //  - incomming direction (in world space)
-                            unimplemented!();
+                            let shift_d_in_global = (s.its.p - main.its.p).normalize();
+                            let shift_d_in_local = main_frame.to_local(shift_d_in_global);
+                            // BSDF
+                            let shift_bsdf_pdf = if main_light_visible && shift_d_in_local.z > 0.0 {
+                                main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local)
+                            } else { 0.0 };
+                            let shift_bsdf_value = if shift_d_in_local.z > 0.0 { main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local) } else { Color::zero() };
+                            // Compute and return
+                            let shift_weight_dem = (s.pdf).powi(2) *
+                                (main_light_record.pdf.powi(2) + shift_bsdf_pdf.powi(2));
+                            let shift_contrib = s.throughput * shift_bsdf_value * main_emitter_rad;
+                            (shift_weight_dem, shift_contrib)
                         }
                         &RayState::NotConnected(ref s) => {
                             // Get intersection informations
@@ -471,10 +493,11 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_weight_dem = (jacobian * s.pdf).powi(2) *
                                 (shift_light_record.pdf.powi(2) + shift_bsdf_pdf.powi(2));
                             let shift_contrib = jacobian * s.throughput * shift_bsdf_value * shift_emitter_rad;
-                            let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
-                            (weight, shift_contrib)
+                            (shift_weight_dem, shift_contrib)
                         },
                     };
+
+                    let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
                     l_i.main += main_contrib * weight;
                     l_i.radiances[i] += shift_contrib * weight;
                     l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
@@ -523,9 +546,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
             offsets = offsets.into_iter()
                 .enumerate().map(|(i,offset)| {
-                let (weight, shift_contrib, new_state) = match offset {
-                    RayState::Dead => ( main_weight_num / (0.0001 + main_weight_dem),
-                                         Color::zero(), RayState::Dead),
+                let (shift_weight_dem, shift_contrib, new_state) = match offset {
+                    RayState::Dead => ( 0.0, Color::zero(), RayState::Dead),
                     RayState::Connected(mut s) => {
                         let shift_pdf_pred = s.pdf;
                         // Update the shifted path
@@ -535,19 +557,30 @@ impl Integrator<ColorGradient> for IntegratorPath {
                         let shift_weight_dem = shift_pdf_pred.powi(2) *
                             (main_sampled_bsdf.pdf.powi(2) + main_light_pdf.powi(2));
                         let shift_contrib = s.throughput * main_emitter_rad;
-                        (main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem),
-                         shift_contrib, RayState::Connected(s))
+                        ( shift_weight_dem, shift_contrib, RayState::Connected(s))
                     },
                     RayState::RecentlyConnected(mut s) => {
-                        unimplemented!(); // TODO: Does it possible?
-                        // FIXME: The change category to RayState::Connected
+                        let shift_d_in_global = (s.its.p - main.its.p).normalize();
+                        let shift_d_in_local = main_frame.to_local(shift_d_in_global);
+                        let main_d_out_local = main_frame.to_local(main.ray.d);
+                        // BSDF
+                        let shift_bsdf_pdf = if shift_d_in_local.z > 0.0 { main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local) } else { 0.0 };
+                        let shift_bsdf_value = if shift_d_in_local.z > 0.0 { main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local) } else { Color::zero() };
+                        // Update main path
+                        let shift_pdf_pred = s.pdf;
+                        s.throughput *= &shift_bsdf_value;
+                        s.pdf *= shift_bsdf_pdf;
+                        // Compute and return
+                        let shift_weight_dem = shift_pdf_pred.powi(2) *
+                            (shift_bsdf_pdf.powi(2) + main_light_pdf.powi(2));
+                        let shift_contrib = s.throughput * main_emitter_rad;
+                        ( shift_weight_dem, shift_contrib, RayState::Connected(s))
                     }
                     RayState::NotConnected(mut s) => {
                         // FIXME: Always do a reconnection here
                         // FIXME: Implement half-vector copy
                         if !scene.visible(&s.its.p, &main.its.p) {
-                            ( main_weight_num / (0.0001 + main_weight_dem),
-                              Color::zero(), RayState::Dead ) // FIXME: Found a way to do it in an elegant way
+                            ( 0.0, Color::zero(), RayState::Dead ) // FIXME: Found a way to do it in an elegant way
                         } else {
                             // The current mesh that we do the intersection
                             let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
@@ -592,12 +625,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_weight_dem = shift_pdf_pred.powi(2)
                                 * (shift_bsdf_pdf.powi(2) + shift_emitter_pdf.powi(2) );
                             let shift_contrib = s.throughput * shift_emitter_rad;
-                            ( main_weight_num / (0.0001 + shift_weight_dem + main_weight_dem),
-                              shift_contrib, RayState::RecentlyConnected(s))
+                            ( shift_weight_dem, shift_contrib, RayState::RecentlyConnected(s))
                         }
                     },
                 };
                 // Update the contributions
+                let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
                 l_i.main += main_contrib * weight;
                 l_i.radiances[i] += shift_contrib * weight;
                 l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
@@ -605,17 +638,16 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 new_state
             }).collect();
 
-            break;
-            // FIXME: the RR apply to all the paths. It is not a probability.
-//
-//            // Russian roulette
-//            let rr_pdf = main.throughput.channel_max().min(0.95);
-//            if rr_pdf < sampler.next() {
-//                break;
-//            }
-//            main.throughput /= rr_pdf;
-//            // Increase the depth of the current path
-//            depth += 1;
+            // Russian roulette
+            let rr_pdf = (main.throughput / main.pdf).channel_max().min(0.95);
+            if rr_pdf < sampler.next() {
+                break;
+            }
+            main.throughput /= rr_pdf;
+            offsets.iter_mut().for_each(|o| o.apply_russian_roulette(rr_pdf));
+
+            // Increase the depth of the current path
+            depth += 1;
         }
 
         l_i
