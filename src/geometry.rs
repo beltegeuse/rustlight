@@ -9,7 +9,6 @@ use structure::{Color};
 use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
 use tools::StepRangeInt;
 use material::{BSDF,BSDFDiffuse};
-use structure::Ray;
 use scene::LightSamplingPDF;
 
 // FIXME: Support custom UV

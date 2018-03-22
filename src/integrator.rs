@@ -155,7 +155,8 @@ impl Integrator<Color> for IntergratorDirect {
 
 ////////////// Path tracing
 pub struct IntegratorPath {
-    pub max_depth : Option<u32>
+    pub max_depth : Option<u32>,
+    pub min_depth : Option<u32>,
 }
 impl Integrator<Color> for IntegratorPath {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
@@ -172,7 +173,7 @@ impl Integrator<Color> for IntegratorPath {
         };
 
         let mut depth: u32 = 1;
-        while self.max_depth.is_none() || (depth < self.max_depth.unwrap()) {
+        while self.max_depth.map_or(true, |max| depth < max) {
             // Check if we go the right orientation
             if intersection.n_g.dot(ray.d) > 0.0 {
                 return l_i;
@@ -180,8 +181,8 @@ impl Integrator<Color> for IntegratorPath {
 
             // Add the emission for the light intersection
             let hit_mesh = &scene.meshes[intersection.geom_id as usize];
-            if depth == 1 { // TODO: Add throughput
-                l_i += &hit_mesh.emission;
+            if self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
+                l_i += &hit_mesh.emission; // TODO: Add throughput
             }
 
             // Construct local frame
@@ -203,10 +204,12 @@ impl Integrator<Color> for IntegratorPath {
 
                 // Compute MIS weights
                 let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
-                l_i += weight_light
-                    * throughput
-                    * hit_mesh.bsdf.eval(&d_in_local, &d_out_local)
-                    * light_record.weight;
+                if self.min_depth.map_or(true, |min| depth >= min) {
+                    l_i += weight_light
+                        * throughput
+                        * hit_mesh.bsdf.eval(&d_in_local, &d_out_local)
+                        * light_record.weight;
+                }
             }
 
             /////////////////////////////////
@@ -237,7 +240,9 @@ impl Integrator<Color> for IntegratorPath {
                                                                        &ray, &intersection));
 
                 let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
-                l_i += throughput * (&next_mesh.emission) * weight_bsdf;
+                if self.min_depth.map_or(true, |min| depth >= min) {
+                    l_i += throughput * (&next_mesh.emission) * weight_bsdf;
+                }
             }
 
             // Russian roulette
@@ -400,7 +405,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
             // Add the emission for the light intersection
             let main_hit_mesh = &scene.meshes[main.its.geom_id as usize];
-            if depth == 1 {
+            if self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
                 l_i.very_direct += &main_hit_mesh.emission; // TODO: Add throughput
             }
 
@@ -429,7 +434,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 // Cache PDF / throughput values
                 let main_weight_num = main.pdf * main_light_record.pdf;
                 let main_weight_dem = (main.pdf.powi(2)) *
-                    ((main_light_record.pdf.powi(2)) + main_bsdf_pdf.powi(2));
+                    (main_light_record.pdf.powi(2) + main_bsdf_pdf.powi(2));
                 let main_contrib = main.throughput * main_bsdf_value * main_emitter_rad;
                 // Cache geometric informations
                 let main_geom_dsquared = (main.its.p - main_light_record.p).magnitude2();
@@ -497,10 +502,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                         },
                     };
 
-                    let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
-                    l_i.main += main_contrib * weight;
-                    l_i.radiances[i] += shift_contrib * weight;
-                    l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
+                    if self.min_depth.map_or(true, |min| depth >= min) {
+                        let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
+                        l_i.main += main_contrib * weight;
+                        l_i.radiances[i] += shift_contrib * weight;
+                        l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
+                    }
                 }
 
             }
@@ -538,6 +545,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
             let main_pdf_pred = main.pdf; // FIXME: need to compute the MIS weight after this point
             main.throughput *= &(main_sampled_bsdf.weight * main_sampled_bsdf.pdf);
             main.pdf *= main_sampled_bsdf.pdf;
+            if main.pdf == 0.0 || main.throughput.is_zero() {
+                return l_i;
+            }
 
             let main_weight_num = main_pdf_pred * main_sampled_bsdf.pdf;
             let main_weight_dem = (main_pdf_pred.powi(2)) *
@@ -590,7 +600,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_d_out_local = shift_frame.to_local(shift_d_out_global);
                             let shift_d_in_local = shift_frame.to_local(-s.ray.d);
                             // FIXME: Inf jacobian?
-                            let jacobian = ( s.its.n_g.dot(shift_d_out_global) * main.its.t.powi(2)).abs()
+                            let jacobian = ( main.its.n_g.dot(-shift_d_out_global) * main.its.t.powi(2)).abs()
                                 / (0.0001 + (main.its.n_g.dot(-main.ray.d) * (s.its.p - main.its.p).magnitude2()).abs());
                             // BSDF
                             let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
@@ -630,10 +640,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                     },
                 };
                 // Update the contributions
-                let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
-                l_i.main += main_contrib * weight;
-                l_i.radiances[i] += shift_contrib * weight;
-                l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
+                if self.min_depth.map_or(true, |min| depth >= min) {
+                    let weight = main_weight_num / (0.0001 + main_weight_dem + shift_weight_dem);
+                    l_i.main += main_contrib * weight;
+                    l_i.radiances[i] += shift_contrib * weight;
+                    l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
+                }
                 // Return the new state
                 new_state
             }).collect();

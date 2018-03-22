@@ -151,6 +151,16 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
     image
 }
 
+fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
+    match input {
+        "inf" => None,
+        _ => match input.parse::<T>() {
+            Ok(x) => Some(x),
+            Err(_e) => panic!("wrong input for inf type parameter"),
+        }
+    }
+}
+
 fn main() {
     // Read input args
     let matches = App::new("rustlight")
@@ -172,10 +182,12 @@ fn main() {
             .help("integration technique"))
         .subcommand(SubCommand::with_name("path")
             .about("path tracing")
-            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf")))
+            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf"))
+            .arg(Arg::with_name("min").takes_value(true).short("n").default_value("inf")))
         .subcommand(SubCommand::with_name("gd-path")
             .about("gradient-domain path tracing")
-            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf")))
+            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf"))
+            .arg(Arg::with_name("min").takes_value(true).short("n").default_value("inf")))
         .subcommand(SubCommand::with_name("ao")
             .about("ambiant occlusion")
             .arg(Arg::with_name("distance").takes_value(true).short("d").default_value("inf")))
@@ -208,35 +220,26 @@ fn main() {
 
     let img = match matches.subcommand() {
         ("path", Some(m)) => {
-            let max_str = m.value_of("max").unwrap();
-            let max_depth: Option<u32> = match max_str {
-                "inf" => None,
-                _ => Some(max_str.parse::<u32>().expect("wrong distance"))
-            };
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_depth = match_infinity(m.value_of("min").unwrap());
 
             classical_mc_integration(&scene, nb_samples,
                                      Box::new(rustlight::integrator::IntegratorPath {
-                max_depth,
+                max_depth, min_depth,
             }))
         },
         ("gd-path", Some(m)) => {
-            let max_str = m.value_of("max").unwrap();
-            let max_depth: Option<u32> = match max_str {
-                "inf" => None,
-                _ => Some(max_str.parse::<u32>().expect("wrong distance"))
-            };
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_depth = match_infinity(m.value_of("min").unwrap());
 
             gradient_domain_integration(&scene, nb_samples,
                                      Box::new(rustlight::integrator::IntegratorPath {
-                                         max_depth,
+                                         max_depth, min_depth
                                      }))
         },
         ("ao", Some(m)) => {
-            let dist_str = m.value_of("distance").unwrap();
-            let dist: Option<f32> = match dist_str {
-                "inf" => None,
-                _ => Some(dist_str.parse::<f32>().expect("wrong distance"))
-            };
+            let dist = match_infinity(m.value_of("distance").unwrap());
+
             classical_mc_integration( &scene, nb_samples,
                                      Box::new(rustlight::integrator::IntergratorAO {
                 max_distance: dist,
