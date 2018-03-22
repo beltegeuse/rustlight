@@ -6,20 +6,25 @@ Physically-based rendering engine implemented with **Rust**.
 
 ## Features
 
-For now, only path tracing with next event estimation is implemented. These are the following features implemented:
-
-- Materials: Diffuse and Phong lobe
+For now, these are the following features implemented:
+- Integrators: ambiant occlusion, direct, path-tracing and gradient-domain path tracing.
+- Filtering: image-domain control variate reconstruction (uniform weights)
+- Materials: diffuse and phong lobe
 - Emitters: multiple surface lights support
 
 ## Rendering 
 
-![Cornel Box](http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/rustlight/cbox.png)
+![Cornel Box gradient-domain pt](http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/rustlight/cbox_gpt_uni.png)
+
+This image have been rendered using gradient-domain path tracing with image-domain control variate reconstruction (uniform weight) with 16 samples per pixels (rendering time: ~15 sec).
 
 ## Roadmap
 
 Rendering algorithms for path-tracing:
-- Gradient-domain path tracing with image-space control variate reconstruction.
-- MCMC using PSSMLT
+- Fixing gradient-domain path tracing: seems to have wrong gradient when the light source is not visible from the base path
+- Add weighted control variate reconstruction
+- gradient-domain path reuse
+- PSSMLT
 
 Other rendering features: 
 
