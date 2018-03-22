@@ -1,14 +1,18 @@
 use cgmath::*;
 use image::*;
-use std::ops::{AddAssign, Mul, MulAssign, DivAssign};
+use std::ops::*;
 use std;
 
 /// Pixel color representation
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
     pub b: f32,
+}
+
+pub trait Scale<T> {
+    fn scale(&mut self, v: T);
 }
 
 impl Color {
@@ -34,16 +38,22 @@ impl Color {
                             (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
                             255)
     }
-    pub fn mul(&mut self, v: f32) {
-        self.r *= v;
-        self.g *= v;
-        self.b *= v;
-    }
     pub fn channel_max(&self) -> f32 {
         self.r.max(self.g.max(self.b))
     }
 }
-
+impl Default for Color {
+    fn default() -> Self {
+        Color::zero()
+    }
+}
+impl Scale<f32> for Color {
+    fn scale(&mut self, v: f32) {
+        self.r *= v;
+        self.g *= v;
+        self.b *= v;
+    }
+}
 
 /////////////// Operators
 impl DivAssign<f32> for Color {
@@ -78,13 +88,30 @@ impl AddAssign<Color> for Color {
     }
 }
 
+impl Div<f32> for Color {
+    fn div(self, other: f32) -> Color {
+        assert!(other.is_finite());
+        assert!(other != 0.0);
+        Color {
+            r: self.r / other,
+            g: self.g / other,
+            b: self.b / other,
+        }
+    }
+    type Output = Self;
+}
+
 impl Mul<f32> for Color {
     fn mul(self, other: f32) -> Color {
-        assert!(other.is_finite());
-        Color {
-            r: self.r * other,
-            g: self.g * other,
-            b: self.b * other,
+        //assert!(other.is_finite());
+        if other.is_finite() {
+            Color {
+                r: self.r * other,
+                g: self.g * other,
+                b: self.b * other,
+            }
+        } else {
+            Color::zero()
         }
     }
     type Output = Self;
@@ -132,6 +159,36 @@ impl Mul<Color> for Color {
         }
     }
     type Output = Self;
+}
+impl Sub<Color> for Color {
+    fn sub(self, other: Color) -> Color {
+        Color {
+            r: self.r - other.r,
+            g: self.g - other.g,
+            b: self.b - other.b,
+        }
+    }
+    type Output = Self;
+}
+impl Add<Color> for Color {
+    type Output = Self;
+    fn add(self, other: Color) -> Color {
+        Color {
+            r: self.r + other.r,
+            g: self.g + other.g,
+            b: self.b + other.b,
+        }
+    }
+}
+impl<'a> Add<&'a Color> for Color {
+    type Output = Self;
+    fn add(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r + other.r,
+            g: self.g + other.g,
+            b: self.b + other.b,
+        }
+    }
 }
 
 // FIXME: Evaluate if we keep it or not

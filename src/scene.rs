@@ -2,6 +2,8 @@ use std::cmp;
 use std::u32;
 use std;
 use std::sync::Arc;
+use std::error::Error;
+use std::ops::{AddAssign};
 
 use rayon::prelude::*;
 use cgmath::*;
@@ -9,33 +11,34 @@ use embree_rs;
 use serde_json;
 
 // my includes
-use structure::{Color, Ray};
+use structure::*;
 use camera::{Camera, CameraParam};
 use integrator::*;
 use geometry;
 use tools::StepRangeInt;
 use sampler;
 use math::{Distribution1DConstruct,Distribution1D};
+use material::*;
 
 /// Image block
 /// for easy paralelisation over the threads
-pub struct Bitmap {
+pub struct Bitmap<T: Default + AddAssign + Scale<f32> + Clone> {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
-    pub pixels: Vec<Color>,
+    pub pixels: Vec<T>,
 }
 
-impl Bitmap {
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap {
+impl<T: Default + AddAssign + Scale<f32> + Clone > Bitmap<T> {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap<T> {
         Bitmap {
             pos,
             size,
-            pixels: vec![Color { r: 0.0, g: 0.0, b: 0.0 };
+            pixels: vec![T::default();
                          (size.x * size.y) as usize],
         }
     }
 
-    pub fn accum_bitmap(&mut self, o: &Bitmap) {
+    pub fn accum_bitmap(&mut self, o: &Bitmap<T>) {
         for x in 0..o.size.x {
             for y in 0..o.size.y {
                 let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
@@ -44,21 +47,36 @@ impl Bitmap {
         }
     }
 
-    pub fn accum(&mut self, p: Point2<u32>, f: &Color) {
+    pub fn accum(&mut self, p: Point2<u32>, f: &T) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        self.pixels[(p.y * self.size.y + p.x) as usize] += f;
+        self.pixels[(p.y * self.size.y + p.x) as usize] += f.clone(); // FIXME: Not good for performance
     }
 
-    pub fn get(&self, p: Point2<u32>) -> &Color {
+    pub fn accum_safe(&mut self, p: Point2<i32>, f: T) {
+        if p.x >= 0
+            && p.y >= 0
+            && p.x < (self.size.x as i32)
+            && p.y < (self.size.y as i32) {
+            self.pixels[((p.y as u32) * self.size.y + p.x as u32) as usize] += f.clone(); // FIXME: Bad performance?
+        }
+    }
+
+    pub fn get(&self, p: Point2<u32>) -> &T {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         &self.pixels[(p.y * self.size.y + p.x) as usize]
     }
 
-    pub fn weight(&mut self, f: f32) {
+    pub fn reset(&mut self) {
+        self.pixels.iter_mut().for_each(|x| *x = T::default());
+    }
+}
+
+impl<T: Default + AddAssign + Scale<f32> + Clone> Scale<f32> for Bitmap<T> {
+    fn scale(&mut self, f: f32) {
         assert!(f > 0.0);
-        self.pixels.iter_mut().for_each(|v| v.mul(f));
+        self.pixels.iter_mut().for_each(|v| v.scale(f));
     }
 }
 
@@ -71,10 +89,30 @@ pub struct LightSampling<'a> {
     pub d : Vector3<f32>,
     pub weight : Color,
 }
-
 impl<'a> LightSampling<'a> {
     pub fn is_valid(&'a self) -> bool {
         self.pdf != 0.0
+    }
+}
+
+pub struct LightSamplingPDF<'a> {
+    pub mesh: &'a Arc<geometry::Mesh>,
+    pub o : Point3<f32>,
+    pub p : Point3<f32>,
+    pub n : Vector3<f32>,
+    pub dir: Vector3<f32>
+}
+impl<'a> LightSamplingPDF<'a> {
+    pub fn new(scene: &'a Scene,
+               ray: &Ray,
+               its: &embree_rs::ray::Intersection) -> LightSamplingPDF<'a> {
+        LightSamplingPDF {
+            mesh: &scene.meshes[its.geom_id as usize],
+            o: ray.o,
+            p: its.p,
+            n: its.n_g,
+            dir: ray.d,
+        }
     }
 }
 
@@ -89,16 +127,14 @@ pub struct Scene<'a> {
     #[allow(dead_code)]
     embree_device: embree_rs::scene::Device<'a>,
     embree_scene: embree_rs::scene::Scene<'a>,
-    // Integrator
-    integrator : Box<Integrator + Send + Sync>
 }
 
 impl<'a> Scene<'a> {
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: &str, wk: &std::path::Path, int: Box<Integrator + Send + Sync>) -> Result<Scene<'a>, String> {
+    pub fn new(data: &str, wk: &std::path::Path) -> Result<Scene<'a>, Box<Error>> {
         // Read json string
-        let v: serde_json::Value = serde_json::from_str(data).map_err(|e| e.to_string())?;
+        let v: serde_json::Value = serde_json::from_str(data)?;
 
         // Allocate embree
         let mut device = embree_rs::scene::Device::new();
@@ -106,8 +142,9 @@ impl<'a> Scene<'a> {
                                                 embree_rs::scene::AlgorithmFlags::INTERSECT1);
 
         // Read the object
-        let obj_path = wk.join(v["meshes"].as_str().expect("impossible to read 'meshes' entry"));
-        let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path()).expect("error during loading OBJ");
+        let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
+        let obj_path = wk.join(obj_path_str);
+        let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path())?;
 
         // Build embree as we will not geometry for now
         println!("Build the acceleration structure");
@@ -115,22 +152,40 @@ impl<'a> Scene<'a> {
 
         // Update meshes informations
         //  - which are light?
-        // TODO: Make impossible to add twice a light
         if let Some(emitters_json) = v.get("emitters") {
             for e in emitters_json.as_array().unwrap() {
-                let name: String = serde_json::from_value(e["mesh"].clone()).unwrap();
-                let emission: Color = serde_json::from_value(e["emission"].clone()).unwrap();
+                let name: String = e["mesh"].as_str().unwrap().to_string();
+                let emission: Color = serde_json::from_value(e["emission"].clone())?;
+                // Get the set of matched meshes
+                let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
+                match matched_meshes.len() {
+                    0 =>  panic!("Not found {} in the obj list", name),
+                    1 => {
+                        matched_meshes[0].emission = emission;
+                    },
+                    _ => panic!("Several {} in the obj list", name),
+                };
+            }
+        }
+        // - BSDF
+        if let Some(bsdfs_json) = v.get("bsdfs") {
+            for b in bsdfs_json.as_array().unwrap() {
+                let name: String = serde_json::from_value(b["mesh"].clone())?;
+                let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
+                let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
+                    "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
+                    "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
+                    _ => panic!("Unknown BSDF type {}", new_bsdf_type),
+                };
 
-                let mut found = false;
-                for m in &mut meshes {
-                    if m.name == name {
-                        m.emission = emission.clone();
-                        found = true;
-                        println!("Ligth {:?} emission created", emission)
-                    }
-                }
-
-                if !found { panic!("Not found {} in the obj list", name) };
+                let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
+                match matched_meshes.len() {
+                    0 =>  panic!("Not found {} in the obj list", name),
+                    1 => {
+                        matched_meshes[0].bsdf = new_bsdf;
+                    },
+                    _ => panic!("Several {} in the obj list", name),
+                };
             }
         }
 
@@ -157,7 +212,6 @@ impl<'a> Scene<'a> {
             meshes,
             emitters,
             emitters_cdf,
-            integrator : int,
         })
     }
 
@@ -186,10 +240,10 @@ impl<'a> Scene<'a> {
         !embree_ray.hit()
     }
 
-    pub fn direct_pdf(&self, ray: &Ray, its: &embree_rs::ray::Intersection) -> f32 {
-        let mesh = &self.meshes[its.geom_id as usize];
-        let emitter_id = self.emitters.iter().position(|m| Arc::ptr_eq(mesh,m)).unwrap();
-        mesh.direct_pdf(ray, its) * self.emitters_cdf.pdf(emitter_id)
+    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
+        let emitter_id = self.emitters.iter()
+            .position(|m| Arc::ptr_eq(light_sampling.mesh,m)).unwrap();
+        light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id)
     }
     pub fn sample_light(&self, p: &Point3<f32>, r_sel: f32, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light
@@ -202,17 +256,17 @@ impl<'a> Scene<'a> {
         d /= dist;
 
         // Compute the geometry
-        let geom_light = sampled_pos.n.dot(-d).max(0.0) / (dist * dist);
-        let emission = emitter.emission.clone() * (geom_light / (pdf_sel * sampled_pos.pdf));
+        let cos_light = sampled_pos.n.dot(-d).max(0.0);
+        let pdf = if cos_light == 0.0 { 0.0 } else { (pdf_sel * sampled_pos.pdf * dist * dist) / cos_light };
+        let emission = if pdf == 0.0 { Color::zero() } else { emitter.emission / pdf };
         LightSampling {
             emitter,
-            pdf : if geom_light == 0.0 {0.0} else {sampled_pos.pdf * pdf_sel * ( 1.0 / geom_light )},
+            pdf,
             p: sampled_pos.p,
             n: sampled_pos.n,
             d,
             weight: emission,
         }
-
     }
     pub fn random_select_emitter(&self, v: f32) -> (f32, &geometry::Mesh) {
         let id_light = self.emitters_cdf.sample(v);
@@ -220,11 +274,13 @@ impl<'a> Scene<'a> {
     }
 
     /// Render the scene
-    pub fn render(&self, nb_samples: u32) -> Bitmap {
+    pub fn render<T: Default + AddAssign + Scale<f32> + Clone + Send>(&self,
+                                                               integrator: Box<Integrator<T> + Sync + Send>,
+                                                               nb_samples: u32) -> Bitmap<T> {
         assert!(nb_samples != 0);
 
         // Create rendering blocks
-        let mut image_blocks: Vec<Bitmap> = Vec::new();
+        let mut image_blocks: Vec<Box<Bitmap<T>>> = Vec::new();
         for ix in StepRangeInt::new(0, self.camera.size().x as usize, 16) {
             for iy in StepRangeInt::new(0, self.camera.size().y as usize, 16) {
                 let mut block = Bitmap::new(
@@ -233,7 +289,7 @@ impl<'a> Scene<'a> {
                         x: cmp::min(16, self.camera.size().x - ix as u32),
                         y: cmp::min(16, self.camera.size().y - iy as u32),
                     });
-                image_blocks.push(block);
+                image_blocks.push(Box::new(block));
             }
         }
 
@@ -244,18 +300,18 @@ impl<'a> Scene<'a> {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..nb_samples {
-                            let c = self.integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y),
+                            let c = integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y),
                                                             self, &mut sampler);
                             im_block.accum(Point2 { x: ix, y: iy }, &c);
                         }
                     }
                 }
-                im_block.weight(1.0 / (nb_samples as f32));
+                im_block.scale(1.0 / (nb_samples as f32));
             }
         );
 
         // Fill the image
-        let mut image = Bitmap::new(Point2::new(0, 0), self.camera.size().clone());
+        let mut image = Bitmap::new(Point2::new(0, 0), *self.camera.size());
         for im_block in &image_blocks {
             image.accum_bitmap(im_block);
         }
