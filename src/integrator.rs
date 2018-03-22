@@ -393,7 +393,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
             GRADIENT_ORDER.iter().map(|e| RayState::new(pix, e, &scene)).collect()
         };
 
-        const MIS_POWER: i32 = 1;
+        const MIS_POWER: i32 = 2;
 
         // For now, just replay the random numbers
         let mut depth: u32 = 1;
@@ -426,7 +426,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                                      sampler.next(),
                                                      sampler.next2d());
                 let main_light_record = scene.sample_light(&main.its.p,
-                                                      r_sel_rand, r_rand, uv_rand);
+                                                           r_sel_rand, r_rand, uv_rand);
                 let main_light_visible = scene.visible(&main.its.p, &main_light_record.p);
                 let main_emitter_rad = if main_light_visible { main_light_record.weight } else { Color::zero() };
                 let main_d_out_local = main_frame.to_local(main_light_record.d);
@@ -435,26 +435,27 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 let main_bsdf_value = main_hit_mesh.bsdf.eval(&main_d_in_local, &main_d_out_local); // f(...) * cos(...)
                 let main_bsdf_pdf = if main_light_visible { main_hit_mesh.bsdf.pdf(&main_d_in_local, &main_d_out_local) as f64 } else { 0.0 };
                 // Cache PDF / throughput values
-                let main_weight_num = (main.pdf * main_light_pdf).powi(MIS_POWER);
-                let main_weight_dem = (main.pdf.powi(MIS_POWER)) *
-                    (main_light_pdf.powi(MIS_POWER) + main_bsdf_pdf.powi(MIS_POWER));
+                let main_weight_num = main_light_pdf.powi(MIS_POWER);
+                let main_weight_dem = main_light_pdf.powi(MIS_POWER) + main_bsdf_pdf.powi(MIS_POWER);
                 let main_contrib = main.throughput * main_bsdf_value * main_emitter_rad;
                 // Cache geometric informations
                 let main_geom_dsquared = (main.its.p - main_light_record.p).magnitude2();
                 let main_geom_cos_light = main_light_record.n.dot(main_light_record.d);
+
+
                 if main_light_record.pdf != 0.0 {
                     // FIXME: Double check this condition. Normally, it will be fine
                     // FIXME: But pdf = 0 for the main path does not necessary imply
                     // FIXME: 0 probability for the shift path, no?
-                    for (i,offset) in offsets.iter().enumerate() {
+                    for (i, offset) in offsets.iter().enumerate() {
                         let (shift_weight_dem, shift_contrib) = match offset {
-                            &RayState::Dead => { ( main_weight_num / (0.0001 + main_weight_dem), Color::zero()) },
+                            &RayState::Dead => { (main_weight_num / (0.0001 + main_weight_dem), Color::zero()) },
                             &RayState::Connected(ref s) => {
                                 // FIXME: See if we can simplify the structure, as we need to know:
                                 //  - throughput
                                 //  - pdf
                                 // only
-                                let shift_weight_dem = s.pdf.powi(MIS_POWER) *
+                                let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER) *
                                     (main_light_pdf.powi(MIS_POWER) + main_bsdf_pdf.powi(MIS_POWER));
                                 let shift_contrib = s.throughput * main_bsdf_value * main_emitter_rad;
                                 (shift_weight_dem, shift_contrib)
@@ -467,16 +468,18 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 //  - incomming direction (in world space)
                                 let shift_d_in_global = (s.its.p - main.its.p).normalize();
                                 let shift_d_in_local = main_frame.to_local(shift_d_in_global);
-                                // BSDF
-                                let shift_bsdf_pdf = if main_light_visible && shift_d_in_local.z > 0.0 {
-                                    main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local) as f64
-                                } else { 0.0 };
-                                let shift_bsdf_value = if shift_d_in_local.z > 0.0 { main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local) } else { Color::zero() };
-                                // Compute and return
-                                let shift_weight_dem = (s.pdf).powi(MIS_POWER) *
-                                    (main_light_pdf.powi(MIS_POWER) + shift_bsdf_pdf.powi(MIS_POWER));
-                                let shift_contrib = s.throughput * shift_bsdf_value * main_emitter_rad;
-                                (shift_weight_dem, shift_contrib)
+                                if shift_d_in_local.z <= 0.0 || (!main_light_visible) {
+                                    (0.0, Color::zero())
+                                } else {
+                                    // BSDF
+                                    let shift_bsdf_pdf = main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local) as f64;
+                                    let shift_bsdf_value = main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local);
+                                    // Compute and return
+                                    let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER) *
+                                        (main_light_pdf.powi(MIS_POWER) + shift_bsdf_pdf.powi(MIS_POWER));
+                                    let shift_contrib = s.throughput * shift_bsdf_value * main_emitter_rad;
+                                    (shift_weight_dem, shift_contrib)
+                                }
                             }
                             &RayState::NotConnected(ref s) => {
                                 // Get intersection informations
@@ -498,13 +501,14 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 // BSDF
                                 let shift_light_pdf = shift_light_record.pdf as f64;
                                 let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
-                                let shift_bsdf_pdf = if shift_light_visible { shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) as f64} else { 0.0 };
+                                let shift_bsdf_pdf = if shift_light_visible { shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) as f64 } else { 0.0 };
                                 // Compute Jacobian: Here the ratio of geometry terms
-                                let jacobian = (( shift_light_record.n.dot(shift_light_record.d) * main_geom_dsquared).abs()
-                                    / (0.0001 + (main_geom_cos_light * (s.its.p - shift_light_record.p).magnitude2()).abs())) as f64;
-                                assert!(jacobian.is_finite()); // FIXME: Remove magical value here
+                                let jacobian = ((shift_light_record.n.dot(shift_light_record.d) * main_geom_dsquared).abs()
+                                    / (main_geom_cos_light * (s.its.p - shift_light_record.p).magnitude2()).abs()) as f64;
+                                assert!(jacobian.is_finite());
+                                assert!(jacobian >= 0.0);
                                 // Bake the final results
-                                let shift_weight_dem = (jacobian * s.pdf).powi(MIS_POWER) *
+                                let shift_weight_dem = (jacobian * (s.pdf / main.pdf)).powi(MIS_POWER) *
                                     (shift_light_pdf.powi(MIS_POWER) + shift_bsdf_pdf.powi(MIS_POWER));
                                 let shift_contrib = (jacobian as f32) * s.throughput * shift_bsdf_value * shift_emitter_rad;
                                 (shift_weight_dem, shift_contrib)
@@ -559,6 +563,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
             let main_bsdf_pdf = main_sampled_bsdf.pdf as f64;
             main.throughput *= &(main_sampled_bsdf.weight);
             main.pdf *= main_bsdf_pdf;
+            // Check if we are in a correct state or not
+            // Otherwise, kill the main process
             if main.pdf == 0.0 || main.throughput.is_zero() {
                 return l_i;
             }
@@ -578,27 +584,31 @@ impl Integrator<ColorGradient> for IntegratorPath {
                         s.throughput *= &(main_sampled_bsdf.weight);
                         s.pdf *= main_bsdf_pdf;
                         // Compute the return values
-                        let shift_weight_dem = shift_pdf_pred.powi(MIS_POWER) *
+                        let shift_weight_dem = (shift_pdf_pred / main_pdf_pred).powi(MIS_POWER) *
                             (main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER));
                         let shift_contrib = s.throughput * main_emitter_rad;
                         ( shift_weight_dem, shift_contrib, RayState::Connected(s))
                     },
                     RayState::RecentlyConnected(mut s) => {
-                        let shift_d_in_global = (s.its.p - main.its.p).normalize();
+                        let shift_d_in_global = (s.its.p - main.ray.o).normalize();
                         let shift_d_in_local = main_frame.to_local(shift_d_in_global);
-                        let main_d_out_local = main_frame.to_local(main.ray.d);
-                        // BSDF
-                        let shift_bsdf_pdf = if shift_d_in_local.z > 0.0 { main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local) as f64 } else { 0.0 };
-                        let shift_bsdf_value = if shift_d_in_local.z > 0.0 { main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local) } else { Color::zero() };
-                        // Update main path
-                        let shift_pdf_pred = s.pdf;
-                        s.throughput *= &(shift_bsdf_value / (main_bsdf_pdf as f32));
-                        s.pdf *= shift_bsdf_pdf;
-                        // Compute and return
-                        let shift_weight_dem = shift_pdf_pred.powi(MIS_POWER) *
-                            (shift_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER));
-                        let shift_contrib = s.throughput * main_emitter_rad;
-                        ( shift_weight_dem, shift_contrib, RayState::Connected(s))
+                        if shift_d_in_local.z <= 0.0 {
+                            // FIXME: Dead path as we do not deal with glass
+                            (0.0, Color::zero(), RayState::Dead)
+                        } else {
+                            // BSDF
+                            let shift_bsdf_pdf = main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_sampled_bsdf.d) as f64;
+                            let shift_bsdf_value = main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_sampled_bsdf.d);
+                            // Update main path
+                            let shift_pdf_pred = s.pdf;
+                            s.throughput *= &(shift_bsdf_value / (main_bsdf_pdf as f32));
+                            s.pdf *= shift_bsdf_pdf;
+                            // Compute and return
+                            let shift_weight_dem = (shift_pdf_pred / main_pdf_pred).powi(MIS_POWER) *
+                                (shift_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER));
+                            let shift_contrib = s.throughput * main_emitter_rad;
+                            ( shift_weight_dem, shift_contrib, RayState::Connected(s))
+                        }
                     }
                     RayState::NotConnected(mut s) => {
                         // FIXME: Always do a reconnection here
@@ -614,8 +624,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_d_out_local = shift_frame.to_local(shift_d_out_global);
                             let shift_d_in_local = shift_frame.to_local(-s.ray.d);
                             let jacobian = (( main.its.n_g.dot(-shift_d_out_global) * main.its.t.powi(2)).abs()
-                                / (0.0001 + (main.its.n_g.dot(-main.ray.d) * (s.its.p - main.its.p).magnitude2()).abs())) as f64;
-                            assert!(jacobian.is_finite()); // FIXME: Fix const inside the jacobian
+                                / (main.its.n_g.dot(-main.ray.d) * (s.its.p - main.its.p).magnitude2()).abs()) as f64;
+                            assert!(jacobian.is_finite());
+                            assert!(jacobian >= 0.0);
                             // BSDF
                             let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
                             let shift_bsdf_pdf= shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) as f64;
@@ -646,7 +657,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             };
 
                             // Return the shift path updated + MIS weights
-                            let shift_weight_dem = shift_pdf_pred.powi(MIS_POWER)
+                            let shift_weight_dem = (shift_pdf_pred / main_pdf_pred).powi(MIS_POWER)
                                 * (shift_bsdf_pdf.powi(MIS_POWER) + shift_emitter_pdf.powi(MIS_POWER) );
                             let shift_contrib = s.throughput * shift_emitter_rad;
                             ( shift_weight_dem, shift_contrib, RayState::RecentlyConnected(s))

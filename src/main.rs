@@ -90,11 +90,11 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
     primal_image.scale(1.0 / 4.0 ); // TODO: Wrong at the corners, need to fix it
 
     // Output the images
-    {
+    /*{
         save_pfm("out_primal.pfm", &primal_image);
         save_pfm("out_dx.pfm", &dx_image);
         save_pfm("out_dy.pfm", &dy_image);
-    }
+    }*/
 
     // Reconstruction (image-space covariate, uniform reconstruction)
     let mut current: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
