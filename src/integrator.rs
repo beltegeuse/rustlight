@@ -569,9 +569,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 return l_i;
             }
 
-            let main_weight_num = (main_pdf_pred * main_bsdf_pdf).powi(MIS_POWER);
-            let main_weight_dem = (main_pdf_pred.powi(MIS_POWER)) *
-                ((main_bsdf_pdf.powi(MIS_POWER)) + main_light_pdf.powi(MIS_POWER));
+            let main_weight_num = main_bsdf_pdf.powi(MIS_POWER);
+            let main_weight_dem = main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER);
             let main_contrib = main.throughput * main_emitter_rad;
 
             offsets = offsets.into_iter()
