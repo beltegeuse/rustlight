@@ -1,22 +1,33 @@
-#![cfg_attr(feature="clippy", feature(plugin))]
-#![cfg_attr(feature="clippy", plugin(clippy))]
+#![cfg_attr(feature = "clippy", feature(plugin))]
+#![cfg_attr(feature = "clippy", plugin(clippy))]
 
 // For the vector op
 extern crate cgmath;
-// For easy parallelism
-extern crate rayon;
-// For the image (LDR) export
-extern crate image;
-// For serialization support
-#[macro_use] extern crate serde_derive;
-extern crate serde;
-extern crate serde_json;
 // For fast intersection
 extern crate embree_rs;
+// For the image (LDR) export
+extern crate image;
+// For print a progress bar
+extern crate pbr;
 // For the random number generator
 extern crate rand;
+// For easy parallelism
+extern crate rayon;
+extern crate serde;
+// For serialization support
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
+
+use std::ops::AddAssign;
+
+pub trait Scale<T> {
+    fn scale(&mut self, v: T);
+}
+
+pub trait BitmapTrait: Default + AddAssign + Scale<f32> + Clone {}
 
 // all the modules
 pub mod structure;

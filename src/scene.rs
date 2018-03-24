@@ -1,34 +1,35 @@
-use std::cmp;
-use std::u32;
-use std;
-use std::sync::Arc;
-use std::error::Error;
-use std::ops::{AddAssign};
-
-use rayon::prelude::*;
+use BitmapTrait;
+use camera::{Camera, CameraParam};
 use cgmath::*;
 use embree_rs;
+use geometry;
+use integrator::*;
+use material::*;
+use math::{Distribution1D, Distribution1DConstruct};
+use pbr::ProgressBar;
+// Other tools
+use rayon::prelude::*;
+use sampler;
+use Scale;
 use serde_json;
-
+use std;
+use std::cmp;
+use std::error::Error;
+use std::sync::{Arc, Mutex};
+use std::u32;
 // my includes
 use structure::*;
-use camera::{Camera, CameraParam};
-use integrator::*;
-use geometry;
 use tools::StepRangeInt;
-use sampler;
-use math::{Distribution1DConstruct,Distribution1D};
-use material::*;
 
 /// Image block
-/// for easy paralelisation over the threads
-pub struct Bitmap<T: Default + AddAssign + Scale<f32> + Clone> {
+/// for easy paralelisation over the thread
+pub struct Bitmap<T: BitmapTrait> {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
     pub pixels: Vec<T>,
 }
 
-impl<T: Default + AddAssign + Scale<f32> + Clone > Bitmap<T> {
+impl<T: BitmapTrait> Bitmap<T> {
     pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap<T> {
         Bitmap {
             pos,
@@ -38,22 +39,22 @@ impl<T: Default + AddAssign + Scale<f32> + Clone > Bitmap<T> {
         }
     }
 
-    pub fn accum_bitmap(&mut self, o: &Bitmap<T>) {
+    pub fn accumulate_bitmap(&mut self, o: &Bitmap<T>) {
         for x in 0..o.size.x {
             for y in 0..o.size.y {
                 let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
-                self.accum(c_p, o.get(Point2::new(x, y)));
+                self.accumulate(c_p, o.get(Point2::new(x, y)));
             }
         }
     }
 
-    pub fn accum(&mut self, p: Point2<u32>, f: &T) {
+    pub fn accumulate(&mut self, p: Point2<u32>, f: &T) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         self.pixels[(p.y * self.size.y + p.x) as usize] += f.clone(); // FIXME: Not good for performance
     }
 
-    pub fn accum_safe(&mut self, p: Point2<i32>, f: T) {
+    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: T) {
         if p.x >= 0
             && p.y >= 0
             && p.x < (self.size.x as i32)
@@ -73,22 +74,31 @@ impl<T: Default + AddAssign + Scale<f32> + Clone > Bitmap<T> {
     }
 }
 
-impl<T: Default + AddAssign + Scale<f32> + Clone> Scale<f32> for Bitmap<T> {
+impl<T: BitmapTrait> Scale<f32> for Bitmap<T> {
     fn scale(&mut self, f: f32) {
         assert!(f > 0.0);
         self.pixels.iter_mut().for_each(|v| v.scale(f));
     }
 }
 
+impl<T: BitmapTrait> Iterator for Bitmap<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unimplemented!()
+    }
+}
+
 /// Light sample representation
 pub struct LightSampling<'a> {
-    pub emitter : &'a geometry::Mesh,
-    pub pdf : f32,
-    pub p : Point3<f32>,
-    pub n : Vector3<f32>,
-    pub d : Vector3<f32>,
-    pub weight : Color,
+    pub emitter: &'a geometry::Mesh,
+    pub pdf: f32,
+    pub p: Point3<f32>,
+    pub n: Vector3<f32>,
+    pub d: Vector3<f32>,
+    pub weight: Color,
 }
+
 impl<'a> LightSampling<'a> {
     pub fn is_valid(&'a self) -> bool {
         self.pdf != 0.0
@@ -97,11 +107,12 @@ impl<'a> LightSampling<'a> {
 
 pub struct LightSamplingPDF<'a> {
     pub mesh: &'a Arc<geometry::Mesh>,
-    pub o : Point3<f32>,
-    pub p : Point3<f32>,
-    pub n : Vector3<f32>,
-    pub dir: Vector3<f32>
+    pub o: Point3<f32>,
+    pub p: Point3<f32>,
+    pub n: Vector3<f32>,
+    pub dir: Vector3<f32>,
 }
+
 impl<'a> LightSamplingPDF<'a> {
     pub fn new(scene: &'a Scene,
                ray: &Ray,
@@ -150,7 +161,7 @@ impl<'a> Scene<'a> {
         println!("Build the acceleration structure");
         scene_embree.commit(); // Build
 
-        // Update meshes informations
+        // Update meshes information
         //  - which are light?
         if let Some(emitters_json) = v.get("emitters") {
             for e in emitters_json.as_array().unwrap() {
@@ -159,10 +170,10 @@ impl<'a> Scene<'a> {
                 // Get the set of matched meshes
                 let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
                 match matched_meshes.len() {
-                    0 =>  panic!("Not found {} in the obj list", name),
+                    0 => panic!("Not found {} in the obj list", name),
                     1 => {
                         matched_meshes[0].emission = emission;
-                    },
+                    }
                     _ => panic!("Several {} in the obj list", name),
                 };
             }
@@ -180,10 +191,10 @@ impl<'a> Scene<'a> {
 
                 let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
                 match matched_meshes.len() {
-                    0 =>  panic!("Not found {} in the obj list", name),
+                    0 => panic!("Not found {} in the obj list", name),
                     1 => {
                         matched_meshes[0].bsdf = new_bsdf;
-                    },
+                    }
                     _ => panic!("Several {} in the obj list", name),
                 };
             }
@@ -215,7 +226,7 @@ impl<'a> Scene<'a> {
         })
     }
 
-    /// Intersect and compute intersection informations
+    /// Intersect and compute intersection information
     pub fn trace(&self, ray: &Ray) -> Option<embree_rs::ray::Intersection> {
         let embree_ray = embree_rs::ray::Ray::new(
             &ray.o, &ray.d,
@@ -242,7 +253,7 @@ impl<'a> Scene<'a> {
 
     pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
         let emitter_id = self.emitters.iter()
-            .position(|m| Arc::ptr_eq(light_sampling.mesh,m)).unwrap();
+            .position(|m| Arc::ptr_eq(light_sampling.mesh, m)).unwrap();
         light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id)
     }
     pub fn sample_light(&self, p: &Point3<f32>, r_sel: f32, r: f32, uv: Point2<f32>) -> LightSampling {
@@ -274,10 +285,10 @@ impl<'a> Scene<'a> {
     }
 
     /// Render the scene
-    pub fn render<T: Default + AddAssign + Scale<f32> + Clone + Send>(&self,
-                                                               integrator: Box<Integrator<T> + Sync + Send>,
-                                                               nb_samples: u32) -> Bitmap<T> {
-        assert!(nb_samples != 0);
+    pub fn render<T: BitmapTrait + Send>(&self,
+                                         integrator: Box<Integrator<T> + Sync + Send>,
+                                         nb_samples: u32) -> Bitmap<T> {
+        assert_ne!(nb_samples, 0);
 
         // Create rendering blocks
         let mut image_blocks: Vec<Box<Bitmap<T>>> = Vec::new();
@@ -294,26 +305,31 @@ impl<'a> Scene<'a> {
         }
 
         // Render the image blocks
+        let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         image_blocks.par_iter_mut().for_each(|im_block|
             {
-                let mut sampler = sampler::IndepSampler::default();
+                let mut sampler = sampler::IndependentSampler::default();
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..nb_samples {
                             let c = integrator.compute((ix + im_block.pos.x, iy + im_block.pos.y),
-                                                            self, &mut sampler);
-                            im_block.accum(Point2 { x: ix, y: iy }, &c);
+                                                       self, &mut sampler);
+                            im_block.accumulate(Point2 { x: ix, y: iy }, &c);
                         }
                     }
                 }
                 im_block.scale(1.0 / (nb_samples as f32));
+
+                {
+                    progress_bar.lock().unwrap().inc();
+                }
             }
         );
 
         // Fill the image
         let mut image = Bitmap::new(Point2::new(0, 0), *self.camera.size());
         for im_block in &image_blocks {
-            image.accum_bitmap(im_block);
+            image.accumulate_bitmap(im_block);
         }
         image
     }

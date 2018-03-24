@@ -1,28 +1,30 @@
+use BitmapTrait;
 use cgmath::*;
-use std::ops::AddAssign;
-// my includes
-use scene::*;
-use math::*;
-use structure::*;
-use sampler::*;
 use embree_rs::ray::Intersection;
+use math::*;
+use sampler::*;
+use Scale;
+// my includes;
+use scene::*;
+use std::ops::AddAssign;
+use structure::*;
 
 pub trait Integrator<T> {
     fn compute(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> T;
 }
 
 //////////// AO
-pub struct IntergratorAO {
-    pub max_distance : Option<f32>
+pub struct IntegratorAO {
+    pub max_distance: Option<f32>
 }
 
-impl Integrator<Color> for IntergratorAO {
-    fn compute(&self, (ix,iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
+impl Integrator<Color> for IntegratorAO {
+    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
 
         // Do the intersection for the first path
-        let intersection = match scene.trace(&ray)  {
+        let intersection = match scene.trace(&ray) {
             Some(its) => its,
             None => return Color::zero(),
         };
@@ -53,26 +55,26 @@ impl Integrator<Color> for IntergratorAO {
 }
 
 //////////// Direct
-pub struct IntergratorDirect {
-    pub nb_bsdf_samples : u32,
-    pub nb_light_samples : u32
+pub struct IntegratorDirect {
+    pub nb_bsdf_samples: u32,
+    pub nb_light_samples: u32,
 }
 
 fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
-    assert!(pdf_a != 0.0);
+    assert_ne!(pdf_a, 0.0);
     assert!(pdf_a.is_finite());
     assert!(pdf_b.is_finite());
     pdf_a / (pdf_a + pdf_b)
 }
 
-impl Integrator<Color> for IntergratorDirect {
+impl Integrator<Color> for IntegratorDirect {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
 
         // Do the intersection for the first path
-        let intersection = match scene.trace(&ray)  {
+        let intersection = match scene.trace(&ray) {
             Some(its) => its,
             None => return l_i,
         };
@@ -91,8 +93,8 @@ impl Integrator<Color> for IntergratorDirect {
         l_i += &init_mesh.emission;
 
         // Precompute for mis weights
-        let weight_nb_bsdf = if self.nb_bsdf_samples == 0 { 0.0 } else { 1.0 / (self.nb_bsdf_samples as f32)};
-        let weight_nb_light = if self.nb_light_samples == 0 { 0.0 } else { 1.0 / (self.nb_light_samples as f32)};
+        let weight_nb_bsdf = if self.nb_bsdf_samples == 0 { 0.0 } else { 1.0 / (self.nb_bsdf_samples as f32) };
+        let weight_nb_light = if self.nb_light_samples == 0 { 0.0 } else { 1.0 / (self.nb_light_samples as f32) };
 
         /////////////////////////////////
         // Light sampling
@@ -136,7 +138,7 @@ impl Integrator<Color> for IntergratorDirect {
 
                 // Check that we have intersected a light or not
                 if intersected_mesh.is_light() && intersection.n_g.dot(-ray.d) > 0.0 {
-                    // FIXME: Found an elegant way to retreive incomming Le
+                    // FIXME: Found an elegant way to retrive incoming Le
                     let light_pdf = scene.direct_pdf(LightSamplingPDF::new(scene,
                                                                            &ray, &intersection));
 
@@ -155,9 +157,10 @@ impl Integrator<Color> for IntergratorDirect {
 
 ////////////// Path tracing
 pub struct IntegratorPath {
-    pub max_depth : Option<u32>,
-    pub min_depth : Option<u32>,
+    pub max_depth: Option<u32>,
+    pub min_depth: Option<u32>,
 }
+
 impl Integrator<Color> for IntegratorPath {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         // Generate the first ray
@@ -266,18 +269,22 @@ pub struct ColorGradient {
     pub radiances: [Color; 4],
     pub gradients: [Color; 4],
 }
+
 pub enum GradientDirection {
     X(i32),
-    Y(i32)
+    Y(i32),
 }
-pub static GRADIENT_ORDER: [Point2<i32>; 4] = [Point2 {x:0, y:1 },
-    Point2{x: 0, y: -1},
-    Point2{x:1, y: 0},
-    Point2{x: -1, y:0}];
+
+pub static GRADIENT_ORDER: [Point2<i32>; 4] = [Point2 { x: 0, y: 1 },
+    Point2 { x: 0, y: -1 },
+    Point2 { x: 1, y: 0 },
+    Point2 { x: -1, y: 0 }];
 pub static GRADIENT_DIRECTION: [GradientDirection; 4] = [
     GradientDirection::Y(1), GradientDirection::Y(-1),
     GradientDirection::X(1), GradientDirection::X(-1)
 ];
+
+impl BitmapTrait for ColorGradient {}
 
 impl Default for ColorGradient {
     fn default() -> Self {
@@ -289,6 +296,7 @@ impl Default for ColorGradient {
         }
     }
 }
+
 impl AddAssign<ColorGradient> for ColorGradient {
     fn add_assign(&mut self, other: ColorGradient) {
         self.very_direct += other.very_direct;
@@ -299,6 +307,7 @@ impl AddAssign<ColorGradient> for ColorGradient {
         }
     }
 }
+
 impl Scale<f32> for ColorGradient {
     fn scale(&mut self, v: f32) {
         self.very_direct.scale(v);
@@ -309,16 +318,19 @@ impl Scale<f32> for ColorGradient {
         }
     }
 }
+
 struct RayStateData {
     pub pdf: f64,
     pub ray: Ray,
     pub its: Intersection,
     pub throughput: Color,
 }
+
 enum RayState {
     NotConnected(RayStateData),
     RecentlyConnected(RayStateData),
-    Connected(RayStateData), // FIXME: Do we need to store all the data?
+    Connected(RayStateData),
+    // FIXME: Do we need to store all the data?
     Dead,
 }
 
@@ -350,7 +362,7 @@ impl RayState {
 
     pub fn apply_russian_roulette(&mut self, rr_prob: f32) {
         match self {
-            &mut RayState::Dead => {},
+            &mut RayState::Dead => {}
             &mut RayState::NotConnected(ref mut e) |
             &mut RayState::Connected(ref mut e) |
             &mut RayState::RecentlyConnected(ref mut e) => {
@@ -361,7 +373,7 @@ impl RayState {
 
     pub fn new((x, y): (f32, f32), off: &Point2<i32>, scene: &Scene) -> RayState {
         let pix = (x + off.x as f32, y + off.y as f32);
-        if  pix.0 < 0.0 || pix.0 > (scene.camera.size().x as f32) ||
+        if pix.0 < 0.0 || pix.0 > (scene.camera.size().x as f32) ||
             pix.1 < 0.0 || pix.1 > (scene.camera.size().y as f32) {
             return RayState::Dead;
         }
@@ -384,8 +396,8 @@ impl RayState {
 impl Integrator<ColorGradient> for IntegratorPath {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> ColorGradient {
         let mut l_i = ColorGradient::default();
-        let pix =  (ix as f32 + sampler.next(), iy as f32 + sampler.next());
-        let mut main = match RayState::new(pix, &Point2::new(0,0), scene) {
+        let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
+        let mut main = match RayState::new(pix, &Point2::new(0, 0), scene) {
             RayState::NotConnected(x) => x,
             _ => return l_i,
         };
@@ -449,7 +461,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                     // FIXME: 0 probability for the shift path, no?
                     for (i, offset) in offsets.iter().enumerate() {
                         let (shift_weight_dem, shift_contrib) = match offset {
-                            &RayState::Dead => { (main_weight_num / (0.0001 + main_weight_dem), Color::zero()) },
+                            &RayState::Dead => { (main_weight_num / (0.0001 + main_weight_dem), Color::zero()) }
                             &RayState::Connected(ref s) => {
                                 // FIXME: See if we can simplify the structure, as we need to know:
                                 //  - throughput
@@ -459,7 +471,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     (main_light_pdf.powi(MIS_POWER) + main_bsdf_pdf.powi(MIS_POWER));
                                 let shift_contrib = s.throughput * main_bsdf_value * main_emitter_rad;
                                 (shift_weight_dem, shift_contrib)
-                            },
+                            }
                             &RayState::RecentlyConnected(ref s) => {
                                 // Need to re-evaluate the BSDF as the incomming direction is different
                                 // FIXME: We only need to know:
@@ -512,7 +524,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     (shift_light_pdf.powi(MIS_POWER) + shift_bsdf_pdf.powi(MIS_POWER));
                                 let shift_contrib = (jacobian as f32) * s.throughput * shift_bsdf_value * shift_emitter_rad;
                                 (shift_weight_dem, shift_contrib)
-                            },
+                            }
                         };
 
                         if self.min_depth.map_or(true, |min| depth >= min) {
@@ -574,9 +586,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
             let main_contrib = main.throughput * main_emitter_rad;
 
             offsets = offsets.into_iter()
-                .enumerate().map(|(i,offset)| {
+                .enumerate().map(|(i, offset)| {
                 let (shift_weight_dem, shift_contrib, new_state) = match offset {
-                    RayState::Dead => ( 0.0, Color::zero(), RayState::Dead),
+                    RayState::Dead => (0.0, Color::zero(), RayState::Dead),
                     RayState::Connected(mut s) => {
                         let shift_pdf_pred = s.pdf;
                         // Update the shifted path
@@ -586,8 +598,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                         let shift_weight_dem = (shift_pdf_pred / main_pdf_pred).powi(MIS_POWER) *
                             (main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER));
                         let shift_contrib = s.throughput * main_emitter_rad;
-                        ( shift_weight_dem, shift_contrib, RayState::Connected(s))
-                    },
+                        (shift_weight_dem, shift_contrib, RayState::Connected(s))
+                    }
                     RayState::RecentlyConnected(mut s) => {
                         let shift_d_in_global = (s.its.p - main.ray.o).normalize();
                         let shift_d_in_local = main_frame.to_local(shift_d_in_global);
@@ -606,14 +618,14 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_weight_dem = (shift_pdf_pred / main_pdf_pred).powi(MIS_POWER) *
                                 (shift_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER));
                             let shift_contrib = s.throughput * main_emitter_rad;
-                            ( shift_weight_dem, shift_contrib, RayState::Connected(s))
+                            (shift_weight_dem, shift_contrib, RayState::Connected(s))
                         }
                     }
                     RayState::NotConnected(mut s) => {
                         // FIXME: Always do a reconnection here
                         // FIXME: Implement half-vector copy
                         if !scene.visible(&s.its.p, &main.its.p) {
-                            ( 0.0, Color::zero(), RayState::Dead ) // FIXME: Found a way to do it in an elegant way
+                            (0.0, Color::zero(), RayState::Dead) // FIXME: Found a way to do it in an elegant way
                         } else {
                             // The current mesh that we do the intersection
                             let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
@@ -622,17 +634,17 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             let shift_frame = basis(s.its.n_g);
                             let shift_d_out_local = shift_frame.to_local(shift_d_out_global);
                             let shift_d_in_local = shift_frame.to_local(-s.ray.d);
-                            let jacobian = (( main.its.n_g.dot(-shift_d_out_global) * main.its.t.powi(2)).abs()
+                            let jacobian = ((main.its.n_g.dot(-shift_d_out_global) * main.its.t.powi(2)).abs()
                                 / (main.its.n_g.dot(-main.ray.d) * (s.its.p - main.its.p).magnitude2()).abs()) as f64;
                             assert!(jacobian.is_finite());
                             assert!(jacobian >= 0.0);
                             // BSDF
                             let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
-                            let shift_bsdf_pdf= shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) as f64;
+                            let shift_bsdf_pdf = shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) as f64;
                             // FIXME: Dead path? if pdf == 0.0, maybe add inside a check
                             // Update shift path
                             let shift_pdf_pred = s.pdf;
-                            s.throughput *= &(shift_bsdf_value * (jacobian / main_bsdf_pdf) as f32 );
+                            s.throughput *= &(shift_bsdf_value * (jacobian / main_bsdf_pdf) as f32);
                             s.pdf *= shift_bsdf_pdf * jacobian;
 
                             // Two case:
@@ -657,11 +669,11 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
                             // Return the shift path updated + MIS weights
                             let shift_weight_dem = (shift_pdf_pred / main_pdf_pred).powi(MIS_POWER)
-                                * (shift_bsdf_pdf.powi(MIS_POWER) + shift_emitter_pdf.powi(MIS_POWER) );
+                                * (shift_bsdf_pdf.powi(MIS_POWER) + shift_emitter_pdf.powi(MIS_POWER));
                             let shift_contrib = s.throughput * shift_emitter_rad;
-                            ( shift_weight_dem, shift_contrib, RayState::RecentlyConnected(s))
+                            (shift_weight_dem, shift_contrib, RayState::RecentlyConnected(s))
                         }
-                    },
+                    }
                 };
                 // Update the contributions
                 if self.min_depth.map_or(true, |min| depth >= min) {

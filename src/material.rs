@@ -1,10 +1,9 @@
-use std;
-use cgmath::{Point2,Vector3};
+use cgmath::{Point2, Vector3};
 use cgmath::InnerSpace;
-
 use math::basis;
-use structure::Color;
 use math::cosine_sample_hemisphere;
+use std;
+use structure::Color;
 
 pub struct SampledDirection {
     pub weight: Color,
@@ -17,17 +16,18 @@ pub trait BSDF {
     /// @d_in: the incomming direction in the local space
     /// @sample: random number 2D
     /// @return: the outgoing direction, the pdf and the bsdf value $fs(...) * | n . d_out |$
-    fn sample(&self, d_in: & Vector3<f32>, sample : Point2<f32>) -> Option<SampledDirection>;
+    fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection>;
     /// eval the bsdf pdf value in solid angle
-    fn pdf(&self, d_in: & Vector3<f32>, d_out: & Vector3<f32>) -> f32;
+    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32;
     /// eval the bsdf value : $fs(...)$
-    fn eval(&self, d_in: & Vector3<f32>, d_out: & Vector3<f32>) -> Color;
+    fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BSDFDiffuse {
-    pub diffuse : Color,
+    pub diffuse: Color,
 }
+
 impl BSDF for BSDFDiffuse {
     fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
         if d_in.z <= 0.0 {
@@ -37,7 +37,7 @@ impl BSDF for BSDFDiffuse {
             Some(SampledDirection {
                 weight: self.diffuse,
                 d: d_out,
-                pdf:  d_out.z * std::f32::consts::FRAC_1_PI,
+                pdf: d_out.z * std::f32::consts::FRAC_1_PI,
             })
         }
     }
@@ -62,10 +62,11 @@ pub struct BSDFPhong {
     pub specular: Color,
     pub exponent: f32,
 }
+
 impl BSDF for BSDFPhong {
     fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
         let sin_alpha = (1.0 - sample.y.powf(2.0 / (self.exponent + 1.0))).sqrt();
-        let cos_alpha = sample.y.powf( 1.0 / (self.exponent + 1.0));
+        let cos_alpha = sample.y.powf(1.0 / (self.exponent + 1.0));
         let phi = 2.0 * std::f32::consts::PI * sample.x;
         let local_dir = Vector3::new(sin_alpha * phi.cos(), sin_alpha * phi.sin(), cos_alpha);
 
@@ -114,9 +115,9 @@ impl BSDF for BSDFPhong {
                 Color::zero()
             }
         }
-
     }
 }
+
 impl BSDFPhong {
     fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
         Vector3::new(-d.x, -d.y, d.z)

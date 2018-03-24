@@ -19,6 +19,7 @@ serde_json = "1.0"
 byteorder = "*"
 clippy = { version = "*", optional = true }
 clap = "2.31.1"
+pbr = "1.0"
 
 [dependencies.cgmath]
 version = "0.16.0"
