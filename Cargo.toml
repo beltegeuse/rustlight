@@ -22,5 +22,5 @@ clap = "2.31.1"
 pbr = "1.0"
 
 [dependencies.cgmath]
-version = "0.16.0"
+version = "0.16.1"
 features = ["serde"]

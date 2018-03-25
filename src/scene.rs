@@ -234,21 +234,10 @@ impl<'a> Scene<'a> {
         self.embree_scene.intersect(embree_ray)
     }
 
-    /// Intersect the scene and return if we had an intersection or not
-    pub fn hit(&self, ray: &Ray) -> bool {
-        let mut embree_ray = embree_rs::ray::Ray::new(
-            &ray.o, &ray.d,
-            ray.tnear, ray.tfar);
-        self.embree_scene.occluded(&mut embree_ray);
-        embree_ray.hit()
-    }
-
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
-        let mut embree_ray = embree_rs::ray::Ray::new(
-            p0, &d, 0.00001, 0.9999);
-        self.embree_scene.occluded(&mut embree_ray);
-        !embree_ray.hit()
+        !self.embree_scene.occluded(embree_rs::ray::Ray::new(
+            p0, &d, 0.00001, 0.9999))
     }
 
     pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
