@@ -21,6 +21,10 @@ extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
 
+mod constants {
+    pub const EPSILON: f32 = 0.0001;
+}
+
 use std::ops::AddAssign;
 
 pub trait Scale<T> {

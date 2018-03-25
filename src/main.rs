@@ -91,7 +91,7 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
                     },
                     rustlight::integrator::GradientDirection::Y(v) => match v {
                         1 => dy_image.accumulate(pos, &curr.gradients[i]),
-                        -1 => dy_image.accumulate_safe(pos_off, (curr.gradients[i].clone() * -1.0)),
+                        -1 => dy_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
                         _ => panic!("wrong displacement Y"),
                     }
                     ,

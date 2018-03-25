@@ -63,7 +63,6 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: &std::path::Path
     Ok(meshes)
 }
 
-// FIXME: add distribution 1D to sample a point on triangles
 /// (Triangle) Mesh information
 pub struct Mesh {
     pub name: String,

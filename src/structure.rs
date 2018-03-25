@@ -4,6 +4,7 @@ use image::*;
 use Scale;
 use std;
 use std::ops::*;
+use constants;
 
 /// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
@@ -196,8 +197,6 @@ impl<'a> Add<&'a Color> for Color {
     }
 }
 
-// FIXME: Evaluate if we keep it or not
-// FIXME: If we keep it, add tfar, tmin ...
 /// Ray representation
 pub struct Ray {
     pub o: Point3<f32>,
@@ -211,9 +210,16 @@ impl Ray {
         Ray {
             o,
             d,
-            tnear: 0.0001, // Epsilon
+            tnear: constants::EPSILON,
             tfar: std::f32::MAX,
         }
+    }
+}
+
+use embree_rs;
+impl<'a> From<&'a Ray> for embree_rs::ray::Ray {
+    fn from(ray: &'a Ray) -> Self {
+        embree_rs::ray::Ray::new(&ray.o, &ray.d, ray.tnear, ray.tfar)
     }
 }
 

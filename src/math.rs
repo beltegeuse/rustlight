@@ -39,24 +39,13 @@ pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
 pub fn basis(n: Vector3<f32>) -> Frame {
-    // TODO: See how to use branchless version (copysignf)
-    let b1: Vector3<f32>;
-    let b2: Vector3<f32>;
-    if n.z < 0.0 {
-        let a = 1.0 / (1.0 - n.z);
-        let b = n.x * n.y * a;
-        b1 = Vector3::new(1.0 - n.x * n.x * a, -b, n.x);
-        b2 = Vector3::new(b, n.y * n.y * a - 1.0, -n.y);
-    } else {
-        let a = 1.0 / (1.0 + n.z);
-        let b = -n.x * n.y * a;
-        b1 = Vector3::new(1.0 - n.x * n.x * a, b, -n.x);
-        b2 = Vector3::new(b, 1.0 - n.y * n.y * a, -n.y);
-    }
+    let sign = n.z.signum();
+    let a = -1.0 / (sign + n.z);
+    let b = n.x * n.y * a;
     Frame {
         m: Matrix3 {
-            x: b1,
-            y: b2,
+            x: Vector3::new(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x),
+            y: Vector3::new(b, sign + n.y * n.y * a, -n.y),
             z: n,
         }
     }
