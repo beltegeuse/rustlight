@@ -38,29 +38,26 @@ pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
 
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
-pub fn basis(n: Vector3<f32>) -> Frame {
-    let sign = n.z.signum();
-    let a = -1.0 / (sign + n.z);
-    let b = n.x * n.y * a;
-    Frame {
-        m: Matrix3 {
-            x: Vector3::new(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x),
-            y: Vector3::new(b, sign + n.y * n.y * a, -n.y),
-            z: n,
+pub struct Frame(Matrix3<f32>);
+impl Frame {
+    pub fn new(n: Vector3<f32>) -> Frame {
+        let sign = n.z.signum();
+        let a = -1.0 / (sign + n.z);
+        let b = n.x * n.y * a;
+        Frame {
+            0 : Matrix3 {
+                x: Vector3::new(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x),
+                y: Vector3::new(b, sign + n.y * n.y * a, -n.y),
+                z: n,
+            },
         }
     }
-}
 
-pub struct Frame {
-    m: Matrix3<f32>,
-}
-
-impl Frame {
     pub fn to_world(&self, v: Vector3<f32>) -> Vector3<f32> {
-        self.m.x * v.x + self.m.y * v.y + self.m.z * v.z
+        self.0.x * v.x + self.0.y * v.y + self.0.z * v.z
     }
     pub fn to_local(&self, v: Vector3<f32>) -> Vector3<f32> {
-        Vector3::new(v.dot(self.m.x), v.dot(self.m.y), v.dot(self.m.z))
+        Vector3::new(v.dot(self.0.x), v.dot(self.0.y), v.dot(self.0.z))
     }
 }
 

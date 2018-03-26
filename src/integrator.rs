@@ -1,6 +1,5 @@
 use BitmapTrait;
 use cgmath::*;
-use embree_rs::ray::Intersection;
 use math::*;
 use sampler::*;
 use Scale;
@@ -24,30 +23,29 @@ impl Integrator<Color> for IntegratorAO {
         let ray = scene.camera.generate(pix);
 
         // Do the intersection for the first path
-        let intersection = match scene.trace(&ray) {
+        let its = match scene.trace(&ray) {
             Some(its) => its,
             None => return Color::zero(),
         };
 
+        // FIXME: Can we clean this code using enumerate type???
         // Compute an new direction
         // Note that we do not flip the normal automatically,
         // for the light definition (only one sided)
-        if intersection.n_g.dot(ray.d) > 0.0 {
+        if its.wi.z <= 0.0 {
             return Color::zero();
         }
-
-        let frame = basis(intersection.n_g);
         let d_local = cosine_sample_hemisphere(sampler.next2d());
-        let d_world = frame.to_world(d_local);
+        let d_world = its.frame.to_world(d_local);
 
         // Check the new intersection distance
-        let ray = Ray::new(intersection.p, d_world);
+        let ray = Ray::new(its.p, d_world);
         match scene.trace(&ray) {
             None => Color::one(),
-            Some(its) => {
+            Some(new_its) => {
                 match self.max_distance {
                     None => Color::zero(),
-                    Some(d) => if its.t > d { Color::one() } else { Color::zero() }
+                    Some(d) => if new_its.dist > d { Color::one() } else { Color::zero() }
                 }
             }
         }
@@ -74,23 +72,19 @@ impl Integrator<Color> for IntegratorDirect {
         let mut l_i = Color::zero();
 
         // Do the intersection for the first path
-        let intersection = match scene.trace(&ray) {
+        let its = match scene.trace(&ray) {
             Some(its) => its,
             None => return l_i,
         };
 
+        // FIXME: Will not work with glass
         // Check if we go the right orientation
-        if intersection.n_g.dot(ray.d) > 0.0 {
+        if its.wi.z <= 0.0 {
             return l_i;
         }
 
-        // Project incoming direction in local space
-        let frame = basis(intersection.n_g);
-        let d_in_local = frame.to_local(-ray.d);
-
         // Add the emission for the light intersection
-        let init_mesh = &scene.meshes[intersection.geom_id as usize];
-        l_i += &init_mesh.emission;
+        l_i += &its.mesh.emission;
 
         // Precompute for mis weights
         let weight_nb_bsdf = if self.nb_bsdf_samples == 0 { 0.0 } else { 1.0 / (self.nb_bsdf_samples as f32) };
@@ -101,20 +95,20 @@ impl Integrator<Color> for IntegratorDirect {
         /////////////////////////////////
         // Explict connect to the light source
         for _ in 0..self.nb_light_samples {
-            let light_record = scene.sample_light(&intersection.p,
+            let light_record = scene.sample_light(&its.p,
                                                   sampler.next(),
                                                   sampler.next(),
                                                   sampler.next2d());
-            let d_out_local = frame.to_local(light_record.d);
-            if light_record.is_valid() && scene.visible(&intersection.p, &light_record.p) && d_out_local.z > 0.0 {
+            let d_out_local = its.frame.to_local(light_record.d);
+            if light_record.is_valid() && scene.visible(&its.p, &light_record.p) && d_out_local.z > 0.0 {
                 // Compute the contribution of direct lighting
-                let pdf_bsdf = init_mesh.bsdf.pdf(&d_in_local, &d_out_local);
+                let pdf_bsdf = its.mesh.bsdf.pdf(&its.wi, &d_out_local);
 
                 // Compute MIS weights
                 let weight_light = mis_weight(light_record.pdf * weight_nb_light,
                                               pdf_bsdf * weight_nb_bsdf);
                 l_i += weight_light
-                    * init_mesh.bsdf.eval(&d_in_local, &d_out_local)
+                    * its.mesh.bsdf.eval(&its.wi, &d_out_local)
                     * weight_nb_light
                     * light_record.weight;
             }
@@ -125,28 +119,25 @@ impl Integrator<Color> for IntegratorDirect {
         /////////////////////////////////
         // Compute an new direction (diffuse)
         for _ in 0..self.nb_bsdf_samples {
-            let d_in_local = frame.to_local(-ray.d);
-            if let Some(sampled_bsdf) = init_mesh.bsdf.sample(&d_in_local, sampler.next2d()) {
+            if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.wi, sampler.next2d()) {
                 // Generate the new ray and do the intersection
-                let d_out_world = frame.to_world(sampled_bsdf.d);
-                let ray = Ray::new(intersection.p, d_out_world);
-                let intersection = match scene.trace(&ray) {
+                let d_out_world = its.frame.to_world(sampled_bsdf.d);
+                let ray = Ray::new(its.p, d_out_world);
+                let next_its = match scene.trace(&ray) {
                     Some(x) => x,
                     None => continue,
                 };
-                let intersected_mesh = &scene.meshes[intersection.geom_id as usize];
 
                 // Check that we have intersected a light or not
-                if intersected_mesh.is_light() && intersection.n_g.dot(-ray.d) > 0.0 {
+                if next_its.mesh.is_light() && next_its.wi.z <= 0.0 {
                     // FIXME: Found an elegant way to retrive incoming Le
-                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(scene,
-                                                                           &ray, &intersection));
+                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &next_its));
 
                     // Compute MIS weights
                     let weight_bsdf = mis_weight(sampled_bsdf.pdf * weight_nb_bsdf,
                                                  light_pdf * weight_nb_light);
 
-                    l_i += weight_bsdf * sampled_bsdf.weight * (&intersected_mesh.emission) * weight_nb_bsdf;
+                    l_i += weight_bsdf * sampled_bsdf.weight * (&next_its.mesh.emission) * weight_nb_bsdf;
                 }
             }
         }
@@ -170,7 +161,7 @@ impl Integrator<Color> for IntegratorPath {
         let mut throughput = Color::one();
 
         // Check if we have a intersection with the primary ray
-        let mut intersection = match scene.trace(&ray) {
+        let mut its = match scene.trace(&ray) {
             Some(x) => x,
             None => return l_i,
         };
@@ -178,39 +169,34 @@ impl Integrator<Color> for IntegratorPath {
         let mut depth: u32 = 1;
         while self.max_depth.map_or(true, |max| depth < max) {
             // Check if we go the right orientation
-            if intersection.n_g.dot(ray.d) > 0.0 {
+            if its.wi.z <= 0.0 {
                 return l_i;
             }
 
             // Add the emission for the light intersection
-            let hit_mesh = &scene.meshes[intersection.geom_id as usize];
             if self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
-                l_i += &hit_mesh.emission; // TODO: Add throughput
+                l_i += &(throughput * its.mesh.emission);
             }
-
-            // Construct local frame
-            let frame = basis(intersection.n_g);
-            let d_in_local = frame.to_local(-ray.d);
 
             /////////////////////////////////
             // Light sampling
             /////////////////////////////////
             // Explict connect to the light source
-            let light_record = scene.sample_light(&intersection.p,
+            let light_record = scene.sample_light(&its.p,
                                                   sampler.next(),
                                                   sampler.next(),
                                                   sampler.next2d());
-            let d_out_local = frame.to_local(light_record.d);
-            if light_record.is_valid() && scene.visible(&intersection.p, &light_record.p) && d_out_local.z > 0.0 {
+            let d_out_local = its.frame.to_local(light_record.d);
+            if light_record.is_valid() && scene.visible(&its.p, &light_record.p) && d_out_local.z > 0.0 {
                 // Compute the contribution of direct lighting
-                let pdf_bsdf = hit_mesh.bsdf.pdf(&d_in_local, &d_out_local);
+                let pdf_bsdf = its.mesh.bsdf.pdf(&its.wi, &d_out_local);
 
                 // Compute MIS weights
                 let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
                 if self.min_depth.map_or(true, |min| depth >= min) {
                     l_i += weight_light
                         * throughput
-                        * hit_mesh.bsdf.eval(&d_in_local, &d_out_local)
+                        * its.mesh.bsdf.eval(&its.wi, &d_out_local)
                         * light_record.weight;
                 }
             }
@@ -219,7 +205,7 @@ impl Integrator<Color> for IntegratorPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let sampled_bsdf = match hit_mesh.bsdf.sample(&d_in_local, sampler.next2d()) {
+            let sampled_bsdf = match its.mesh.bsdf.sample(&its.wi, sampler.next2d()) {
                 Some(x) => x,
                 None => return l_i,
             };
@@ -228,23 +214,20 @@ impl Integrator<Color> for IntegratorPath {
             throughput *= &sampled_bsdf.weight;
 
             // Generate the new ray and do the intersection
-            let d_out_global = frame.to_world(sampled_bsdf.d);
-            ray = Ray::new(intersection.p, d_out_global);
-            intersection = match scene.trace(&ray) {
+            let d_out_global = its.frame.to_world(sampled_bsdf.d);
+            ray = Ray::new(its.p, d_out_global);
+            its = match scene.trace(&ray) {
                 Some(x) => x,
                 None => return l_i,
             };
-            let next_mesh = &scene.meshes[intersection.geom_id as usize];
 
             // Check that we have intersected a light or not
-            let cos_light = intersection.n_g.dot(-ray.d).max(0.0); // FIXME
-            if next_mesh.is_light() && cos_light != 0.0 {
-                let light_pdf = scene.direct_pdf(LightSamplingPDF::new(scene,
-                                                                       &ray, &intersection));
+            if its.mesh.is_light() && its.wi.z <= 0.0 {
+                let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &its));
 
                 let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
                 if self.min_depth.map_or(true, |min| depth >= min) {
-                    l_i += throughput * (&next_mesh.emission) * weight_bsdf;
+                    l_i += throughput * (&its.mesh.emission) * weight_bsdf;
                 }
             }
 
@@ -319,33 +302,33 @@ impl Scale<f32> for ColorGradient {
     }
 }
 
-struct RayStateData {
+struct RayStateData<'a> {
     pub pdf: f64,
     pub ray: Ray,
-    pub its: Intersection,
+    pub its: Intersection<'a>,
     pub throughput: Color,
 }
 
-enum RayState {
-    NotConnected(RayStateData),
-    RecentlyConnected(RayStateData),
-    Connected(RayStateData),
+enum RayState<'a> {
+    NotConnected(RayStateData<'a>),
+    RecentlyConnected(RayStateData<'a>),
+    Connected(RayStateData<'a>),
     // FIXME: Do we need to store all the data?
     Dead,
 }
 
-impl RayState {
-    pub fn check_normal(self) -> RayState {
+impl<'a> RayState<'a> {
+    pub fn check_normal(self) -> RayState<'a> {
         // FIXME: Change how this works .... to avoid duplicated code
         match self {
             RayState::NotConnected(e) =>
-                if e.its.n_g.dot(e.ray.d) > 0.0 {
+                if e.its.wi.z <= 0.0 {
                     RayState::Dead
                 } else {
                     RayState::NotConnected(e)
                 },
             RayState::RecentlyConnected(e) =>
-                if e.its.n_g.dot(e.ray.d) > 0.0 {
+                if e.its.n_s.dot(e.ray.d) > 0.0 {
                     RayState::Dead
                 } else {
                     RayState::RecentlyConnected(e)
@@ -353,7 +336,7 @@ impl RayState {
             RayState::Connected(e) => {
                 // FIXME: Maybe not a good idea...
                 // FIXME: As the shift path may be not used anymore
-                assert!(e.its.n_g.dot(e.ray.d) <= 0.0);
+                assert!(e.its.n_s.dot(e.ray.d) <= 0.0);
                 RayState::Connected(e)
             }
             RayState::Dead => RayState::Dead,
@@ -371,7 +354,7 @@ impl RayState {
         }
     }
 
-    pub fn new((x, y): (f32, f32), off: &Point2<i32>, scene: &Scene) -> RayState {
+    pub fn new((x, y): (f32, f32), off: &Point2<i32>, scene: &'a Scene) -> RayState<'a> {
         let pix = (x + off.x as f32, y + off.y as f32);
         if pix.0 < 0.0 || pix.0 > (scene.camera.size().x as f32) ||
             pix.1 < 0.0 || pix.1 > (scene.camera.size().y as f32) {
@@ -412,21 +395,15 @@ impl Integrator<ColorGradient> for IntegratorPath {
         while self.max_depth.is_none() || (depth < self.max_depth.unwrap()) {
             // Check if we go the right orientation
             // -- main path
-            if main.its.n_g.dot(main.ray.d) > 0.0 {
+            if main.its.wi.z <= 0.0 {
                 return l_i;
             }
             offsets = offsets.into_iter().map(|e| e.check_normal()).collect();
 
             // Add the emission for the light intersection
-            let main_hit_mesh = &scene.meshes[main.its.geom_id as usize];
             if self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
-                l_i.very_direct += &main_hit_mesh.emission; // TODO: Add throughput
+                l_i.very_direct += &main.its.mesh.emission; // TODO: Add throughput
             }
-
-
-            // Construct local frame
-            let main_frame = basis(main.its.n_g);
-            let main_d_in_local = main_frame.to_local(-main.ray.d);
 
             /////////////////////////////////
             // Light sampling
@@ -441,11 +418,11 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                                            r_sel_rand, r_rand, uv_rand);
                 let main_light_visible = scene.visible(&main.its.p, &main_light_record.p);
                 let main_emitter_rad = if main_light_visible { main_light_record.weight } else { Color::zero() };
-                let main_d_out_local = main_frame.to_local(main_light_record.d);
+                let main_d_out_local = main.its.frame.to_local(main_light_record.d);
                 // Evaluate BSDF values and light values
                 let main_light_pdf = main_light_record.pdf as f64;
-                let main_bsdf_value = main_hit_mesh.bsdf.eval(&main_d_in_local, &main_d_out_local); // f(...) * cos(...)
-                let main_bsdf_pdf = if main_light_visible { main_hit_mesh.bsdf.pdf(&main_d_in_local, &main_d_out_local) as f64 } else { 0.0 };
+                let main_bsdf_value = main.its.mesh.bsdf.eval(&main.its.wi, &main_d_out_local); // f(...) * cos(...)
+                let main_bsdf_pdf = if main_light_visible { main.its.mesh.bsdf.pdf(&main.its.wi, &main_d_out_local) as f64 } else { 0.0 };
                 // Cache PDF / throughput values
                 let main_weight_num = main_light_pdf.powi(MIS_POWER);
                 let main_weight_dem = main_light_pdf.powi(MIS_POWER) + main_bsdf_pdf.powi(MIS_POWER);
@@ -479,13 +456,13 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 //  - pdf
                                 //  - incomming direction (in world space)
                                 let shift_d_in_global = (s.its.p - main.its.p).normalize();
-                                let shift_d_in_local = main_frame.to_local(shift_d_in_global);
+                                let shift_d_in_local = main.its.frame.to_local(shift_d_in_global);
                                 if shift_d_in_local.z <= 0.0 || (!main_light_visible) {
                                     (0.0, Color::zero())
                                 } else {
                                     // BSDF
-                                    let shift_bsdf_pdf = main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local) as f64;
-                                    let shift_bsdf_value = main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local);
+                                    let shift_bsdf_pdf = main.its.mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local) as f64;
+                                    let shift_bsdf_value = main.its.mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local);
                                     // Compute and return
                                     let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER) *
                                         (main_light_pdf.powi(MIS_POWER) + shift_bsdf_pdf.powi(MIS_POWER));
@@ -495,8 +472,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             }
                             &RayState::NotConnected(ref s) => {
                                 // Get intersection informations
-                                let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
-                                let shift_frame = basis(s.its.n_g);
+                                let shift_hit_mesh = &s.its.mesh;
+                                let shift_frame = Frame::new(s.its.n_g);
                                 let shift_d_in_local = shift_frame.to_local(-s.ray.d);
                                 // FIXME: We need to check the light source type in order to continue or not
                                 // FIXME: the ray tracing...
@@ -545,25 +522,26 @@ impl Integrator<ColorGradient> for IntegratorPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let main_sampled_bsdf = match main_hit_mesh.bsdf.sample(&main_d_in_local, sampler.next2d()) {
+            let main_sampled_bsdf = match main.its.mesh.bsdf.sample(&main.its.wi,
+                                                                    sampler.next2d()) {
                 Some(x) => x,
                 None => return l_i,
             };
 
             // Generate the new ray and do the intersection
-            let main_d_out_global = main_frame.to_world(main_sampled_bsdf.d);
+            let main_d_out_global = main.its.frame.to_world(main_sampled_bsdf.d);
             main.ray = Ray::new(main.its.p, main_d_out_global);
+            let main_pred_its = main.its; // Need to save the previous hit
             main.its = match scene.trace(&main.ray) {
                 Some(x) => x,
                 None => return l_i,
             };
-            let main_next_mesh = &scene.meshes[main.its.geom_id as usize];
+            let main_next_mesh = main.its.mesh;
 
             // Check that we have intersected a light or not
             let (main_light_pdf, main_emitter_rad) = {
                 if main_next_mesh.is_light() && main.its.n_g.dot(-main.ray.d).max(0.0) != 0.0 {
-                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(scene,
-                                                                           &main.ray, &main.its)) as f64;
+                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&main.ray, &main.its)) as f64;
                     (light_pdf, main_next_mesh.emission.clone())
                 } else {
                     (0.0, Color::zero())
@@ -602,14 +580,14 @@ impl Integrator<ColorGradient> for IntegratorPath {
                     }
                     RayState::RecentlyConnected(mut s) => {
                         let shift_d_in_global = (s.its.p - main.ray.o).normalize();
-                        let shift_d_in_local = main_frame.to_local(shift_d_in_global);
+                        let shift_d_in_local = main_pred_its.frame.to_local(shift_d_in_global);
                         if shift_d_in_local.z <= 0.0 {
                             // FIXME: Dead path as we do not deal with glass
                             (0.0, Color::zero(), RayState::Dead)
                         } else {
                             // BSDF
-                            let shift_bsdf_pdf = main_hit_mesh.bsdf.pdf(&shift_d_in_local, &main_sampled_bsdf.d) as f64;
-                            let shift_bsdf_value = main_hit_mesh.bsdf.eval(&shift_d_in_local, &main_sampled_bsdf.d);
+                            let shift_bsdf_pdf = main_pred_its.mesh.bsdf.pdf(&shift_d_in_local, &main_sampled_bsdf.d) as f64;
+                            let shift_bsdf_value = main_pred_its.mesh.bsdf.eval(&shift_d_in_local, &main_sampled_bsdf.d);
                             // Update main path
                             let shift_pdf_pred = s.pdf;
                             s.throughput *= &(shift_bsdf_value / (main_bsdf_pdf as f32));
@@ -627,20 +605,18 @@ impl Integrator<ColorGradient> for IntegratorPath {
                         if !scene.visible(&s.its.p, &main.its.p) {
                             (0.0, Color::zero(), RayState::Dead) // FIXME: Found a way to do it in an elegant way
                         } else {
-                            // The current mesh that we do the intersection
-                            let shift_hit_mesh = &scene.meshes[s.its.geom_id as usize];
                             // Compute the ratio of geometry factors
                             let shift_d_out_global = (main.its.p - s.its.p).normalize();
-                            let shift_frame = basis(s.its.n_g);
+                            let shift_frame = Frame::new(s.its.n_g);
                             let shift_d_out_local = shift_frame.to_local(shift_d_out_global);
                             let shift_d_in_local = shift_frame.to_local(-s.ray.d);
-                            let jacobian = ((main.its.n_g.dot(-shift_d_out_global) * main.its.t.powi(2)).abs()
+                            let jacobian = ((main.its.n_g.dot(-shift_d_out_global) * main.its.dist.powi(2)).abs()
                                 / (main.its.n_g.dot(-main.ray.d) * (s.its.p - main.its.p).magnitude2()).abs()) as f64;
                             assert!(jacobian.is_finite());
                             assert!(jacobian >= 0.0);
                             // BSDF
-                            let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
-                            let shift_bsdf_pdf = shift_hit_mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) as f64;
+                            let shift_bsdf_value = s.its.mesh.bsdf.eval(&shift_d_in_local, &shift_d_out_local);
+                            let shift_bsdf_pdf = s.its.mesh.bsdf.pdf(&shift_d_in_local, &shift_d_out_local) as f64;
                             // FIXME: Dead path? if pdf == 0.0, maybe add inside a check
                             // Update shift path
                             let shift_pdf_pred = s.pdf;

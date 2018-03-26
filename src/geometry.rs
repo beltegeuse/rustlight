@@ -5,7 +5,6 @@ use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
 use scene::LightSamplingPDF;
 use std;
 use std::sync::Arc;
-// my includes
 use structure::Color;
 use tobj;
 use tools::StepRangeInt;
@@ -14,7 +13,7 @@ use tools::StepRangeInt;
 /// Read obj file format and build a list of meshes
 /// for now, only add diffuse color
 /// custom texture coordinates or normals are not supported yet
-pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: &std::path::Path) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
+pub fn load_obj(scene: &mut embree_rs::scene::SceneConstruct, file_name: &std::path::Path) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name)?;
 
@@ -38,7 +37,7 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: &std::path::Path
 
         let uv = if mesh.texcoords.is_empty() { vec![] } else { mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect() };
 
-        let trimesh = scene.new_triangle_mesh(embree_rs::scene::GeometryFlags::Static,
+        let trimesh = scene.add_triangle_mesh(embree_rs::scene::GeometryFlags::Static,
                                               vertices,
                                               normals,
                                               uv,

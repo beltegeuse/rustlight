@@ -222,5 +222,45 @@ impl<'a> From<&'a Ray> for embree_rs::ray::Ray {
         embree_rs::ray::Ray::new(&ray.o, &ray.d, ray.tnear, ray.tfar)
     }
 }
+use std::sync::Arc;
+use geometry::Mesh;
+use math::Frame;
+
+pub struct Intersection<'a> {
+    /// Intersection distance
+    pub dist: f32,
+    /// Geometry normal
+    pub n_g: Vector3<f32>,
+    /// Shading normal
+    pub n_s: Vector3<f32>,
+    /// Intersection point
+    pub p: Point3<f32>,
+    /// Textures coordinates
+    pub uv: Option<Vector2<f32>>,
+    /// Mesh which we have intersected
+    pub mesh: &'a Arc<Mesh>,
+    /// Frame from the intersection point
+    pub frame: Frame,
+    /// Incomming direction in the local coordinates
+    pub wi: Vector3<f32>,
+}
+
+impl<'a> Intersection<'a> {
+    pub fn new(embree_its: embree_rs::ray::Intersection,
+           d: Vector3<f32>, mesh: &'a Arc<Mesh>) -> Intersection<'a>{
+        let frame = Frame::new( embree_its.n_s);
+        let wi = frame.to_local(d);
+        Intersection {
+            dist: embree_its.t,
+            n_g: embree_its.n_g,
+            n_s: embree_its.n_s,
+            p: embree_its.p,
+            uv: embree_its.uv,
+            mesh,
+            frame,
+            wi,
+        }
+    }
+}
 
 

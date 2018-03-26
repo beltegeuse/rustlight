@@ -7,17 +7,15 @@ use integrator::*;
 use material::*;
 use math::{Distribution1D, Distribution1DConstruct};
 use pbr::ProgressBar;
-// Other tools
-use rayon::prelude::*;
 use sampler;
 use Scale;
 use serde_json;
 use std;
 use std::cmp;
+use rayon::prelude::*;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::u32;
-// my includes
 use structure::*;
 use tools::StepRangeInt;
 
@@ -114,11 +112,10 @@ pub struct LightSamplingPDF<'a> {
 }
 
 impl<'a> LightSamplingPDF<'a> {
-    pub fn new(scene: &'a Scene,
-               ray: &Ray,
-               its: &embree_rs::ray::Intersection) -> LightSamplingPDF<'a> {
+    pub fn new(ray: &Ray,
+               its: &'a Intersection) -> LightSamplingPDF<'a> {
         LightSamplingPDF {
-            mesh: &scene.meshes[its.geom_id as usize],
+            mesh: &its.mesh,
             o: ray.o,
             p: its.p,
             n: its.n_g,
@@ -149,8 +146,9 @@ impl<'a> Scene<'a> {
 
         // Allocate embree
         let mut device = embree_rs::scene::Device::new();
-        let mut scene_embree = device.new_scene(embree_rs::scene::SceneFlags::STATIC,
-                                                embree_rs::scene::AlgorithmFlags::INTERSECT1);
+        let mut scene_embree = embree_rs::scene::SceneConstruct::new(&mut device,
+            embree_rs::scene::SceneFlags::STATIC,
+            embree_rs::scene::AlgorithmFlags::INTERSECT1);
 
         // Read the object
         let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
@@ -159,7 +157,7 @@ impl<'a> Scene<'a> {
 
         // Build embree as we will not geometry for now
         println!("Build the acceleration structure");
-        scene_embree.commit(); // Build
+        let scene_embree = device.commit(scene_embree)?;
 
         // Update meshes information
         //  - which are light?
@@ -227,11 +225,14 @@ impl<'a> Scene<'a> {
     }
 
     /// Intersect and compute intersection information
-    pub fn trace(&self, ray: &Ray) -> Option<embree_rs::ray::Intersection> {
-        let embree_ray = embree_rs::ray::Ray::new(
-            &ray.o, &ray.d,
-            ray.tnear, ray.tfar);
-        self.embree_scene.intersect(embree_ray)
+    pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
+        match self.embree_scene.intersect(ray.into()) {
+            None => None,
+            Some(its) => {
+                let geom_id = its.geom_id as usize;
+                Some(Intersection::new(its, -ray.d, &self.meshes[geom_id]))
+            }
+        }
     }
 
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {

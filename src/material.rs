@@ -1,7 +1,6 @@
 use cgmath::{Point2, Vector3};
 use cgmath::InnerSpace;
-use math::basis;
-use math::cosine_sample_hemisphere;
+use math::{Frame, cosine_sample_hemisphere};
 use std;
 use structure::Color;
 
@@ -70,7 +69,7 @@ impl BSDF for BSDFPhong {
         let phi = 2.0 * std::f32::consts::PI * sample.x;
         let local_dir = Vector3::new(sin_alpha * phi.cos(), sin_alpha * phi.sin(), cos_alpha);
 
-        let frame = basis(BSDFPhong::reflect(d_in));
+        let frame = Frame::new(BSDFPhong::reflect(d_in));
         let d_out = frame.to_world(local_dir);
         if d_out.z <= 0.0 {
             None
