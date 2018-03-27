@@ -19,7 +19,7 @@ before_install:
   - sudo dpkg -i embree-lib_2.17.2-2_amd64.deb
   - sudo dpkg -i embree-devel_2.17.2-2_all.deb
   - cd - # Go back to the working directory
-  - rustup install stable
+  - RUSTUP_DIST_SERVER=https://dev-static.rust-lang.org rustup install stable
 
 script:
   - cargo build --verbose --all

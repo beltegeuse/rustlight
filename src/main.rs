@@ -1,20 +1,21 @@
+extern crate byteorder;
+extern crate cgmath;
+#[macro_use]
+extern crate clap;
 extern crate image;
 extern crate rayon;
 extern crate rustlight;
-extern crate cgmath;
-extern crate byteorder;
-#[macro_use]
-extern crate clap;
 
-use image::*;
-use std::time::Instant;
-use std::io::prelude::*;
+use byteorder::{LittleEndian, WriteBytesExt};
 use cgmath::Point2;
-use byteorder::{WriteBytesExt, LittleEndian};
-use clap::{Arg, App, SubCommand};
-use rustlight::structure::{Color,Scale};
-use rustlight::scene::Bitmap;
+use clap::{App, Arg, SubCommand};
+use image::*;
 use rustlight::integrator::ColorGradient;
+use rustlight::Scale;
+use rustlight::scene::Bitmap;
+use rustlight::structure::Color;
+use std::io::prelude::*;
+use std::time::Instant;
 
 fn save_pfm(imgout_path_str: &str, img: &Bitmap<Color>) {
     let mut file = std::fs::File::create(std::path::Path::new(imgout_path_str)).unwrap();
@@ -29,6 +30,19 @@ fn save_pfm(imgout_path_str: &str, img: &Bitmap<Color>) {
             file.write_f32::<LittleEndian>(p.b.abs()).unwrap();
         }
     }
+}
+
+fn save_png(imgout_path_str: &str, img: &Bitmap<Color>) {
+    // The image that we will render
+    let mut image_ldr = DynamicImage::new_rgb8(img.size.x,
+                                               img.size.y);
+    for x in 0..img.size.x {
+        for y in 0..img.size.y {
+            image_ldr.put_pixel(x, y, img.get(Point2::new(img.size.x - x - 1, y)).to_rgba())
+        }
+    }
+    let ref mut fout = std::fs::File::create(imgout_path_str).unwrap();
+    image_ldr.save(fout, image::PNG).expect("failed to write img into file");
 }
 
 fn classical_mc_integration(scene: &rustlight::scene::Scene,
@@ -49,7 +63,6 @@ fn classical_mc_integration(scene: &rustlight::scene::Scene,
 fn gradient_domain_integration(scene: &rustlight::scene::Scene,
                                nb_samples: u32,
                                int: Box<rustlight::integrator::Integrator<ColorGradient> + Sync + Send>) -> Bitmap<Color> {
-
     println!("Rendering...");
     let start = Instant::now();
     let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
@@ -59,67 +72,70 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
              (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
 
     // Generates images buffers (dx, dy, primal)
-    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0,0), *scene.camera.size());
-    let mut dx_image = Bitmap::new(Point2::new(0,0), *scene.camera.size());
-    let mut dy_image = Bitmap::new(Point2::new(0,0), *scene.camera.size());
-    for x in 0..img_grad.size.x {
-        for y in 0..img_grad.size.y {
-            let pos = Point2::new(x,y);
+    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    let mut dx_image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    let mut dy_image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    for y in 0..img_grad.size.y {
+        for x in 0..img_grad.size.x {
+            let pos = Point2::new(x, y);
             let curr = img_grad.get(pos);
-            primal_image.accum(pos, &curr.main);
+            primal_image.accumulate(pos, &curr.main);
             for (i, off) in rustlight::integrator::GRADIENT_ORDER.iter().enumerate() {
                 let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
-                primal_image.accum_safe(pos_off, curr.radiances[i].clone());
+                primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
                 match rustlight::integrator::GRADIENT_DIRECTION[i] {
                     rustlight::integrator::GradientDirection::X(v) => match v {
-                        1 => dx_image.accum(pos, &curr.gradients[i]),
-                        -1 => dx_image.accum_safe(pos_off, curr.gradients[i].clone() * -1.0),
+                        1 => dx_image.accumulate(pos, &curr.gradients[i]),
+                        -1 => dx_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
                         _ => panic!("wrong displacement X"), // FIXME: Fix the enum
                     },
                     rustlight::integrator::GradientDirection::Y(v) => match v {
-                        1 => dy_image.accum(pos, &curr.gradients[i]),
-                        -1 => dy_image.accum_safe(pos_off, (curr.gradients[i].clone() * -1.0)),
+                        1 => dy_image.accumulate(pos, &curr.gradients[i]),
+                        -1 => dy_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
                         _ => panic!("wrong displacement Y"),
                     }
-                        ,
+                    ,
                 }
             }
         }
     }
     // Scale the throughtput image
-    primal_image.scale(1.0 / 4.0 ); // TODO: Wrong at the corners, need to fix it
+    primal_image.scale(1.0 / 4.0); // TODO: Wrong at the corners, need to fix it
 
     // Output the images
+    // FIXME: Add the ability to output images
     /*{
         save_pfm("out_primal.pfm", &primal_image);
         save_pfm("out_dx.pfm", &dx_image);
         save_pfm("out_dy.pfm", &dy_image);
     }*/
 
+    println!("Reconstruction...");
+    let start = Instant::now();
     // Reconstruction (image-space covariate, uniform reconstruction)
     let mut current: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
     let mut next: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
     // 1) Init
-    for x in 0..img_grad.size.x {
-        for y in 0..img_grad.size.y {
-            let pos = Point2::new(x,y);
-            current.accum(pos, primal_image.get(pos));
+    for y in 0..img_grad.size.y {
+        for x in 0..img_grad.size.x {
+            let pos = Point2::new(x, y);
+            current.accumulate(pos, primal_image.get(pos));
         }
     }
     for _iter in 0..50 { // FIXME: Do it multi-threaded
         next.reset(); // Reset all to black
-        for x in 0..img_grad.size.x {
-            for y in 0..img_grad.size.y {
-                let pos = Point2::new(x,y);
+        for y in 0..img_grad.size.y {
+            for x in 0..img_grad.size.x {
+                let pos = Point2::new(x, y);
                 let mut c = current.get(pos).clone();
                 let mut w = 1.0;
                 if x > 0 {
-                    let pos_off = Point2::new(x - 1, y );
+                    let pos_off = Point2::new(x - 1, y);
                     c += current.get(pos_off).clone() + dx_image.get(pos_off).clone();
                     w += 1.0;
                 }
                 if x < img_grad.size.x - 1 {
-                    let pos_off = Point2::new(x + 1, y );
+                    let pos_off = Point2::new(x + 1, y);
                     c += current.get(pos_off).clone() - dx_image.get(pos).clone();
                     w += 1.0;
                 }
@@ -133,19 +149,23 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
                     c += current.get(pos_off).clone() - dy_image.get(pos).clone();
                     w += 1.0;
                 }
-                c.scale( 1.0 / w);
-                next.accum(pos, &c);
+                c.scale(1.0 / w);
+                next.accumulate(pos, &c);
             }
         }
         std::mem::swap(&mut current, &mut next);
     }
-            // Export the reconstruction
+    let elapsed = start.elapsed();
+    println!("Elapsed: {} ms",
+             (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
+
+    // Export the reconstruction
     let mut image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), scene.camera.size().clone());
     for x in 0..img_grad.size.x {
         for y in 0..img_grad.size.y {
             let pos = Point2::new(x, y);
             let pix_value = next.get(pos).clone() + img_grad.get(pos).very_direct.clone();
-            image.accum(pos, &pix_value);
+            image.accumulate(pos, &pix_value);
         }
     }
     image
@@ -225,29 +245,31 @@ fn main() {
 
             classical_mc_integration(&scene, nb_samples,
                                      Box::new(rustlight::integrator::IntegratorPath {
-                max_depth, min_depth,
-            }))
-        },
+                                         max_depth,
+                                         min_depth,
+                                     }))
+        }
         ("gd-path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
 
             gradient_domain_integration(&scene, nb_samples,
-                                     Box::new(rustlight::integrator::IntegratorPath {
-                                         max_depth, min_depth
-                                     }))
-        },
+                                        Box::new(rustlight::integrator::IntegratorPath {
+                                            max_depth,
+                                            min_depth,
+                                        }))
+        }
         ("ao", Some(m)) => {
             let dist = match_infinity(m.value_of("distance").unwrap());
 
-            classical_mc_integration( &scene, nb_samples,
-                                     Box::new(rustlight::integrator::IntergratorAO {
-                max_distance: dist,
-            }))
+            classical_mc_integration(&scene, nb_samples,
+                                     Box::new(rustlight::integrator::IntegratorAO {
+                                         max_distance: dist,
+                                     }))
         }
         ("direct", Some(m)) => classical_mc_integration(&scene,
                                                         nb_samples,
-                                                        Box::new(rustlight::integrator::IntergratorDirect {
+                                                        Box::new(rustlight::integrator::IntegratorDirect {
                                                             nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
                                                             nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
                                                         })),
@@ -261,17 +283,7 @@ fn main() {
             save_pfm(imgout_path_str, &img);
         }
         "png" => {
-            // The image that we will render
-            let mut image_ldr = DynamicImage::new_rgb8(scene.camera.size().x,
-                                                       scene.camera.size().y);
-            for x in 0..img.size.x {
-                for y in 0..img.size.y {
-                    image_ldr.put_pixel(x, y,
-                                        img.get(Point2::new(img.size.x - x - 1, y)).to_rgba())
-                }
-            }
-            let ref mut fout = std::fs::File::create(imgout_path_str).unwrap();
-            image_ldr.save(fout, image::PNG).expect("failed to write img into file");
+            save_png(imgout_path_str, &img);
         }
         _ => panic!("Unknow output file extension"),
     }

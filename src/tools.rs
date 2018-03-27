@@ -12,7 +12,7 @@ impl StepRangeInt {
         StepRangeInt {
             start,
             end,
-            step
+            step,
         }
     }
 }
@@ -20,8 +20,8 @@ impl StepRangeInt {
 impl Iterator for StepRangeInt {
     type Item = usize;
 
-    # [inline]
-    fn next( & mut self ) -> Option <usize> {
+    #[inline]
+    fn next(&mut self) -> Option<usize> {
         if self.start < self.end {
             let v = self.start;
             self.start = v + self.step;

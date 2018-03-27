@@ -1,8 +1,7 @@
 use cgmath::*;
 use std::f32;
-
 // my includes
-use structure::{Ray};
+use structure::Ray;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CameraParam {
@@ -14,7 +13,7 @@ pub struct CameraParam {
 }
 
 pub struct Camera {
-    pub param : CameraParam,
+    pub param: CameraParam,
     // Internally
     dir_top_left: Vector3<f32>,
     screen_du: Vector3<f32>,
@@ -33,7 +32,8 @@ impl Camera {
         let screen_du = dx * dim_x;
         let screen_dv = dy * dim_y;
         let dir_top_left = dz - 0.5 * screen_du - 0.5 * screen_dv;
-        Camera { param,
+        Camera {
+            param,
             dir_top_left,
             screen_du,
             screen_dv,

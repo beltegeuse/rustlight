@@ -1,22 +1,19 @@
-use std;
 use cgmath::*;
 use embree_rs;
-use std::sync::Arc;
-use tobj;
-
-// my includes
-use structure::{Color};
+use material::{BSDF, BSDFDiffuse};
 use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
-use tools::StepRangeInt;
-use material::{BSDF,BSDFDiffuse};
 use scene::LightSamplingPDF;
+use std;
+use std::sync::Arc;
+use structure::Color;
+use tobj;
+use tools::StepRangeInt;
 
 // FIXME: Support custom UV
-// FIXME: Support custom normal
 /// Read obj file format and build a list of meshes
 /// for now, only add diffuse color
-/// custom texcoords or normals are not supported yet
-pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Path) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
+/// custom texture coordinates or normals are not supported yet
+pub fn load_obj(scene: &mut embree_rs::scene::SceneConstruct, file_name: &std::path::Path) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name)?;
 
@@ -27,21 +24,21 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Pat
         let mesh = m.mesh;
         // Load vertex position
         println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
-        let verts = mesh.positions.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
+        let vertices = mesh.positions.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
         // Load normal
         if mesh.normals.is_empty() {
-            // This is difficult to do...
-            // So raise an error for now
+            // Normally, we want to generate the normal on the fly.
+            // However, this can be difficult and as the rendering engine
+            // does not support two sided BSDF, this can create problems for the user.
+            // For now, just panic if the normal are not provided inside the OBJ.
             panic!("No normal provided, quit");
-            //return Err(tobj::LoadError::NormalParseError);
         }
         let normals = mesh.normals.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
 
-        let uv = if mesh.texcoords.is_empty() { vec![] }
-            else { mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect() };
+        let uv = if mesh.texcoords.is_empty() { vec![] } else { mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect() };
 
-        let trimesh = scene.new_triangle_mesh(embree_rs::scene::GeometryFlags::Static,
-                                              verts,
+        let trimesh = scene.add_triangle_mesh(embree_rs::scene::GeometryFlags::Static,
+                                              vertices,
                                               normals,
                                               uv,
                                               mesh.indices);
@@ -59,20 +56,19 @@ pub fn load_obj(scene: &mut embree_rs::scene::Scene, file_name: & std::path::Pat
 
         // Add the mesh info
         meshes.push(Box::new(Mesh::new(m.name,
-            trimesh,
-            diffuse_color)));
+                                       trimesh,
+                                       diffuse_color)));
     }
     Ok(meshes)
 }
 
-// FIXME: add distribution 1D to sample a point on triangles
 /// (Triangle) Mesh information
 pub struct Mesh {
-    pub name : String,
-    pub trimesh : Arc<embree_rs::scene::TriangleMesh>,
-    pub bsdf : Box<BSDF + Send + Sync>,
-    pub emission : Color,
-    pub cdf : Distribution1D,
+    pub name: String,
+    pub trimesh: Arc<embree_rs::scene::TriangleMesh>,
+    pub bsdf: Box<BSDF + Send + Sync>,
+    pub emission: Color,
+    pub cdf: Distribution1D,
 }
 
 pub struct SampledPosition {
@@ -82,15 +78,15 @@ pub struct SampledPosition {
 }
 
 impl Mesh {
-    pub fn new(name: String, trimesh : Arc<embree_rs::scene::TriangleMesh>, diffuse: Color) -> Mesh {
+    pub fn new(name: String, trimesh: Arc<embree_rs::scene::TriangleMesh>, diffuse: Color) -> Mesh {
         // Construct the mesh
-        assert!(trimesh.indices.len() % 3 == 0);
+        assert_eq!(trimesh.indices.len() % 3, 0);
         let nb_tri = trimesh.indices.len() / 3;
         let mut dist_const = Distribution1DConstruct::new(nb_tri);
         for i in StepRangeInt::new(0, trimesh.indices.len() as usize, 3) {
             let v0 = trimesh.vertices[trimesh.indices[i] as usize];
-            let v1 = trimesh.vertices[trimesh.indices[i+1] as usize];
-            let v2 = trimesh.vertices[trimesh.indices[i+2] as usize];
+            let v1 = trimesh.vertices[trimesh.indices[i + 1] as usize];
+            let v2 = trimesh.vertices[trimesh.indices[i + 2] as usize];
 
             let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
             dist_const.add(area);
@@ -99,24 +95,24 @@ impl Mesh {
         Mesh {
             name,
             trimesh,
-            bsdf : Box::new(BSDFDiffuse { diffuse }),
+            bsdf: Box::new(BSDFDiffuse { diffuse }),
             emission: Color::zero(),
-            cdf : dist_const.normalize(),
+            cdf: dist_const.normalize(),
         }
     }
 
     pub fn pdf(&self) -> f32 {
-        1.0 / ( self.cdf.normalization)
+        1.0 / (self.cdf.normalization)
     }
-    pub fn flux(&self) -> f32 { self.cdf.normalization * self.emission.channel_max()}
+    pub fn flux(&self) -> f32 { self.cdf.normalization * self.emission.channel_max() }
 
     // FIXME: reuse random number
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
         // Select a triangle
         let i = self.cdf.sample(s) * 3;
         let i0 = self.trimesh.indices[i] as usize;
-        let i1 = self.trimesh.indices[i+1] as usize;
-        let i2 = self.trimesh.indices[i+2] as usize;
+        let i1 = self.trimesh.indices[i + 1] as usize;
+        let i2 = self.trimesh.indices[i + 2] as usize;
 
         let v0 = self.trimesh.vertices[i0];
         let v1 = self.trimesh.vertices[i1];
@@ -135,7 +131,7 @@ impl Mesh {
         SampledPosition {
             p: Point3::from_vec(pos),
             n: normal,
-            pdf: 1.0 / ( self.cdf.normalization),
+            pdf: 1.0 / (self.cdf.normalization),
         }
     }
 

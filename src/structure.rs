@@ -1,7 +1,10 @@
+use BitmapTrait;
 use cgmath::*;
 use image::*;
-use std::ops::*;
+use Scale;
 use std;
+use std::ops::*;
+use constants;
 
 /// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
@@ -11,19 +14,15 @@ pub struct Color {
     pub b: f32,
 }
 
-pub trait Scale<T> {
-    fn scale(&mut self, v: T);
-}
-
 impl Color {
     pub fn new(r: f32, g: f32, b: f32) -> Color {
         Color { r, g, b }
     }
     pub fn zero() -> Color {
-        Color::new(0.0, 0.0, 0.0 )
+        Color::new(0.0, 0.0, 0.0)
     }
     pub fn one() -> Color {
-        Color::new(1.0, 1.0, 1.0 )
+        Color::new(1.0, 1.0, 1.0)
     }
     pub fn value(v: f32) -> Color {
         Color::new(v, v, v)
@@ -42,11 +41,15 @@ impl Color {
         self.r.max(self.g.max(self.b))
     }
 }
+
+impl BitmapTrait for Color {}
+
 impl Default for Color {
     fn default() -> Self {
         Color::zero()
     }
 }
+
 impl Scale<f32> for Color {
     fn scale(&mut self, v: f32) {
         self.r *= v;
@@ -89,19 +92,20 @@ impl AddAssign<Color> for Color {
 }
 
 impl Div<f32> for Color {
+    type Output = Self;
     fn div(self, other: f32) -> Color {
         assert!(other.is_finite());
-        assert!(other != 0.0);
+        assert_ne!(other, 0.0);
         Color {
             r: self.r / other,
             g: self.g / other,
             b: self.b / other,
         }
     }
-    type Output = Self;
 }
 
 impl Mul<f32> for Color {
+    type Output = Self;
     fn mul(self, other: f32) -> Color {
         //assert!(other.is_finite());
         if other.is_finite() {
@@ -114,10 +118,10 @@ impl Mul<f32> for Color {
             Color::zero()
         }
     }
-    type Output = Self;
 }
 
 impl Mul<Color> for f32 {
+    type Output = Color;
     fn mul(self, other: Color) -> Color {
         Color {
             r: other.r * self,
@@ -125,10 +129,10 @@ impl Mul<Color> for f32 {
             b: other.b * self,
         }
     }
-    type Output = Color;
 }
 
 impl<'a> Mul<&'a Color> for f32 {
+    type Output = Color;
     fn mul(self, other: &'a Color) -> Color {
         Color {
             r: other.r * self,
@@ -136,10 +140,10 @@ impl<'a> Mul<&'a Color> for f32 {
             b: other.b * self,
         }
     }
-    type Output = Color;
 }
 
 impl<'a> Mul<&'a Color> for Color {
+    type Output = Self;
     fn mul(self, other: &'a Color) -> Color {
         Color {
             r: self.r * other.r,
@@ -147,10 +151,10 @@ impl<'a> Mul<&'a Color> for Color {
             b: self.b * other.b,
         }
     }
-    type Output = Self;
 }
 
 impl Mul<Color> for Color {
+    type Output = Self;
     fn mul(self, other: Color) -> Color {
         Color {
             r: self.r * other.r,
@@ -158,9 +162,10 @@ impl Mul<Color> for Color {
             b: self.b * other.b,
         }
     }
-    type Output = Self;
 }
+
 impl Sub<Color> for Color {
+    type Output = Self;
     fn sub(self, other: Color) -> Color {
         Color {
             r: self.r - other.r,
@@ -168,8 +173,8 @@ impl Sub<Color> for Color {
             b: self.b - other.b,
         }
     }
-    type Output = Self;
 }
+
 impl Add<Color> for Color {
     type Output = Self;
     fn add(self, other: Color) -> Color {
@@ -180,6 +185,7 @@ impl Add<Color> for Color {
         }
     }
 }
+
 impl<'a> Add<&'a Color> for Color {
     type Output = Self;
     fn add(self, other: &'a Color) -> Color {
@@ -191,14 +197,12 @@ impl<'a> Add<&'a Color> for Color {
     }
 }
 
-// FIXME: Evaluate if we keep it or not
-// FIXME: If we keep it, add tfar, tmin ...
 /// Ray representation
 pub struct Ray {
     pub o: Point3<f32>,
     pub d: Vector3<f32>,
-    pub tnear : f32,
-    pub tfar : f32,
+    pub tnear: f32,
+    pub tfar: f32,
 }
 
 impl Ray {
@@ -206,8 +210,55 @@ impl Ray {
         Ray {
             o,
             d,
-            tnear: 0.0001, // Epsilon
-            tfar: std::f32::MAX
+            tnear: constants::EPSILON,
+            tfar: std::f32::MAX,
+        }
+    }
+}
+
+use embree_rs;
+impl<'a> From<&'a Ray> for embree_rs::ray::Ray {
+    fn from(ray: &'a Ray) -> Self {
+        embree_rs::ray::Ray::new(&ray.o, &ray.d, ray.tnear, ray.tfar)
+    }
+}
+use std::sync::Arc;
+use geometry::Mesh;
+use math::Frame;
+
+pub struct Intersection<'a> {
+    /// Intersection distance
+    pub dist: f32,
+    /// Geometry normal
+    pub n_g: Vector3<f32>,
+    /// Shading normal
+    pub n_s: Vector3<f32>,
+    /// Intersection point
+    pub p: Point3<f32>,
+    /// Textures coordinates
+    pub uv: Option<Vector2<f32>>,
+    /// Mesh which we have intersected
+    pub mesh: &'a Arc<Mesh>,
+    /// Frame from the intersection point
+    pub frame: Frame,
+    /// Incomming direction in the local coordinates
+    pub wi: Vector3<f32>,
+}
+
+impl<'a> Intersection<'a> {
+    pub fn new(embree_its: embree_rs::ray::Intersection,
+           d: Vector3<f32>, mesh: &'a Arc<Mesh>) -> Intersection<'a>{
+        let frame = Frame::new( embree_its.n_s);
+        let wi = frame.to_local(d);
+        Intersection {
+            dist: embree_its.t,
+            n_g: embree_its.n_g,
+            n_s: embree_its.n_s,
+            p: embree_its.p,
+            uv: embree_its.uv,
+            mesh,
+            frame,
+            wi,
         }
     }
 }
