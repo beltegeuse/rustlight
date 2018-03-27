@@ -4,6 +4,47 @@
 
 Physically-based rendering engine implemented with **Rust**.
 
+## Building 
+
+NOTE: Need Rust 1.25 at least to support ```repr(align(X))``` routine for embree-rs. To install this version, you can run the following command:
+
+```RUSTUP_DIST_SERVER=https://dev-static.rust-lang.org rustup update stable```
+
+## How to use it
+
+```
+$ cargo run --release -- -h
+rustlight 0.0.2
+Adrien Gruson <adrien.gruson@gmail.com>
+A Rusty Light Transport simulation program
+
+USAGE:
+    rustlight [OPTIONS] <scene> [SUBCOMMAND]
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -n <nbsamples>        integration technique
+    -o <output>           output image file
+
+ARGS:
+    <scene>    JSON file description
+
+SUBCOMMANDS:
+    ao         ambiant occlusion
+    direct     direct lighting
+    gd-path    gradient-domain path tracing
+    help       Prints this message or the help of the given subcommand(s)
+    path       path tracing
+```
+
+For example, to use path tracing using 128 spp:
+```
+$ cargo run --release -- -n 128 -o path.pfm ./data/cbox.json path
+```
+
 ## Features
 
 For now, these are the following features implemented:
