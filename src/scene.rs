@@ -156,7 +156,7 @@ impl<'a> Scene<'a> {
         let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path())?;
 
         // Build embree as we will not geometry for now
-        println!("Build the acceleration structure");
+        info!("Build the acceleration structure");
         let scene_embree = device.commit(scene_embree)?;
 
         // Update meshes information

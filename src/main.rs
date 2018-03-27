@@ -5,6 +5,9 @@ extern crate clap;
 extern crate image;
 extern crate rayon;
 extern crate rustlight;
+#[macro_use]
+extern crate log;
+extern crate env_logger;
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use cgmath::Point2;
@@ -49,12 +52,12 @@ fn classical_mc_integration(scene: &rustlight::scene::Scene,
                             nb_samples: u32,
                             int: Box<rustlight::integrator::Integrator<Color> + Sync + Send>) -> Bitmap<Color> {
     ////////////// Do the rendering
-    println!("Rendering...");
+    info!("Rendering...");
     let start = Instant::now();
     let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
     let img = pool.install(|| scene.render(int, nb_samples));
     let elapsed = start.elapsed();
-    println!("Elapsed: {} ms",
+    info!("Elapsed: {} ms",
              (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
 
     return img;
@@ -63,12 +66,12 @@ fn classical_mc_integration(scene: &rustlight::scene::Scene,
 fn gradient_domain_integration(scene: &rustlight::scene::Scene,
                                nb_samples: u32,
                                int: Box<rustlight::integrator::Integrator<ColorGradient> + Sync + Send>) -> Bitmap<Color> {
-    println!("Rendering...");
+    info!("Rendering...");
     let start = Instant::now();
     let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
     let img_grad = pool.install(|| scene.render(int, nb_samples));
     let elapsed = start.elapsed();
-    println!("Elapsed: {} ms",
+    info!("Elapsed: {} ms",
              (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
 
     // Generates images buffers (dx, dy, primal)
@@ -110,7 +113,7 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
         save_pfm("out_dy.pfm", &dy_image);
     }*/
 
-    println!("Reconstruction...");
+    info!("Reconstruction...");
     let start = Instant::now();
     // Reconstruction (image-space covariate, uniform reconstruction)
     let mut current: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
@@ -156,7 +159,7 @@ fn gradient_domain_integration(scene: &rustlight::scene::Scene,
         std::mem::swap(&mut current, &mut next);
     }
     let elapsed = start.elapsed();
-    println!("Elapsed: {} ms",
+    info!("Elapsed: {} ms",
              (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64);
 
     // Export the reconstruction
@@ -216,6 +219,10 @@ fn main() {
             .arg(Arg::with_name("bsdf").takes_value(true).short("b").default_value("1"))
             .arg(Arg::with_name("light").takes_value(true).short("l").default_value("1")))
         .get_matches();
+
+    /////////////// Setup logging system
+    env_logger::Builder::from_default_env()
+        .default_format_timestamp(false).init();
 
     /////////////// Check output extension
     let imgout_path_str = matches.value_of("output").unwrap_or("test.pfm");

@@ -20,10 +20,10 @@ pub fn load_obj(scene: &mut embree_rs::scene::SceneConstruct, file_name: &std::p
     // Read models
     let mut meshes = vec![];
     for m in models {
-        println!("Loading model {}", m.name);
+        info!("Loading model {}", m.name);
         let mesh = m.mesh;
         // Load vertex position
-        println!("{} has {} triangles", m.name, mesh.indices.len() / 3);
+        info!(" - triangles: {}", mesh.indices.len() / 3);
         let vertices = mesh.positions.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
         // Load normal
         if mesh.normals.is_empty() {
@@ -45,7 +45,7 @@ pub fn load_obj(scene: &mut embree_rs::scene::SceneConstruct, file_name: &std::p
         // Read materials
         let diffuse_color;
         if let Some(id) = mesh.material_id {
-            println!("found bsdf id: {}", id);
+            info!(" - BSDF id: {}", id);
             let mat = &materials[id];
             diffuse_color = Color::new(mat.diffuse[0],
                                        mat.diffuse[1],
