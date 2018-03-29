@@ -45,4 +45,5 @@ pub mod camera;
 pub mod scene;
 pub mod integrator;
 pub mod math;
+pub mod path;
 mod tools; // private module
