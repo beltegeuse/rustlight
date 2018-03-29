@@ -50,11 +50,15 @@ fn save_png(imgout_path_str: &str, img: &Bitmap<Color>) {
 
 fn classical_mc_integration(scene: &rustlight::scene::Scene,
                             nb_samples: u32,
+                            nb_threads: Option<usize>,
                             int: Box<rustlight::integrator::Integrator<Color> + Sync + Send>) -> Bitmap<Color> {
     ////////////// Do the rendering
     info!("Rendering...");
     let start = Instant::now();
-    let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
+    let pool = match nb_threads {
+        None => rayon::ThreadPoolBuilder::new(),
+        Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
+    }.build().unwrap();
     let img = pool.install(|| scene.render(int, nb_samples));
     let elapsed = start.elapsed();
     info!("Elapsed: {} ms",
@@ -65,10 +69,14 @@ fn classical_mc_integration(scene: &rustlight::scene::Scene,
 
 fn gradient_domain_integration(scene: &rustlight::scene::Scene,
                                nb_samples: u32,
+                               nb_threads: Option<usize>,
                                int: Box<rustlight::integrator::Integrator<ColorGradient> + Sync + Send>) -> Bitmap<Color> {
     info!("Rendering...");
     let start = Instant::now();
-    let pool = rayon::ThreadPoolBuilder::new().build().unwrap();
+    let pool = match nb_threads {
+        None => rayon::ThreadPoolBuilder::new(),
+        Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
+    }.build().unwrap();
     let img_grad = pool.install(|| scene.render(int, nb_samples));
     let elapsed = start.elapsed();
     info!("Elapsed: {} ms",
@@ -195,6 +203,11 @@ fn main() {
             .takes_value(true)
             .index(1)
             .help("JSON file description"))
+        .arg( Arg::with_name("nbthreads")
+            .takes_value(true)
+            .short("t")
+            .default_value("auto")
+            .help("number of thread for the computation"))
         .arg(Arg::with_name("output")
             .takes_value(true)
             .short("o")
@@ -225,7 +238,7 @@ fn main() {
 
     /////////////// Setup logging system
     env_logger::Builder::from_default_env()
-        .default_format_timestamp(false).init();
+        .default_format_timestamp(false).parse("info").init();
 
     /////////////// Check output extension
     let imgout_path_str = matches.value_of("output").unwrap_or("test.pfm");
@@ -236,6 +249,15 @@ fn main() {
 
     //////////////// Load the rendering configuration
     let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), u32);
+    let nb_threads = match matches.value_of("nbthreads").unwrap() {
+        "auto" => None,
+        x => {
+            let v = x.parse::<usize>().expect("Wrong number of thread");
+            if v == 0 { panic!("Impossible to use 0 thread for the computation"); }
+            Some(v)
+        },
+    };
+
 
     //////////////// Load the scene
     let scene_path_str = matches.value_of("scene").expect("no scene parameter provided");
@@ -252,7 +274,7 @@ fn main() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
 
-            classical_mc_integration(&scene, nb_samples,
+            classical_mc_integration(&scene, nb_samples, nb_threads,
                                      Box::new(rustlight::integrator::IntegratorUniPath {
                                          max_depth,
                                      }))
@@ -261,7 +283,7 @@ fn main() {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
 
-            classical_mc_integration(&scene, nb_samples,
+            classical_mc_integration(&scene, nb_samples, nb_threads,
                                      Box::new(rustlight::integrator::IntegratorPath {
                                          max_depth,
                                          min_depth,
@@ -271,7 +293,7 @@ fn main() {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
 
-            gradient_domain_integration(&scene, nb_samples,
+            gradient_domain_integration(&scene, nb_samples, nb_threads,
                                         Box::new(rustlight::integrator::IntegratorPath {
                                             max_depth,
                                             min_depth,
@@ -280,13 +302,13 @@ fn main() {
         ("ao", Some(m)) => {
             let dist = match_infinity(m.value_of("distance").unwrap());
 
-            classical_mc_integration(&scene, nb_samples,
+            classical_mc_integration(&scene, nb_samples, nb_threads,
                                      Box::new(rustlight::integrator::IntegratorAO {
                                          max_distance: dist,
                                      }))
         }
         ("direct", Some(m)) => classical_mc_integration(&scene,
-                                                        nb_samples,
+                                                        nb_samples, nb_threads,
                                                         Box::new(rustlight::integrator::IntegratorDirect {
                                                             nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
                                                             nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
