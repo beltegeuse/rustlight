@@ -202,11 +202,55 @@ impl Integrator<Color> for IntegratorUniPath {
             None => Color::zero(),
             Some(path) => {
                 let mut l_i = Color::zero();
-                for vertex in path.vertices {
+                for (i, vertex) in path.vertices.iter().enumerate() {
                     match vertex {
-                        Vertex::Surface(v) => {
-                            if v.its.wi.z > 0.0 {
-                                l_i += v.its.mesh.emission * v.throughput;
+                        &Vertex::Surface(ref v) => {
+                            // Sample the light explicitly
+                            let light_record = scene.sample_light(&v.its.p,
+                                                                  sampler.next(),
+                                                                  sampler.next(),
+                                                                  sampler.next2d());
+                            let d_out_local = v.its.frame.to_local(light_record.d);
+                            if light_record.is_valid() && scene.visible(&v.its.p, &light_record.p) && d_out_local.z > 0.0 {
+                                // Compute the contribution of direct lighting
+                                let pdf_bsdf = v.its.mesh.bsdf.pdf(&v.its.wi, &d_out_local);
+
+                                // Compute MIS weights
+                                let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
+                                l_i += weight_light
+                                    * v.throughput
+                                    * v.its.mesh.bsdf.eval(&v.its.wi, &d_out_local)
+                                    * light_record.weight;
+                            }
+
+                            // For the first hit, no MIS can be used
+                            if i == 1 {
+                                if v.its.wi.z > 0.0 {
+                                    l_i += v.its.mesh.emission * v.throughput;
+                                }
+                            } else {
+                                // We need to use MIS as we can generate this path
+                                // using another technique
+                                if v.its.mesh.is_light() && v.its.wi.z > 0.0 {
+                                    let (pred_vertex_pos, pred_vertex_pdf) = match &path.vertices[i-1] {
+                                        &Vertex::Surface(ref v) => (v.its.p,
+                                                                    v.sampled_bsdf.as_ref().unwrap().pdf),
+                                        _ => panic!("Wrong vertex type"),
+                                    };
+                                    let light_pdf = scene.direct_pdf(LightSamplingPDF {
+                                        mesh: v.its.mesh,
+                                        o: pred_vertex_pos,
+                                        p: v.its.p,
+                                        n: v.its.n_g, // FIXME: Geometrical normal?
+                                        dir: path.edges[i-1].d, // THIS IS THE PROBLEM
+                                    });
+
+                                    let weight_bsdf = mis_weight(
+                                        pred_vertex_pdf,
+                                        light_pdf
+                                    );
+                                    l_i += v.throughput * (&v.its.mesh.emission) * weight_bsdf;
+                                }
                             }
                         }
                         _ => {}

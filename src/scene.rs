@@ -118,7 +118,7 @@ impl<'a> LightSamplingPDF<'a> {
             mesh: &its.mesh,
             o: ray.o,
             p: its.p,
-            n: its.n_g,
+            n: its.n_g, // FIXME: Geometrical normal?
             dir: ray.d,
         }
     }
