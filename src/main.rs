@@ -207,6 +207,9 @@ fn main() {
             .about("path tracing")
             .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf"))
             .arg(Arg::with_name("min").takes_value(true).short("n").default_value("inf")))
+        .subcommand(SubCommand::with_name("path-explicit")
+            .about("path tracing with explict light path construction")
+            .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf")))
         .subcommand(SubCommand::with_name("gd-path")
             .about("gradient-domain path tracing")
             .arg(Arg::with_name("max").takes_value(true).short("m").default_value("inf"))
@@ -246,6 +249,14 @@ fn main() {
     let scene = rustlight::scene::Scene::new(&data, wk).expect("error when loading the scene");
 
     let img = match matches.subcommand() {
+        ("path-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+
+            classical_mc_integration(&scene, nb_samples,
+                                     Box::new(rustlight::integrator::IntegratorUniPath {
+                                         max_depth,
+                                     }))
+        }
         ("path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());

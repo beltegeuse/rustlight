@@ -1,5 +1,6 @@
 use BitmapTrait;
 use cgmath::*;
+use material::SampledDirection;
 use math::*;
 use sampler::*;
 use Scale;
@@ -47,6 +48,171 @@ impl Integrator<Color> for IntegratorAO {
                     None => Color::zero(),
                     Some(d) => if new_its.dist > d { Color::one() } else { Color::zero() }
                 }
+            }
+        }
+    }
+}
+
+pub struct SensorVertex {
+    pub uv: Point2<f32>,
+    pub pos: Point3<f32>,
+    pub pdf: f32,
+}
+
+pub struct SurfaceVertex<'a> {
+    pub its: Intersection<'a>,
+    pub throughput: Color,
+    pub sampled_bsdf: Option<SampledDirection>,
+}
+
+pub enum Vertex<'a> {
+    Sensor(SensorVertex),
+    Surface(SurfaceVertex<'a>),
+}
+
+impl<'a> Vertex<'a> {
+    fn generate_next(&mut self,
+                     scene: &'a Scene,
+                     sampler: &mut Sampler) -> Option<(Edge, Vertex<'a>)> {
+        match *self {
+            Vertex::Sensor(ref _v) => {
+                panic!("Not possible for now to generate this vertex");
+            }
+            Vertex::Surface(ref mut v) => {
+                v.sampled_bsdf = match v.its.mesh.bsdf.sample(&v.its.wi, sampler.next2d()) {
+                    Some(x) => Some(x),
+                    None => return None,
+                };
+                let sampled_bsdf = v.sampled_bsdf.as_ref().unwrap();
+
+                // Update the throughput
+                let mut new_throughput = v.throughput * sampled_bsdf.weight;
+                if new_throughput.is_zero() {
+                    return None;
+                }
+
+
+                // Generate the new ray and do the intersection
+                let d_out_global = v.its.frame.to_world(sampled_bsdf.d);
+                let ray = Ray::new(v.its.p, d_out_global);
+                let its = match scene.trace(&ray) {
+                    Some(its) => its,
+                    None => return None,
+                };
+
+                // Check RR
+                let rr_pdf = new_throughput.channel_max().min(0.95);
+                if rr_pdf < sampler.next() {
+                    return None;
+                }
+                new_throughput /= rr_pdf;
+
+                Some((
+                    Edge {
+                        dist: its.dist,
+                        d: d_out_global,
+                    },
+                    Vertex::Surface(
+                        SurfaceVertex {
+                            its,
+                            throughput: new_throughput,
+                            sampled_bsdf: None,
+                        }
+                    ))
+                )
+            }
+        }
+    }
+}
+
+pub struct Edge {
+    pub dist: f32,
+    pub d: Vector3<f32>,
+}
+
+pub struct Path<'a> {
+    pub vertices: Vec<Vertex<'a>>,
+    pub edges: Vec<Edge>,
+}
+
+impl<'a> Path<'a> {
+    fn from_sensor((ix, iy): (u32, u32),
+                   scene: &'a Scene,
+                   sampler: &mut Sampler,
+                   max_depth: Option<u32>) -> Option<Path<'a>> {
+        let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
+        let ray = scene.camera.generate(pix);
+
+        let mut vertices = vec![Vertex::Sensor(
+            SensorVertex {
+                uv: Point2::new(pix.0, pix.1),
+                pos: ray.o,
+                pdf: 1.0,
+            })];
+
+        let its = match scene.trace(&ray) {
+            Some(its) => its,
+            None => return None,
+        };
+
+        let mut edges = vec![Edge {
+            dist: its.dist,
+            d: ray.d,
+        }];
+
+        vertices.push(
+            Vertex::Surface(SurfaceVertex {
+                its: its,
+                throughput: Color::one(),
+                sampled_bsdf: None,
+            })
+        );
+
+        let mut depth = 2;
+        while max_depth.map_or(true, |max| depth < max) {
+            match vertices.last_mut().unwrap().generate_next(scene, sampler) {
+                None => {
+                    return Some(Path {
+                        vertices,
+                        edges,
+                    });
+                }
+                Some((edge, vertex)) => {
+                    edges.push(edge);
+                    vertices.push(vertex);
+                }
+            }
+            depth += 1;
+        }
+
+        Some(Path {
+            vertices,
+            edges,
+        })
+    }
+}
+
+pub struct IntegratorUniPath {
+    pub max_depth: Option<u32>,
+}
+
+impl Integrator<Color> for IntegratorUniPath {
+    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
+        match Path::from_sensor((ix, iy), scene, sampler, self.max_depth) {
+            None => Color::zero(),
+            Some(path) => {
+                let mut l_i = Color::zero();
+                for vertex in path.vertices {
+                    match vertex {
+                        Vertex::Surface(v) => {
+                            if v.its.wi.z > 0.0 {
+                                l_i += v.its.mesh.emission * v.throughput;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                l_i
             }
         }
     }
