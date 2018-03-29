@@ -42,12 +42,12 @@ impl BSDF for BSDFDiffuse {
     }
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32 {
-        assert!(d_in.z > 0.0);
+        if d_in.z <= 0.0 { return 0.0; }
         if d_out.z <= 0.0 { 0.0 } else { d_out.z * std::f32::consts::FRAC_1_PI }
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
-        assert!(d_in.z > 0.0);
+        if d_in.z <= 0.0 { return Color::zero(); }
         if d_out.z > 0.0 {
             self.diffuse * d_out.z * std::f32::consts::FRAC_1_PI
         } else {
@@ -88,7 +88,7 @@ impl BSDF for BSDFPhong {
     }
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32 {
-        assert!(d_in.z > 0.0);
+        if d_in.z <= 0.0 { return 0.0; }
         if d_out.z <= 0.0 {
             0.0
         } else {
@@ -102,7 +102,7 @@ impl BSDF for BSDFPhong {
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
-        assert!(d_in.z > 0.0);
+        if d_in.z <= 0.0 { return Color::zero(); }
         if d_out.z <= 0.0 {
             Color::zero()
         } else {
