@@ -6,6 +6,31 @@ use std;
 use std::ops::*;
 use constants;
 
+/// PDF represented into different spaces
+pub enum PDF {
+    SolidAngle(f32),
+    Area(f32),
+    Discrete(f32),
+}
+
+impl PDF {
+    pub fn is_zero(&self) -> bool {
+        match self {
+            &PDF::Discrete(v)
+            | &PDF::SolidAngle(v)
+            | &PDF::Area(v) => (v == 0.0),
+        }
+    }
+
+    pub fn value(&self) -> f32 {
+        match self {
+            &PDF::Discrete(v)
+            | &PDF::SolidAngle(v)
+            | &PDF::Area(v) => v,
+        }
+    }
+}
+
 /// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
 pub struct Color {
@@ -260,6 +285,10 @@ impl<'a> Intersection<'a> {
             frame,
             wi,
         }
+    }
+
+    pub fn cos_theta(&self) -> f32 {
+        self.wi.z
     }
 }
 

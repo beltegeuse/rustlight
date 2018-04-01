@@ -32,11 +32,10 @@ impl Integrator<Color> for IntegratorAO {
             None => return Color::zero(),
         };
 
-        // FIXME: Can we clean this code using enumerate type???
         // Compute an new direction
         // Note that we do not flip the normal automatically,
         // for the light definition (only one sided)
-        if its.wi.z <= 0.0 {
+        if its.cos_theta() <= 0.0 {
             return Color::zero();
         }
         let d_local = cosine_sample_hemisphere(sampler.next2d());
@@ -89,13 +88,13 @@ impl Integrator<Color> for IntegratorUniPath {
 
                             // For the first hit, no MIS can be used
                             if i == 1 {
-                                if v.its.wi.z > 0.0 {
+                                if v.its.cos_theta() > 0.0 {
                                     l_i += v.its.mesh.emission * v.throughput;
                                 }
                             } else {
                                 // We need to use MIS as we can generate this path
                                 // using another technique
-                                if v.its.mesh.is_light() && v.its.wi.z > 0.0 {
+                                if v.its.mesh.is_light() && v.its.cos_theta() > 0.0 {
                                     let (pred_vertex_pos, pred_vertex_pdf) = match &path.vertices[i-1] {
                                         &Vertex::Surface(ref v) => (v.its.p,
                                                                     v.sampled_bsdf.as_ref().unwrap().pdf),
@@ -166,7 +165,7 @@ impl Integrator<Color> for IntegratorDirect {
 
         // FIXME: Will not work with glass
         // Check if we go the right orientation
-        if its.wi.z <= 0.0 {
+        if its.cos_theta() <= 0.0 {
             return l_i;
         }
 
@@ -216,7 +215,7 @@ impl Integrator<Color> for IntegratorDirect {
                 };
 
                 // Check that we have intersected a light or not
-                if next_its.mesh.is_light() && next_its.wi.z > 0.0 {
+                if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
                     let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &next_its));
 
                     // Compute MIS weights
@@ -258,7 +257,7 @@ impl Integrator<Color> for IntegratorPath {
         let mut depth: u32 = 1;
         while self.max_depth.map_or(true, |max| depth < max) {
             // Check if we go the right orientation
-            if its.wi.z <= 0.0 {
+            if its.cos_theta() <= 0.0 {
                 return l_i;
             }
 
@@ -311,7 +310,7 @@ impl Integrator<Color> for IntegratorPath {
             };
 
             // Check that we have intersected a light or not
-            if its.mesh.is_light() && its.wi.z > 0.0 {
+            if its.mesh.is_light() && its.cos_theta() > 0.0 {
                 let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &its));
 
                 let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
@@ -411,7 +410,7 @@ impl<'a> RayState<'a> {
         // FIXME: Change how this works .... to avoid duplicated code
         match self {
             RayState::NotConnected(e) =>
-                if e.its.wi.z <= 0.0 {
+                if e.its.cos_theta() <= 0.0 {
                     RayState::Dead
                 } else {
                     RayState::NotConnected(e)
@@ -484,7 +483,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
         while self.max_depth.is_none() || (depth < self.max_depth.unwrap()) {
             // Check if we go the right orientation
             // -- main path
-            if main.its.wi.z <= 0.0 {
+            if main.its.cos_theta() <= 0.0 {
                 return l_i;
             }
             offsets = offsets.into_iter().map(|e| e.check_normal()).collect();
@@ -625,7 +624,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
             // Check that we have intersected a light or not
             let (main_light_pdf, main_emitter_rad) = {
-                if main_next_mesh.is_light() && main.its.wi.z > 0.0 {
+                if main_next_mesh.is_light() && main.its.cos_theta() > 0.0 {
                     let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&main.ray, &main.its)) as f64;
                     (light_pdf, main_next_mesh.emission.clone())
                 } else {

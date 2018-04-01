@@ -2,12 +2,18 @@ use cgmath::{Point2, Vector3};
 use cgmath::InnerSpace;
 use math::{Frame, cosine_sample_hemisphere};
 use std;
-use structure::Color;
+use structure::*;
 
+// Helpers
+fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
+    Vector3::new(-d.x, -d.y, d.z)
+}
+
+/// Struct that represent a sampled direction
 pub struct SampledDirection {
     pub weight: Color,
     pub d: Vector3<f32>,
-    pub pdf: f32,
+    pub pdf: PDF,
 }
 
 pub trait BSDF {
@@ -17,7 +23,7 @@ pub trait BSDF {
     /// @return: the outgoing direction, the pdf and the bsdf value $fs(...) * | n . d_out |$
     fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection>;
     /// eval the bsdf pdf value in solid angle
-    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32;
+    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF;
     /// eval the bsdf value : $fs(...)$
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color;
 }
@@ -36,14 +42,15 @@ impl BSDF for BSDFDiffuse {
             Some(SampledDirection {
                 weight: self.diffuse,
                 d: d_out,
-                pdf: d_out.z * std::f32::consts::FRAC_1_PI,
+                pdf: PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
             })
         }
     }
 
-    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32 {
-        if d_in.z <= 0.0 { return 0.0; }
-        if d_out.z <= 0.0 { 0.0 } else { d_out.z * std::f32::consts::FRAC_1_PI }
+    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+        if d_in.z <= 0.0 { return PDF::SolidAngle(0.0); }
+        if d_out.z <= 0.0 { PDF::SolidAngle(0.0) }
+            else { PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI) }
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
@@ -69,17 +76,17 @@ impl BSDF for BSDFPhong {
         let phi = 2.0 * std::f32::consts::PI * sample.x;
         let local_dir = Vector3::new(sin_alpha * phi.cos(), sin_alpha * phi.sin(), cos_alpha);
 
-        let frame = Frame::new(BSDFPhong::reflect(d_in));
+        let frame = Frame::new(reflect(d_in));
         let d_out = frame.to_world(local_dir);
         if d_out.z <= 0.0 {
             None
         } else {
             let pdf = self.pdf(d_in, &d_out);
-            if pdf == 0.0 {
+            if pdf.is_zero() {
                 None
             } else {
                 Some(SampledDirection {
-                    weight: self.eval(d_in, &d_out) / pdf,
+                    weight: self.eval(d_in, &d_out) / pdf.value(),
                     d: d_out,
                     pdf,
                 })
@@ -87,16 +94,16 @@ impl BSDF for BSDFPhong {
         }
     }
 
-    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> f32 {
-        if d_in.z <= 0.0 { return 0.0; }
+    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+        if d_in.z <= 0.0 { return PDF::SolidAngle(0.0); }
         if d_out.z <= 0.0 {
-            0.0
+            PDF::SolidAngle(0.0)
         } else {
-            let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
+            let alpha = reflect(d_in).dot(*d_out);
             if alpha > 0.0 {
-                alpha.powf(self.exponent) * (self.exponent + 1.0) / (2.0 * std::f32::consts::PI)
+                PDF::SolidAngle(alpha.powf(self.exponent) * (self.exponent + 1.0) / (2.0 * std::f32::consts::PI))
             } else {
-                0.0
+                PDF::SolidAngle(0.0)
             }
         }
     }
@@ -106,7 +113,7 @@ impl BSDF for BSDFPhong {
         if d_out.z <= 0.0 {
             Color::zero()
         } else {
-            let alpha = BSDFPhong::reflect(d_in).dot(*d_out);
+            let alpha = reflect(d_in).dot(*d_out);
             if alpha > 0.0 {
                 self.specular *
                     (alpha.powf(self.exponent) * (self.exponent + 2.0) / (2.0 * std::f32::consts::PI))
@@ -117,8 +124,30 @@ impl BSDF for BSDFPhong {
     }
 }
 
-impl BSDFPhong {
-    fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
-        Vector3::new(-d.x, -d.y, d.z)
+pub struct BSDFSpecular {
+    pub specular: Color,
+}
+
+impl BSDF for BSDFSpecular {
+    fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
+        if d_in.z <= 0.0 { None }
+        else {
+            Some(SampledDirection {
+                weight: self.specular,
+                d: reflect(d_in),
+                pdf: PDF::Discrete(1.0),
+            })
+        }
+    }
+
+    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+        PDF::Discrete(1.0)
+    }
+
+    fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
+        // For now, we do not implement this function
+        // as we want to avoid to call this function
+        // and does not handle correctly the evaluation
+        unimplemented!()
     }
 }
