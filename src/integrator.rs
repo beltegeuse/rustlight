@@ -32,11 +32,10 @@ impl Integrator<Color> for IntegratorAO {
             None => return Color::zero(),
         };
 
-        // FIXME: Can we clean this code using enumerate type???
         // Compute an new direction
         // Note that we do not flip the normal automatically,
         // for the light definition (only one sided)
-        if its.wi.z <= 0.0 {
+        if its.cos_theta() <= 0.0 {
             return Color::zero();
         }
         let d_local = cosine_sample_hemisphere(sampler.next2d());
@@ -74,46 +73,55 @@ impl Integrator<Color> for IntegratorUniPath {
                                                                   sampler.next(),
                                                                   sampler.next(),
                                                                   sampler.next2d());
+                            let light_pdf = match light_record.pdf {
+                                PDF::SolidAngle(v) => v,
+                                _ =>  panic!("Unsupported light pdf type for pdf connection."),
+                            };
+
                             let d_out_local = v.its.frame.to_local(light_record.d);
                             if light_record.is_valid() && scene.visible(&v.its.p, &light_record.p) && d_out_local.z > 0.0 {
                                 // Compute the contribution of direct lighting
-                                let pdf_bsdf = v.its.mesh.bsdf.pdf(&v.its.wi, &d_out_local);
-
-                                // Compute MIS weights
-                                let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
-                                l_i += weight_light
-                                    * v.throughput
-                                    * v.its.mesh.bsdf.eval(&v.its.wi, &d_out_local)
-                                    * light_record.weight;
+                                if let PDF::SolidAngle(pdf_bsdf) = v.its.mesh.bsdf.pdf(&v.its.wi, &d_out_local) {
+                                    // Compute MIS weights
+                                    let weight_light = mis_weight(light_pdf, pdf_bsdf);
+                                    l_i += weight_light
+                                        * v.throughput
+                                        * v.its.mesh.bsdf.eval(&v.its.wi, &d_out_local)
+                                        * light_record.weight;
+                                }
                             }
 
                             // For the first hit, no MIS can be used
                             if i == 1 {
-                                if v.its.wi.z > 0.0 {
+                                if v.its.cos_theta() > 0.0 {
                                     l_i += v.its.mesh.emission * v.throughput;
                                 }
                             } else {
                                 // We need to use MIS as we can generate this path
                                 // using another technique
-                                if v.its.mesh.is_light() && v.its.wi.z > 0.0 {
+                                if v.its.mesh.is_light() && v.its.cos_theta() > 0.0 {
                                     let (pred_vertex_pos, pred_vertex_pdf) = match &path.vertices[i-1] {
                                         &Vertex::Surface(ref v) => (v.its.p,
-                                                                    v.sampled_bsdf.as_ref().unwrap().pdf),
+                                                                    &v.sampled_bsdf.as_ref().unwrap().pdf),
                                         _ => panic!("Wrong vertex type"),
                                     };
-                                    let light_pdf = scene.direct_pdf(LightSamplingPDF {
-                                        mesh: v.its.mesh,
-                                        o: pred_vertex_pos,
-                                        p: v.its.p,
-                                        n: v.its.n_g, // FIXME: Geometrical normal?
-                                        dir: path.edges[i-1].d, // THIS IS THE PROBLEM
-                                    });
 
-                                    let weight_bsdf = mis_weight(
-                                        pred_vertex_pdf,
-                                        light_pdf
-                                    );
-                                    l_i += v.throughput * (&v.its.mesh.emission) * weight_bsdf;
+                                    if let &PDF::SolidAngle(pred_vertex_pdf) = pred_vertex_pdf {
+                                        // As we have intersected the light, the PDF need to be in SA
+                                        let light_pdf = scene.direct_pdf(LightSamplingPDF {
+                                            mesh: v.its.mesh,
+                                            o: pred_vertex_pos,
+                                            p: v.its.p,
+                                            n: v.its.n_g, // FIXME: Geometrical normal?
+                                            dir: path.edges[i-1].d,
+                                        });
+
+                                        let weight_bsdf = mis_weight(
+                                            pred_vertex_pdf,
+                                            light_pdf.value()
+                                        );
+                                        l_i += v.throughput * (&v.its.mesh.emission) * weight_bsdf;
+                                    };
                                 }
                             }
                         }
@@ -166,7 +174,7 @@ impl Integrator<Color> for IntegratorDirect {
 
         // FIXME: Will not work with glass
         // Check if we go the right orientation
-        if its.wi.z <= 0.0 {
+        if its.cos_theta() <= 0.0 {
             return l_i;
         }
 
@@ -186,18 +194,23 @@ impl Integrator<Color> for IntegratorDirect {
                                                   sampler.next(),
                                                   sampler.next(),
                                                   sampler.next2d());
+            let light_pdf = match light_record.pdf {
+                PDF::SolidAngle(v) => v,
+                _ => panic!("Wrong light PDF"),
+            };
+
             let d_out_local = its.frame.to_local(light_record.d);
             if light_record.is_valid() && scene.visible(&its.p, &light_record.p) && d_out_local.z > 0.0 {
                 // Compute the contribution of direct lighting
-                let pdf_bsdf = its.mesh.bsdf.pdf(&its.wi, &d_out_local);
-
-                // Compute MIS weights
-                let weight_light = mis_weight(light_record.pdf * weight_nb_light,
-                                              pdf_bsdf * weight_nb_bsdf);
-                l_i += weight_light
-                    * its.mesh.bsdf.eval(&its.wi, &d_out_local)
-                    * weight_nb_light
-                    * light_record.weight;
+                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.wi, &d_out_local) {
+                    // Compute MIS weights
+                    let weight_light = mis_weight(light_pdf * weight_nb_light,
+                                                  pdf_bsdf * weight_nb_bsdf);
+                    l_i += weight_light
+                        * its.mesh.bsdf.eval(&its.wi, &d_out_local)
+                        * weight_nb_light
+                        * light_record.weight;
+                }
             }
         }
 
@@ -207,6 +220,11 @@ impl Integrator<Color> for IntegratorDirect {
         // Compute an new direction (diffuse)
         for _ in 0..self.nb_bsdf_samples {
             if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.wi, sampler.next2d()) {
+                let bsdf_pdf = match sampled_bsdf.pdf {
+                    PDF::SolidAngle(v) => v,
+                    _ => {continue;},
+                };
+
                 // Generate the new ray and do the intersection
                 let d_out_world = its.frame.to_world(sampled_bsdf.d);
                 let ray = Ray::new(its.p, d_out_world);
@@ -216,11 +234,14 @@ impl Integrator<Color> for IntegratorDirect {
                 };
 
                 // Check that we have intersected a light or not
-                if next_its.mesh.is_light() && next_its.wi.z > 0.0 {
-                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &next_its));
+                if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
+                    let light_pdf = match scene.direct_pdf(LightSamplingPDF::new(&ray, &next_its)) {
+                        PDF::SolidAngle(v) => v,
+                        _ => {warn!("Wrong PDF values retrieve on an intersected mesh"); continue; }
+                    };
 
                     // Compute MIS weights
-                    let weight_bsdf = mis_weight(sampled_bsdf.pdf * weight_nb_bsdf,
+                    let weight_bsdf = mis_weight(bsdf_pdf * weight_nb_bsdf,
                                                  light_pdf * weight_nb_light);
 
                     l_i += weight_bsdf * sampled_bsdf.weight * (&next_its.mesh.emission) * weight_nb_bsdf;
@@ -258,7 +279,7 @@ impl Integrator<Color> for IntegratorPath {
         let mut depth: u32 = 1;
         while self.max_depth.map_or(true, |max| depth < max) {
             // Check if we go the right orientation
-            if its.wi.z <= 0.0 {
+            if its.cos_theta() <= 0.0 {
                 return l_i;
             }
 
@@ -275,18 +296,23 @@ impl Integrator<Color> for IntegratorPath {
                                                   sampler.next(),
                                                   sampler.next(),
                                                   sampler.next2d());
+            let light_pdf = match light_record.pdf {
+                PDF::SolidAngle(v) => v,
+                _ => panic!("Unsupported light, abord"),
+            };
+
             let d_out_local = its.frame.to_local(light_record.d);
             if light_record.is_valid() && scene.visible(&its.p, &light_record.p) && d_out_local.z > 0.0 {
                 // Compute the contribution of direct lighting
-                let pdf_bsdf = its.mesh.bsdf.pdf(&its.wi, &d_out_local);
-
-                // Compute MIS weights
-                let weight_light = mis_weight(light_record.pdf, pdf_bsdf);
-                if self.min_depth.map_or(true, |min| depth >= min) {
-                    l_i += weight_light
-                        * throughput
-                        * its.mesh.bsdf.eval(&its.wi, &d_out_local)
-                        * light_record.weight;
+                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.wi, &d_out_local) {
+                    // Compute MIS weights
+                    let weight_light = mis_weight(light_pdf, pdf_bsdf);
+                    if self.min_depth.map_or(true, |min| depth >= min) {
+                        l_i += weight_light
+                            * throughput
+                            * its.mesh.bsdf.eval(&its.wi, &d_out_local)
+                            * light_record.weight;
+                    }
                 }
             }
 
@@ -311,10 +337,16 @@ impl Integrator<Color> for IntegratorPath {
             };
 
             // Check that we have intersected a light or not
-            if its.mesh.is_light() && its.wi.z > 0.0 {
-                let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &its));
-
-                let weight_bsdf = mis_weight(sampled_bsdf.pdf, light_pdf);
+            if its.mesh.is_light() && its.cos_theta() > 0.0 {
+                let weight_bsdf = match sampled_bsdf.pdf {
+                    PDF::SolidAngle(v) => {
+                        // Know the the light is intersectable so have a solid angle PDF
+                        let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &its));
+                        mis_weight(v, light_pdf.value())
+                    },
+                    PDF::Discrete(_v) => { 1.0 },
+                    _ => panic!("Unsupported type."),
+                };
                 if self.min_depth.map_or(true, |min| depth >= min) {
                     l_i += throughput * (&its.mesh.emission) * weight_bsdf;
                 }
@@ -411,7 +443,7 @@ impl<'a> RayState<'a> {
         // FIXME: Change how this works .... to avoid duplicated code
         match self {
             RayState::NotConnected(e) =>
-                if e.its.wi.z <= 0.0 {
+                if e.its.cos_theta() <= 0.0 {
                     RayState::Dead
                 } else {
                     RayState::NotConnected(e)
@@ -484,7 +516,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
         while self.max_depth.is_none() || (depth < self.max_depth.unwrap()) {
             // Check if we go the right orientation
             // -- main path
-            if main.its.wi.z <= 0.0 {
+            if main.its.cos_theta() <= 0.0 {
                 return l_i;
             }
             offsets = offsets.into_iter().map(|e| e.check_normal()).collect();
@@ -508,9 +540,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 let main_emitter_rad = if main_light_visible { main_light_record.weight } else { Color::zero() };
                 let main_d_out_local = main.its.frame.to_local(main_light_record.d);
                 // Evaluate BSDF values and light values
-                let main_light_pdf = main_light_record.pdf as f64;
+                let main_light_pdf = main_light_record.pdf.value() as f64;
                 let main_bsdf_value = main.its.mesh.bsdf.eval(&main.its.wi, &main_d_out_local); // f(...) * cos(...)
-                let main_bsdf_pdf = if main_light_visible { main.its.mesh.bsdf.pdf(&main.its.wi, &main_d_out_local) as f64 } else { 0.0 };
+                let main_bsdf_pdf = if main_light_visible { main.its.mesh.bsdf.pdf(&main.its.wi, &main_d_out_local).value() as f64 } else { 0.0 };
                 // Cache PDF / throughput values
                 let main_weight_num = main_light_pdf.powi(MIS_POWER);
                 let main_weight_dem = main_light_pdf.powi(MIS_POWER) + main_bsdf_pdf.powi(MIS_POWER);
@@ -520,7 +552,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 let main_geom_cos_light = main_light_record.n.dot(main_light_record.d);
 
 
-                if main_light_record.pdf != 0.0 {
+                if main_light_record.pdf.value() != 0.0 {
                     // FIXME: Double check this condition. Normally, it will be fine
                     // FIXME: But pdf = 0 for the main path does not necessary imply
                     // FIXME: 0 probability for the shift path, no?
@@ -549,7 +581,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     (0.0, Color::zero())
                                 } else {
                                     // BSDF
-                                    let shift_bsdf_pdf = main.its.mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local) as f64;
+                                    let shift_bsdf_pdf = main.its.mesh.bsdf.pdf(&shift_d_in_local, &main_d_out_local).value() as f64;
                                     let shift_bsdf_value = main.its.mesh.bsdf.eval(&shift_d_in_local, &main_d_out_local);
                                     // Compute and return
                                     let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER) *
@@ -571,12 +603,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                                                             uv_rand);
                                 let shift_light_visible = scene.visible(&s.its.p,
                                                                         &shift_light_record.p);
-                                let shift_emitter_rad = if shift_light_visible { shift_light_record.weight * (shift_light_record.pdf / main_light_record.pdf) } else { Color::zero() };
+                                let shift_emitter_rad = if shift_light_visible { shift_light_record.weight * (shift_light_record.pdf.value() / main_light_record.pdf.value()) } else { Color::zero() };
                                 let shift_d_out_local = s.its.frame.to_local(shift_light_record.d);
                                 // BSDF
-                                let shift_light_pdf = shift_light_record.pdf as f64;
+                                let shift_light_pdf = shift_light_record.pdf.value() as f64;
                                 let shift_bsdf_value = shift_hit_mesh.bsdf.eval(&s.its.wi, &shift_d_out_local);
-                                let shift_bsdf_pdf = if shift_light_visible { shift_hit_mesh.bsdf.pdf(&s.its.wi, &shift_d_out_local) as f64 } else { 0.0 };
+                                let shift_bsdf_pdf = if shift_light_visible { shift_hit_mesh.bsdf.pdf(&s.its.wi, &shift_d_out_local).value() as f64 } else { 0.0 };
                                 // Compute Jacobian: Here the ratio of geometry terms
                                 let jacobian = ((shift_light_record.n.dot(shift_light_record.d) * main_geom_dsquared).abs()
                                     / (main_geom_cos_light * (s.its.p - shift_light_record.p).magnitude2()).abs()) as f64;
@@ -625,8 +657,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
             // Check that we have intersected a light or not
             let (main_light_pdf, main_emitter_rad) = {
-                if main_next_mesh.is_light() && main.its.wi.z > 0.0 {
-                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&main.ray, &main.its)) as f64;
+                if main_next_mesh.is_light() && main.its.cos_theta() > 0.0 {
+                    let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&main.ray, &main.its)).value() as f64;
                     (light_pdf, main_next_mesh.emission.clone())
                 } else {
                     (0.0, Color::zero())
@@ -635,7 +667,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
 
             // Update the main path
             let main_pdf_pred = main.pdf;
-            let main_bsdf_pdf = main_sampled_bsdf.pdf as f64;
+            let main_bsdf_pdf = main_sampled_bsdf.pdf.value() as f64;
             main.throughput *= &(main_sampled_bsdf.weight);
             main.pdf *= main_bsdf_pdf;
             // Check if we are in a correct state or not
@@ -671,7 +703,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             (0.0, Color::zero(), RayState::Dead)
                         } else {
                             // BSDF
-                            let shift_bsdf_pdf = main_pred_its.mesh.bsdf.pdf(&shift_d_in_local, &main_sampled_bsdf.d) as f64;
+                            let shift_bsdf_pdf = main_pred_its.mesh.bsdf.pdf(&shift_d_in_local, &main_sampled_bsdf.d).value() as f64;
                             let shift_bsdf_value = main_pred_its.mesh.bsdf.eval(&shift_d_in_local, &main_sampled_bsdf.d);
                             // Update main path
                             let shift_pdf_pred = s.pdf;
@@ -699,7 +731,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             assert!(jacobian >= 0.0);
                             // BSDF
                             let shift_bsdf_value = s.its.mesh.bsdf.eval(&s.its.wi, &shift_d_out_local);
-                            let shift_bsdf_pdf = s.its.mesh.bsdf.pdf(&s.its.wi, &shift_d_out_local) as f64;
+                            let shift_bsdf_pdf = s.its.mesh.bsdf.pdf(&s.its.wi, &shift_d_out_local).value() as f64;
                             // Update shift path
                             let shift_pdf_pred = s.pdf;
                             s.throughput *= &(shift_bsdf_value * (jacobian / main_bsdf_pdf) as f32);
@@ -719,7 +751,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     p: main.its.p,
                                     n: main.its.n_g,
                                     dir: shift_d_out_global,
-                                });
+                                }).value();
                                 // FIXME: We return without the cos as the light
                                 // FIXME: does not change, does it true for non uniform light?
                                 (main_emitter_rad.clone(), shift_emitter_pdf as f64)

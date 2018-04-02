@@ -90,7 +90,7 @@ impl<T: BitmapTrait> Iterator for Bitmap<T> {
 /// Light sample representation
 pub struct LightSampling<'a> {
     pub emitter: &'a geometry::Mesh,
-    pub pdf: f32,
+    pub pdf: PDF,
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
     pub d: Vector3<f32>,
@@ -99,7 +99,7 @@ pub struct LightSampling<'a> {
 
 impl<'a> LightSampling<'a> {
     pub fn is_valid(&'a self) -> bool {
-        self.pdf != 0.0
+        !self.pdf.is_zero()
     }
 }
 
@@ -241,10 +241,11 @@ impl<'a> Scene<'a> {
             p0, &d, 0.00001, 0.9999))
     }
 
-    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
+    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> PDF {
         let emitter_id = self.emitters.iter()
             .position(|m| Arc::ptr_eq(light_sampling.mesh, m)).unwrap();
-        light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id)
+        // FIXME: As for now, we only support surface light, the PDF measure is always SA
+        PDF::SolidAngle(light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id))
     }
     pub fn sample_light(&self, p: &Point3<f32>, r_sel: f32, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light
@@ -258,8 +259,9 @@ impl<'a> Scene<'a> {
 
         // Compute the geometry
         let cos_light = sampled_pos.n.dot(-d).max(0.0);
-        let pdf = if cos_light == 0.0 { 0.0 } else { (pdf_sel * sampled_pos.pdf * dist * dist) / cos_light };
-        let emission = if pdf == 0.0 { Color::zero() } else { emitter.emission / pdf };
+        let pdf = if cos_light == 0.0 { PDF::SolidAngle(0.0) }
+            else { PDF::SolidAngle((pdf_sel * sampled_pos.pdf * dist * dist) / cos_light) };
+        let emission = if pdf.is_zero() { Color::zero() } else { emitter.emission / pdf.value() };
         LightSampling {
             emitter,
             pdf,
