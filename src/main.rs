@@ -209,7 +209,7 @@ fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
 fn main() {
     // Read input args
     let matches = App::new("rustlight")
-        .version("0.0.2")
+        .version("0.0.4")
         .author("Adrien Gruson <adrien.gruson@gmail.com>")
         .about("A Rusty Light Transport simulation program")
         .arg(

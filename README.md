@@ -14,7 +14,7 @@ NOTE: Need Rust 1.25 at least to support ```repr(align(X))``` routine for embree
 
 ```
 $ cargo run --release -- -h
-rustlight 0.0.2
+rustlight 0.0.4
 Adrien Gruson <adrien.gruson@gmail.com>
 A Rusty Light Transport simulation program
 
@@ -27,17 +27,20 @@ FLAGS:
 
 OPTIONS:
     -n <nbsamples>        integration technique
+    -t <nbthreads>        number of thread for the computation [default: auto]
     -o <output>           output image file
 
 ARGS:
     <scene>    JSON file description
 
 SUBCOMMANDS:
-    ao         ambiant occlusion
-    direct     direct lighting
-    gd-path    gradient-domain path tracing
-    help       Prints this message or the help of the given subcommand(s)
-    path       path tracing
+    ao               ambiant occlusion
+    direct           direct lighting
+    gd-path          gradient-domain path tracing
+    help             Prints this message or the help of the given subcommand(s)
+    path             path tracing
+    path-explicit    path tracing with explict light path construction
+
 ```
 
 For example, to use path tracing using 128 spp:
@@ -49,8 +52,9 @@ $ cargo run --release -- -n 128 -o path.pfm ./data/cbox.json path
 
 For now, these are the following features implemented:
 - Integrators: ambiant occlusion, direct, path-tracing and gradient-domain path tracing.
+- Explicit path building (generate a sensor path and evaluate it later)
 - Filtering: image-domain control variate reconstruction (uniform weights)
-- Materials: diffuse and phong lobe
+- Materials: diffuse, phong lobe, specular
 - Emitters: multiple surface lights support
 
 ## Rendering 
@@ -69,8 +73,8 @@ Rendering algorithms for path-tracing:
 
 Other rendering features: 
 
-- Materials: Specular (mirror and glass), microfacet with Beckert distribution.
-- Emitters: Environmental lights
+- Materials: glass, microfacet with Beckert distribution.
+- Emitters: Environmental and point lights
 - Tools: Blender exporter script (based on cycle)
 
 ## Inspirations
