@@ -3,10 +3,23 @@ use cgmath::InnerSpace;
 use math::{Frame, cosine_sample_hemisphere};
 use std;
 use structure::*;
+use serde_json;
 
 // Helpers
 fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
     Vector3::new(-d.x, -d.y, d.z)
+}
+
+/// Dispatch coded BSDF
+pub fn parse_bsdf(b: &serde_json::Value) -> Result<Box<BSDF + Send + Sync>,Box<std::error::Error>> {
+    let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
+    let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
+        "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
+        "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
+        "specular" => Box::<BSDFSpecular>::new(serde_json::from_value(b["data"].clone())?),
+        _ => panic!("Unknown BSDF type {}", new_bsdf_type),
+    };
+    Ok(new_bsdf)
 }
 
 /// Struct that represent a sampled direction
@@ -124,6 +137,7 @@ impl BSDF for BSDFPhong {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BSDFSpecular {
     pub specular: Color,
 }

@@ -180,13 +180,7 @@ impl<'a> Scene<'a> {
         if let Some(bsdfs_json) = v.get("bsdfs") {
             for b in bsdfs_json.as_array().unwrap() {
                 let name: String = serde_json::from_value(b["mesh"].clone())?;
-                let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
-                let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
-                    "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
-                    "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
-                    _ => panic!("Unknown BSDF type {}", new_bsdf_type),
-                };
-
+                let new_bsdf = parse_bsdf(&b)?;
                 let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
                 match matched_meshes.len() {
                     0 => panic!("Not found {} in the obj list", name),
