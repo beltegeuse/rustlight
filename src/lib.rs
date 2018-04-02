@@ -20,6 +20,9 @@ extern crate serde_derive;
 extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
+// For logging propose
+#[macro_use]
+extern crate log;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;
@@ -42,4 +45,5 @@ pub mod camera;
 pub mod scene;
 pub mod integrator;
 pub mod math;
+pub mod path;
 mod tools; // private module

@@ -58,9 +58,9 @@ impl Camera {
     }
 
     /// Compute the ray direction going through the pixel passed
-    pub fn generate(&self, px: (f32, f32)) -> Ray {
-        let d = (self.dir_top_left + px.0 / (self.param.img.x as f32) * self.screen_du
-            + px.1 / (self.param.img.y as f32) * self.screen_dv).normalize();
+    pub fn generate(&self, px: Point2<f32>) -> Ray {
+        let d = (self.dir_top_left + px.x / (self.param.img.x as f32) * self.screen_du
+            + px.y / (self.param.img.y as f32) * self.screen_dv).normalize();
 
         Ray::new(self.param.pos, d)
     }

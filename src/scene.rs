@@ -90,7 +90,7 @@ impl<T: BitmapTrait> Iterator for Bitmap<T> {
 /// Light sample representation
 pub struct LightSampling<'a> {
     pub emitter: &'a geometry::Mesh,
-    pub pdf: f32,
+    pub pdf: PDF,
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
     pub d: Vector3<f32>,
@@ -99,7 +99,7 @@ pub struct LightSampling<'a> {
 
 impl<'a> LightSampling<'a> {
     pub fn is_valid(&'a self) -> bool {
-        self.pdf != 0.0
+        !self.pdf.is_zero()
     }
 }
 
@@ -118,7 +118,7 @@ impl<'a> LightSamplingPDF<'a> {
             mesh: &its.mesh,
             o: ray.o,
             p: its.p,
-            n: its.n_g,
+            n: its.n_g, // FIXME: Geometrical normal?
             dir: ray.d,
         }
     }
@@ -156,7 +156,7 @@ impl<'a> Scene<'a> {
         let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path())?;
 
         // Build embree as we will not geometry for now
-        println!("Build the acceleration structure");
+        info!("Build the acceleration structure");
         let scene_embree = device.commit(scene_embree)?;
 
         // Update meshes information
@@ -180,13 +180,7 @@ impl<'a> Scene<'a> {
         if let Some(bsdfs_json) = v.get("bsdfs") {
             for b in bsdfs_json.as_array().unwrap() {
                 let name: String = serde_json::from_value(b["mesh"].clone())?;
-                let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
-                let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
-                    "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
-                    "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
-                    _ => panic!("Unknown BSDF type {}", new_bsdf_type),
-                };
-
+                let new_bsdf = parse_bsdf(&b)?;
                 let mut matched_meshes = meshes.iter_mut().filter(|m| m.name == name).collect::<Vec<_>>();
                 match matched_meshes.len() {
                     0 => panic!("Not found {} in the obj list", name),
@@ -226,7 +220,7 @@ impl<'a> Scene<'a> {
 
     /// Intersect and compute intersection information
     pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        match self.embree_scene.intersect(ray.into()) {
+        match self.embree_scene.intersect(ray.to_embree()) {
             None => None,
             Some(its) => {
                 let geom_id = its.geom_id as usize;
@@ -241,10 +235,11 @@ impl<'a> Scene<'a> {
             p0, &d, 0.00001, 0.9999))
     }
 
-    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
+    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> PDF {
         let emitter_id = self.emitters.iter()
             .position(|m| Arc::ptr_eq(light_sampling.mesh, m)).unwrap();
-        light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id)
+        // FIXME: As for now, we only support surface light, the PDF measure is always SA
+        PDF::SolidAngle(light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id))
     }
     pub fn sample_light(&self, p: &Point3<f32>, r_sel: f32, r: f32, uv: Point2<f32>) -> LightSampling {
         // Select the point on the light
@@ -258,8 +253,9 @@ impl<'a> Scene<'a> {
 
         // Compute the geometry
         let cos_light = sampled_pos.n.dot(-d).max(0.0);
-        let pdf = if cos_light == 0.0 { 0.0 } else { (pdf_sel * sampled_pos.pdf * dist * dist) / cos_light };
-        let emission = if pdf == 0.0 { Color::zero() } else { emitter.emission / pdf };
+        let pdf = if cos_light == 0.0 { PDF::SolidAngle(0.0) }
+            else { PDF::SolidAngle((pdf_sel * sampled_pos.pdf * dist * dist) / cos_light) };
+        let emission = if pdf.is_zero() { Color::zero() } else { emitter.emission / pdf.value() };
         LightSampling {
             emitter,
             pdf,

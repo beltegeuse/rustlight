@@ -6,6 +6,31 @@ use std;
 use std::ops::*;
 use constants;
 
+/// PDF represented into different spaces
+pub enum PDF {
+    SolidAngle(f32),
+    Area(f32),
+    Discrete(f32),
+}
+
+impl PDF {
+    pub fn is_zero(&self) -> bool {
+        match self {
+            &PDF::Discrete(v)
+            | &PDF::SolidAngle(v)
+            | &PDF::Area(v) => (v == 0.0),
+        }
+    }
+
+    pub fn value(&self) -> f32 {
+        match self {
+            &PDF::Discrete(v)
+            | &PDF::SolidAngle(v)
+            | &PDF::Area(v) => v,
+        }
+    }
+}
+
 /// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
 pub struct Color {
@@ -214,14 +239,17 @@ impl Ray {
             tfar: std::f32::MAX,
         }
     }
+
+    pub fn to_embree(&self) -> embree_rs::ray::Ray {
+        embree_rs::ray::Ray::new(
+            &self.o,
+            &self.d,
+            self.tnear,
+            self.tfar)
+    }
 }
 
 use embree_rs;
-impl<'a> From<&'a Ray> for embree_rs::ray::Ray {
-    fn from(ray: &'a Ray) -> Self {
-        embree_rs::ray::Ray::new(&ray.o, &ray.d, ray.tnear, ray.tfar)
-    }
-}
 use std::sync::Arc;
 use geometry::Mesh;
 use math::Frame;
@@ -260,6 +288,10 @@ impl<'a> Intersection<'a> {
             frame,
             wi,
         }
+    }
+
+    pub fn cos_theta(&self) -> f32 {
+        self.wi.z
     }
 }
 
