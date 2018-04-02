@@ -214,14 +214,17 @@ impl Ray {
             tfar: std::f32::MAX,
         }
     }
+
+    pub fn to_embree(&self) -> embree_rs::ray::Ray {
+        embree_rs::ray::Ray::new(
+            &self.o,
+            &self.d,
+            self.tnear,
+            self.tfar)
+    }
 }
 
 use embree_rs;
-impl<'a> From<&'a Ray> for embree_rs::ray::Ray {
-    fn from(ray: &'a Ray) -> Self {
-        embree_rs::ray::Ray::new(&ray.o, &ray.d, ray.tnear, ray.tfar)
-    }
-}
 use std::sync::Arc;
 use geometry::Mesh;
 use math::Frame;

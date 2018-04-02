@@ -226,7 +226,7 @@ impl<'a> Scene<'a> {
 
     /// Intersect and compute intersection information
     pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        match self.embree_scene.intersect(ray.into()) {
+        match self.embree_scene.intersect(ray.to_embree()) {
             None => None,
             Some(its) => {
                 let geom_id = its.geom_id as usize;
