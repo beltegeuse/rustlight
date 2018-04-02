@@ -68,6 +68,7 @@ impl Integrator<Color> for IntegratorUniPath {
                 for (i, vertex) in path.vertices.iter().enumerate() {
                     match vertex {
                         &Vertex::Surface(ref v) => {
+                            ///////////////////////////////
                             // Sample the light explicitly
                             let light_record = scene.sample_light(&v.its.p,
                                                                   sampler.next(),
@@ -91,6 +92,8 @@ impl Integrator<Color> for IntegratorUniPath {
                                 }
                             }
 
+                            /////////////////////////////////////////
+                            // BSDF Sampling
                             // For the first hit, no MIS can be used
                             if i == 1 {
                                 if v.its.cos_theta() > 0.0 {
@@ -106,22 +109,27 @@ impl Integrator<Color> for IntegratorUniPath {
                                         _ => panic!("Wrong vertex type"),
                                     };
 
-                                    if let &PDF::SolidAngle(pred_vertex_pdf) = pred_vertex_pdf {
-                                        // As we have intersected the light, the PDF need to be in SA
-                                        let light_pdf = scene.direct_pdf(LightSamplingPDF {
-                                            mesh: v.its.mesh,
-                                            o: pred_vertex_pos,
-                                            p: v.its.p,
-                                            n: v.its.n_g, // FIXME: Geometrical normal?
-                                            dir: path.edges[i-1].d,
-                                        });
+                                    let weight_bsdf = match pred_vertex_pdf {
+                                        &PDF::SolidAngle(pdf) => {
+                                            // As we have intersected the light, the PDF need to be in SA
+                                            let light_pdf = scene.direct_pdf(LightSamplingPDF {
+                                                mesh: v.its.mesh,
+                                                o: pred_vertex_pos,
+                                                p: v.its.p,
+                                                n: v.its.n_g, // FIXME: Geometrical normal?
+                                                dir: path.edges[i-1].d,
+                                            });
 
-                                        let weight_bsdf = mis_weight(
-                                            pred_vertex_pdf,
-                                            light_pdf.value()
-                                        );
-                                        l_i += v.throughput * (&v.its.mesh.emission) * weight_bsdf;
+                                            mis_weight(
+                                                pdf,
+                                                light_pdf.value()
+                                            )
+                                        },
+                                        &PDF::Discrete(_v) => { 1.0 },
+                                        _ => panic!("Uncovered case"),
                                     };
+
+                                    l_i += v.throughput * (&v.its.mesh.emission) * weight_bsdf;
                                 }
                             }
                         }
@@ -202,6 +210,7 @@ impl Integrator<Color> for IntegratorDirect {
             let d_out_local = its.frame.to_local(light_record.d);
             if light_record.is_valid() && scene.visible(&its.p, &light_record.p) && d_out_local.z > 0.0 {
                 // Compute the contribution of direct lighting
+                // FIXME: A bit waste full, need to detect before sampling the light...
                 if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.wi, &d_out_local) {
                     // Compute MIS weights
                     let weight_light = mis_weight(light_pdf * weight_nb_light,
@@ -220,11 +229,6 @@ impl Integrator<Color> for IntegratorDirect {
         // Compute an new direction (diffuse)
         for _ in 0..self.nb_bsdf_samples {
             if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.wi, sampler.next2d()) {
-                let bsdf_pdf = match sampled_bsdf.pdf {
-                    PDF::SolidAngle(v) => v,
-                    _ => {continue;},
-                };
-
                 // Generate the new ray and do the intersection
                 let d_out_world = its.frame.to_world(sampled_bsdf.d);
                 let ray = Ray::new(its.p, d_out_world);
@@ -235,14 +239,15 @@ impl Integrator<Color> for IntegratorDirect {
 
                 // Check that we have intersected a light or not
                 if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
-                    let light_pdf = match scene.direct_pdf(LightSamplingPDF::new(&ray, &next_its)) {
-                        PDF::SolidAngle(v) => v,
+                    let weight_bsdf = match sampled_bsdf.pdf{
+                        PDF::SolidAngle(bsdf_pdf) =>  {
+                            let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &next_its)).value();
+                            mis_weight(bsdf_pdf * weight_nb_bsdf,
+                                       light_pdf * weight_nb_light)
+                        },
+                        PDF::Discrete(_v) => { 1.0 },
                         _ => {warn!("Wrong PDF values retrieve on an intersected mesh"); continue; }
                     };
-
-                    // Compute MIS weights
-                    let weight_bsdf = mis_weight(bsdf_pdf * weight_nb_bsdf,
-                                                 light_pdf * weight_nb_light);
 
                     l_i += weight_bsdf * sampled_bsdf.weight * (&next_its.mesh.emission) * weight_nb_bsdf;
                 }
@@ -304,6 +309,7 @@ impl Integrator<Color> for IntegratorPath {
             let d_out_local = its.frame.to_local(light_record.d);
             if light_record.is_valid() && scene.visible(&its.p, &light_record.p) && d_out_local.z > 0.0 {
                 // Compute the contribution of direct lighting
+                // FIXME: A bit waste full, need to detect before sampling the light...
                 if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.wi, &d_out_local) {
                     // Compute MIS weights
                     let weight_light = mis_weight(light_pdf, pdf_bsdf);
