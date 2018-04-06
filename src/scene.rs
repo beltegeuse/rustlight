@@ -7,12 +7,12 @@ use integrator::*;
 use material::*;
 use math::{Distribution1D, Distribution1DConstruct};
 use pbr::ProgressBar;
+use rayon::prelude::*;
 use sampler;
 use Scale;
 use serde_json;
 use std;
 use std::cmp;
-use rayon::prelude::*;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::u32;
@@ -147,8 +147,8 @@ impl<'a> Scene<'a> {
         // Allocate embree
         let mut device = embree_rs::scene::Device::new();
         let mut scene_embree = embree_rs::scene::SceneConstruct::new(&mut device,
-            embree_rs::scene::SceneFlags::STATIC,
-            embree_rs::scene::AlgorithmFlags::INTERSECT1);
+                                                                     embree_rs::scene::SceneFlags::STATIC,
+                                                                     embree_rs::scene::AlgorithmFlags::INTERSECT1);
 
         // Read the object
         let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
@@ -253,8 +253,7 @@ impl<'a> Scene<'a> {
 
         // Compute the geometry
         let cos_light = sampled_pos.n.dot(-d).max(0.0);
-        let pdf = if cos_light == 0.0 { PDF::SolidAngle(0.0) }
-            else { PDF::SolidAngle((pdf_sel * sampled_pos.pdf * dist * dist) / cos_light) };
+        let pdf = if cos_light == 0.0 { PDF::SolidAngle(0.0) } else { PDF::SolidAngle((pdf_sel * sampled_pos.pdf * dist * dist) / cos_light) };
         let emission = if pdf.is_zero() { Color::zero() } else { emitter.emission / pdf.value() };
         LightSampling {
             emitter,

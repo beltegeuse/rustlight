@@ -1,9 +1,9 @@
 use cgmath::{Point2, Vector3};
 use cgmath::InnerSpace;
-use math::{Frame, cosine_sample_hemisphere};
+use math::{cosine_sample_hemisphere, Frame};
+use serde_json;
 use std;
 use structure::*;
-use serde_json;
 
 // Helpers
 fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
@@ -11,7 +11,7 @@ fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
 }
 
 /// Dispatch coded BSDF
-pub fn parse_bsdf(b: &serde_json::Value) -> Result<Box<BSDF + Send + Sync>,Box<std::error::Error>> {
+pub fn parse_bsdf(b: &serde_json::Value) -> Result<Box<BSDF + Send + Sync>, Box<std::error::Error>> {
     let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
     let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
         "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
@@ -62,8 +62,7 @@ impl BSDF for BSDFDiffuse {
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
         if d_in.z <= 0.0 { return PDF::SolidAngle(0.0); }
-        if d_out.z <= 0.0 { PDF::SolidAngle(0.0) }
-            else { PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI) }
+        if d_out.z <= 0.0 { PDF::SolidAngle(0.0) } else { PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI) }
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
@@ -144,8 +143,7 @@ pub struct BSDFSpecular {
 
 impl BSDF for BSDFSpecular {
     fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
-        if d_in.z <= 0.0 { None }
-        else {
+        if d_in.z <= 0.0 { None } else {
             Some(SampledDirection {
                 weight: self.specular,
                 d: reflect(d_in),

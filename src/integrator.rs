@@ -1,13 +1,13 @@
 use BitmapTrait;
 use cgmath::*;
 use math::*;
+use path::*;
 use sampler::*;
 use Scale;
 // my includes;
 use scene::*;
 use std::ops::AddAssign;
 use structure::*;
-use path::*;
 
 pub trait Integrator<T> {
     fn compute(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> T;
@@ -22,7 +22,7 @@ impl Integrator<Color> for IntegratorAO {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         let pix = Point2::new(
             ix as f32 + sampler.next(),
-            iy as f32 + sampler.next()
+            iy as f32 + sampler.next(),
         );
         let ray = scene.camera.generate(pix);
 
@@ -76,7 +76,7 @@ impl Integrator<Color> for IntegratorUniPath {
                                                                   sampler.next2d());
                             let light_pdf = match light_record.pdf {
                                 PDF::SolidAngle(v) => v,
-                                _ =>  panic!("Unsupported light pdf type for pdf connection."),
+                                _ => panic!("Unsupported light pdf type for pdf connection."),
                             };
 
                             let d_out_local = v.its.frame.to_local(light_record.d);
@@ -103,7 +103,7 @@ impl Integrator<Color> for IntegratorUniPath {
                                 // We need to use MIS as we can generate this path
                                 // using another technique
                                 if v.its.mesh.is_light() && v.its.cos_theta() > 0.0 {
-                                    let (pred_vertex_pos, pred_vertex_pdf) = match &path.vertices[i-1] {
+                                    let (pred_vertex_pos, pred_vertex_pdf) = match &path.vertices[i - 1] {
                                         &Vertex::Surface(ref v) => (v.its.p,
                                                                     &v.sampled_bsdf.as_ref().unwrap().pdf),
                                         _ => panic!("Wrong vertex type"),
@@ -117,15 +117,15 @@ impl Integrator<Color> for IntegratorUniPath {
                                                 o: pred_vertex_pos,
                                                 p: v.its.p,
                                                 n: v.its.n_g, // FIXME: Geometrical normal?
-                                                dir: path.edges[i-1].d,
+                                                dir: path.edges[i - 1].d,
                                             });
 
                                             mis_weight(
                                                 pdf,
-                                                light_pdf.value()
+                                                light_pdf.value(),
                                             )
-                                        },
-                                        &PDF::Discrete(_v) => { 1.0 },
+                                        }
+                                        &PDF::Discrete(_v) => { 1.0 }
                                         _ => panic!("Uncovered case"),
                                     };
 
@@ -169,7 +169,7 @@ impl Integrator<Color> for IntegratorDirect {
     fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         let pix = Point2::new(
             ix as f32 + sampler.next(),
-            iy as f32 + sampler.next()
+            iy as f32 + sampler.next(),
         );
         let ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
@@ -239,14 +239,17 @@ impl Integrator<Color> for IntegratorDirect {
 
                 // Check that we have intersected a light or not
                 if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
-                    let weight_bsdf = match sampled_bsdf.pdf{
-                        PDF::SolidAngle(bsdf_pdf) =>  {
+                    let weight_bsdf = match sampled_bsdf.pdf {
+                        PDF::SolidAngle(bsdf_pdf) => {
                             let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &next_its)).value();
                             mis_weight(bsdf_pdf * weight_nb_bsdf,
                                        light_pdf * weight_nb_light)
-                        },
-                        PDF::Discrete(_v) => { 1.0 },
-                        _ => {warn!("Wrong PDF values retrieve on an intersected mesh"); continue; }
+                        }
+                        PDF::Discrete(_v) => { 1.0 }
+                        _ => {
+                            warn!("Wrong PDF values retrieve on an intersected mesh");
+                            continue;
+                        }
                     };
 
                     l_i += weight_bsdf * sampled_bsdf.weight * (&next_its.mesh.emission) * weight_nb_bsdf;
@@ -269,7 +272,7 @@ impl Integrator<Color> for IntegratorPath {
         // Generate the first ray
         let pix = Point2::new(
             ix as f32 + sampler.next(),
-            iy as f32 + sampler.next()
+            iy as f32 + sampler.next(),
         );
         let mut ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
@@ -349,8 +352,8 @@ impl Integrator<Color> for IntegratorPath {
                         // Know the the light is intersectable so have a solid angle PDF
                         let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &its));
                         mis_weight(v, light_pdf.value())
-                    },
-                    PDF::Discrete(_v) => { 1.0 },
+                    }
+                    PDF::Discrete(_v) => { 1.0 }
                     _ => panic!("Unsupported type."),
                 };
                 if self.min_depth.map_or(true, |min| depth >= min) {

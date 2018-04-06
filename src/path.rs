@@ -1,8 +1,8 @@
 use cgmath::*;
-use structure::*;
 use material::*;
-use scene::*;
 use sampler::*;
+use scene::*;
+use structure::*;
 
 pub struct Edge {
     pub dist: Option<f32>,
@@ -11,7 +11,8 @@ pub struct Edge {
 
 pub struct SensorVertex {
     pub uv: Point2<f32>,
-    pub pos: Point3<f32>, // FIXME: Add as Option
+    pub pos: Point3<f32>,
+    // FIXME: Add as Option
     pub pdf: f32, // FIXME: Add as Option
 }
 
@@ -44,11 +45,11 @@ impl<'a> Vertex<'a> {
                 let ray = scene.camera.generate(v.uv);
                 let its = match scene.trace(&ray) {
                     Some(its) => its,
-                    None => return (Some(Edge { dist: None, d: ray.d, }), None),
+                    None => return (Some(Edge { dist: None, d: ray.d }), None),
                 };
 
                 (
-                    Some(Edge { dist: Some(its.dist), d: ray.d, }),
+                    Some(Edge { dist: Some(its.dist), d: ray.d }),
                     Some(Vertex::Surface(SurfaceVertex {
                         its: its,
                         throughput: Color::one(),
@@ -79,8 +80,10 @@ impl<'a> Vertex<'a> {
                 let ray = Ray::new(v.its.p, d_out_global);
                 let its = match scene.trace(&ray) {
                     Some(its) => its,
-                    None => { return (Some(Edge { dist: None, d: d_out_global, }),
-                                    None); }
+                    None => {
+                        return (Some(Edge { dist: None, d: d_out_global }),
+                                None);
+                    }
                 };
 
                 // Check RR
@@ -123,7 +126,7 @@ impl<'a> Path<'a> {
                        max_depth: Option<u32>) -> Option<Path<'a>> {
         let pix = Point2::new(
             ix as f32 + sampler.next(),
-            iy as f32 + sampler.next()
+            iy as f32 + sampler.next(),
         );
         let mut vertices = vec![Vertex::new_sensor_vertex(pix,
                                                           scene.camera.param.pos)
@@ -136,7 +139,7 @@ impl<'a> Path<'a> {
                 (Some(edge), Some(vertex)) => {
                     edges.push(edge);
                     vertices.push(vertex);
-                },
+                }
                 (Some(edge), None) => {
                     // This case model a path where we was able to generate a direction
                     // But somehow, not able to generate a intersection point, because:
@@ -171,7 +174,7 @@ impl<'a> Path<'a> {
         let mut v0 = Vertex::new_sensor_vertex(shift_pix,
                                                scene.camera.param.pos);
         let (e0, v1) = match v0.generate_next(scene, None) {
-            (Some(e), Some(v)) => (e,v),
+            (Some(e), Some(v)) => (e, v),
             _ => return None, // FIXME: This is not correct for now
         };
 
@@ -203,12 +206,12 @@ impl<'a> Path<'a> {
                             assert!(jacobian >= 0.0);
 
                             // FIXME: Need to update throughput and pdf
-                        },
+                        }
                         _ => panic!("Encounter wrong vertex type"),
                     }
-                },
-                2 => {},
-                _ => {},
+                }
+                2 => {}
+                _ => {}
             }
         }
 

@@ -7,6 +7,9 @@ extern crate cgmath;
 extern crate embree_rs;
 // For the image (LDR) export
 extern crate image;
+// For logging propose
+#[macro_use]
+extern crate log;
 // For print a progress bar
 extern crate pbr;
 // For the random number generator
@@ -20,15 +23,12 @@ extern crate serde_derive;
 extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
-// For logging propose
-#[macro_use]
-extern crate log;
+
+use std::ops::AddAssign;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;
 }
-
-use std::ops::AddAssign;
 
 pub trait Scale<T> {
     fn scale(&mut self, v: T);

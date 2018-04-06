@@ -1,10 +1,14 @@
 use BitmapTrait;
 use cgmath::*;
+use constants;
+use embree_rs;
+use geometry::Mesh;
 use image::*;
+use math::Frame;
 use Scale;
 use std;
 use std::ops::*;
-use constants;
+use std::sync::Arc;
 
 /// PDF represented into different spaces
 pub enum PDF {
@@ -249,11 +253,6 @@ impl Ray {
     }
 }
 
-use embree_rs;
-use std::sync::Arc;
-use geometry::Mesh;
-use math::Frame;
-
 pub struct Intersection<'a> {
     /// Intersection distance
     pub dist: f32,
@@ -275,8 +274,8 @@ pub struct Intersection<'a> {
 
 impl<'a> Intersection<'a> {
     pub fn new(embree_its: embree_rs::ray::Intersection,
-           d: Vector3<f32>, mesh: &'a Arc<Mesh>) -> Intersection<'a>{
-        let frame = Frame::new( embree_its.n_s);
+               d: Vector3<f32>, mesh: &'a Arc<Mesh>) -> Intersection<'a> {
+        let frame = Frame::new(embree_its.n_s);
         let wi = frame.to_local(d);
         Intersection {
             dist: embree_its.t,
