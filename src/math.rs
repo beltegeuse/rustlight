@@ -38,6 +38,7 @@ pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
 
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
+#[derive(Clone)]
 pub struct Frame(Matrix3<f32>);
 
 impl Frame {
@@ -50,7 +51,7 @@ impl Frame {
             x: Vector3::new(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x),
             y: Vector3::new(b, sign + n.y * n.y * a, -n.y),
             z: n,
-        },
+        }
     }
 }
 
@@ -118,8 +119,8 @@ normalization: cur,
 
 impl Distribution1D {
 pub fn sample( & self, v: f32) -> usize {
-assert ! (v > = 0.0);
-assert! (v < 1.0);
+assert!(v >= 0.0);
+assert!(v < 1.0);
 
 match self.cdf.binary_search_by( | probe | probe.partial_cmp( & v).unwrap()) {
 Ok(x) => x,
@@ -128,7 +129,7 @@ Err(x) => x - 1
 }
 
 pub fn pdf( & self, i: usize) -> f32 {
-assert ! (i < self.cdf.len() - 1);
+assert!(i < self.cdf.len() - 1);
 self.cdf[i + 1] - self.cdf[i]
 }
 }

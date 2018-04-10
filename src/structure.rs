@@ -11,6 +11,7 @@ use std::ops::*;
 use std::sync::Arc;
 
 /// PDF represented into different spaces
+#[derive(Clone)]
 pub enum PDF {
     SolidAngle(f32),
     Area(f32),
@@ -253,6 +254,7 @@ impl Ray {
     }
 }
 
+#[derive(Clone)]
 pub struct Intersection<'a> {
     /// Intersection distance
     pub dist: f32,

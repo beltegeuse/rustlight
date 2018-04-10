@@ -4,11 +4,13 @@ use sampler::*;
 use scene::*;
 use structure::*;
 
+#[derive(Clone)]
 pub struct Edge {
     pub dist: Option<f32>,
     pub d: Vector3<f32>,
 }
 
+#[derive(Clone)]
 pub struct SensorVertex {
     pub uv: Point2<f32>,
     pub pos: Point3<f32>,
@@ -16,6 +18,7 @@ pub struct SensorVertex {
     pub pdf: f32, // FIXME: Add as Option
 }
 
+#[derive(Clone)]
 pub struct SurfaceVertex<'a> {
     pub its: Intersection<'a>,
     pub throughput: Color,
@@ -23,9 +26,19 @@ pub struct SurfaceVertex<'a> {
     pub rr_weight: f32,
 }
 
+#[derive(Clone)]
+pub struct SurfaceVertexShift {
+    /// Containts the throughput times the jacobian
+    pub throughput: Color,
+    /// Contains the ratio of PDF (with the Jacobian embeeded)
+    pub pdf_ratio: f32,
+}
+
+#[derive(Clone)]
 pub enum Vertex<'a> {
     Sensor(SensorVertex),
     Surface(SurfaceVertex<'a>),
+    SurfaceShift(SurfaceVertexShift),
 }
 
 impl<'a> Vertex<'a> {
@@ -110,6 +123,7 @@ impl<'a> Vertex<'a> {
                  ))
                 )
             }
+            _ => panic!("Wrong vertex type"),
         }
     }
 }
@@ -117,6 +131,13 @@ impl<'a> Vertex<'a> {
 pub struct Path<'a> {
     pub vertices: Vec<Vertex<'a>>,
     pub edges: Vec<Edge>,
+}
+
+
+enum ShiftGeometricState {
+    NotConnected,
+    RecentlyConnected,
+    Connected,
 }
 
 impl<'a> Path<'a> {
@@ -167,6 +188,8 @@ impl<'a> Path<'a> {
         })
     }
 
+    // IDEA:
+    // Add the jacobian value inside the flux and pdf to more easy MIS
     pub fn shift_geometric(&self, shift_pix: Point2<f32>, scene: &'a Scene) -> Option<Path<'a>> {
         // FIXME: Need to implement G-PT shift mapping
         // FIXME: The idea of this code is to shift the path geometry
@@ -180,38 +203,135 @@ impl<'a> Path<'a> {
 
         let mut vertices = vec![v0, v1];
         let mut edges = vec![e0];
+        let mut state = ShiftGeometricState::NotConnected;
+        let mut pdf = 1.0;
 
-        // FIXME: This code will do explicit reconnection
         for i in 1..self.vertices.len() {
-            match i {
-                1 => {
+            match state {
+                ShiftGeometricState::NotConnected => {
+                    let main_currrent = match &self.vertices[i] {
+                        &Vertex::Surface(ref x) => x,
+                        _ => panic!("Wrong main_current vertex type"),
+                    };
+                    let main_bsdf_pdf = match main_currrent.sampled_bsdf.as_ref().unwrap().pdf {
+                        PDF::SolidAngle(x) => x,
+                        _ => panic!("main_bsdf_pdf is not in solid angle"),
+                    };
+
                     match self.vertices.get(i + 1) {
+                        //FIXME: Are we sure about that? Because the path might be not
+                        //FIXME: Because a edge of the path can be missing
                         None => return Some(Path {
                             vertices,
                             edges,
                         }),
                         Some(&Vertex::Surface(ref main_next)) => {
-                            let main_edge = &self.edges[i - 1];
-                            let shift_current = match vertices.last().unwrap() {
-                                &Vertex::Surface(ref x) => x,
-                                _ => panic!("Un-expected path for the shift mapping"), // If we have something else, panic!
+                            let new_vertex = {
+                                let main_edge = &self.edges[i - 1];
+                                let shift_current = match vertices.last().unwrap() {
+                                    &Vertex::Surface(ref x) => x,
+                                    _ => panic!("Un-expected path for the shift mapping"), // If we have something else, panic!
+                                };
+                                // Check the visibility
+                                if !scene.visible(&shift_current.its.p, &main_next.its.p) {
+                                    // Just return now the shift path is dead due to visibility
+                                    return None;
+                                }
+
+                                // Compute the new direction for evaluating the BSDF
+                                let mut shift_d_out_global = (main_next.its.p - shift_current.its.p);
+                                let shift_distance = shift_d_out_global.magnitude();
+                                shift_d_out_global /= shift_distance;
+                                let shift_d_out_local = shift_current.its.frame.to_local(shift_d_out_global);
+                                // BSDF shift path
+                                let shift_bsdf_value = shift_current.its.mesh.bsdf.eval(
+                                    &shift_current.its.wi, &shift_d_out_local);
+                                let shift_bsdf_pdf = match shift_current.its.mesh.bsdf.pdf(
+                                    &shift_current.its.wi, &shift_d_out_local) {
+                                    PDF::SolidAngle(x) => x,
+                                    _ => panic!("shift_bsdf_pdf is not in Solid angle"),
+                                };
+
+                                if shift_bsdf_pdf == 0.0 || shift_bsdf_value.is_zero() {
+                                    // Just return now the shift path as the rest of the vertex will be 0
+                                    return None;
+                                }
+                                // Compute the Jacobian value
+                                let jacobian = (main_next.its.n_g.dot(-shift_d_out_global) * main_next.its.dist.powi(2)).abs()
+                                    / (main_next.its.n_g.dot(-main_edge.d) * (shift_current.its.p - main_next.its.p).magnitude2()).abs();
+                                assert!(jacobian.is_finite());
+                                assert!(jacobian >= 0.0);
+
+                                Some((Vertex::SurfaceShift(
+                                    SurfaceVertexShift {
+                                        throughput: shift_current.throughput * &(shift_bsdf_value * (jacobian / main_bsdf_pdf)),
+                                        pdf_ratio: pdf * (shift_bsdf_pdf * jacobian) / main_bsdf_pdf,
+                                    }
+                                ), Edge {
+                                    dist: Some(shift_distance),
+                                    d: shift_d_out_global,
+                                }))
                             };
 
-                            let shift_d_out_global = (main_next.its.p - shift_current.its.p).normalize();
-                            let shift_d_out_local = shift_current.its.frame.to_local(shift_d_out_global);
-                            let jacobian = ((main_next.its.n_g.dot(-shift_d_out_global) * main_next.its.dist.powi(2)).abs()
-                                / (main_next.its.n_g.dot(-main_edge.d) * (shift_current.its.p - main_next.its.p).magnitude2()).abs()) as f64;
+                            // Update shift path
+                            match new_vertex {
+                                None => return Some(Path {
+                                    vertices,
+                                    edges,
+                                }),
+                                Some((v, edge)) => {
+                                    vertices.push(v);
+                                    edges.push(edge);
+                                }
+                            }
 
-                            assert!(jacobian.is_finite());
-                            assert!(jacobian >= 0.0);
-
-                            // FIXME: Need to update throughput and pdf
+                            // Change the state of the shift
+                            state = ShiftGeometricState::RecentlyConnected;
                         }
                         _ => panic!("Encounter wrong vertex type"),
                     }
                 }
-                2 => {}
-                _ => {}
+                ShiftGeometricState::RecentlyConnected => {
+
+                }
+                ShiftGeometricState::Connected => {
+                    match &self.vertices.get(i) {
+                        &None => return Some(Path {
+                            vertices,
+                            edges,
+                        }),
+                        &Some(&Vertex::Surface(ref main_next)) => {
+                            match &main_next.sampled_bsdf {
+                                &Some(ref x) => {
+                                    let new_vertex = {
+                                        let shift_current = match vertices.last().unwrap() {
+                                            &Vertex::SurfaceShift(ref x) => x,
+                                            _ => panic!("Un-expected path for the shift mapping"), // If we have something else, panic!
+                                        };
+                                        Vertex::SurfaceShift(
+                                            SurfaceVertexShift {
+                                                throughput: x.weight * shift_current.throughput,
+                                                pdf_ratio: shift_current.pdf_ratio, // No change here
+                                            }
+                                        )
+                                    };
+                                    // Just recopy the path
+                                    vertices.push(new_vertex);
+                                    edges.push(self.edges[i-1].clone());
+                                }
+                                _ => {
+                                    // The main path is dead, stop doing the shift
+                                    // FIXME: Maybe one vertex will miss in this case
+                                    return Some(Path {
+                                        vertices,
+                                        edges,
+                                    });
+                                }
+                            }
+                        }
+                        _ => panic!("Encounter wrong vertex type"),
+                    }
+                }
             }
         }
 

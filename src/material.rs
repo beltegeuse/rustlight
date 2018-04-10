@@ -23,6 +23,7 @@ pub fn parse_bsdf(b: &serde_json::Value) -> Result<Box<BSDF + Send + Sync>, Box<
 }
 
 /// Struct that represent a sampled direction
+#[derive(Clone)]
 pub struct SampledDirection {
     pub weight: Color,
     pub d: Vector3<f32>,
