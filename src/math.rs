@@ -16,7 +16,8 @@ pub fn concentric_sample_disk(u: Point2<f32>) -> Point2<f32> {
         theta = std::f32::consts::FRAC_PI_4 * (u_offset.y / u_offset.x);
     } else {
         r = u_offset.y;
-        theta = std::f32::consts::FRAC_PI_2 - std::f32::consts::FRAC_PI_4 * (u_offset.x / u_offset.y);
+        theta =
+            std::f32::consts::FRAC_PI_2 - std::f32::consts::FRAC_PI_4 * (u_offset.x / u_offset.y);
     }
     Point2 {
         x: theta.cos(),
@@ -26,26 +27,22 @@ pub fn concentric_sample_disk(u: Point2<f32>) -> Point2<f32> {
 
 pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
     let d: Point2<f32> = concentric_sample_disk(u);
-    let z: f32 = (0.0 as f32)
-        .max(1.0 as f32 - d.x * d.x - d.y * d.y)
-        .sqrt();
-    Vector3 {
-        x: d.x,
-        y: d.y,
-        z,
-    }
+    let z: f32 = (0.0 as f32).max(1.0 as f32 - d.x * d.x - d.y * d.y).sqrt();
+    Vector3 { x: d.x, y: d.y, z }
 }
 
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
+#[derive(Clone)]
 pub struct Frame(Matrix3<f32>);
+
 impl Frame {
     pub fn new(n: Vector3<f32>) -> Frame {
         let sign = n.z.signum();
         let a = -1.0 / (sign + n.z);
         let b = n.x * n.y * a;
         Frame {
-            0 : Matrix3 {
+            0: Matrix3 {
                 x: Vector3::new(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x),
                 y: Vector3::new(b, sign + n.y * n.y * a, -n.y),
                 z: n,
@@ -56,6 +53,7 @@ impl Frame {
     pub fn to_world(&self, v: Vector3<f32>) -> Vector3<f32> {
         self.0.x * v.x + self.0.y * v.y + self.0.z * v.z
     }
+
     pub fn to_local(&self, v: Vector3<f32>) -> Vector3<f32> {
         Vector3::new(v.dot(self.0.x), v.dot(self.0.y), v.dot(self.0.z))
     }
@@ -71,10 +69,9 @@ pub fn uniform_sample_triangle(u: Point2<f32>) -> Point2<f32> {
     }
 }
 
-
 /// Create 1D distribution
 pub struct Distribution1DConstruct {
-    pub elements: Vec<f32>
+    pub elements: Vec<f32>,
 }
 
 pub struct Distribution1D {
@@ -85,9 +82,7 @@ pub struct Distribution1D {
 impl Distribution1DConstruct {
     pub fn new(l: usize) -> Distribution1DConstruct {
         let elements = Vec::with_capacity(l);
-        Distribution1DConstruct {
-            elements
-        }
+        Distribution1DConstruct { elements }
     }
 
     pub fn add(&mut self, v: f32) {
@@ -119,9 +114,11 @@ impl Distribution1D {
         assert!(v >= 0.0);
         assert!(v < 1.0);
 
-        match self.cdf.binary_search_by(|probe| probe.partial_cmp(&v).unwrap()) {
+        match self.cdf
+            .binary_search_by(|probe| probe.partial_cmp(&v).unwrap())
+        {
             Ok(x) => x,
-            Err(x) => x - 1
+            Err(x) => x - 1,
         }
     }
 

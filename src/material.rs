@@ -1,9 +1,9 @@
 use cgmath::{Point2, Vector3};
 use cgmath::InnerSpace;
-use math::{Frame, cosine_sample_hemisphere};
+use math::{cosine_sample_hemisphere, Frame};
+use serde_json;
 use std;
 use structure::*;
-use serde_json;
 
 // Helpers
 fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
@@ -11,7 +11,9 @@ fn reflect(d: &Vector3<f32>) -> Vector3<f32> {
 }
 
 /// Dispatch coded BSDF
-pub fn parse_bsdf(b: &serde_json::Value) -> Result<Box<BSDF + Send + Sync>,Box<std::error::Error>> {
+pub fn parse_bsdf(
+    b: &serde_json::Value,
+) -> Result<Box<BSDF + Send + Sync>, Box<std::error::Error>> {
     let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
     let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
         "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
@@ -23,6 +25,7 @@ pub fn parse_bsdf(b: &serde_json::Value) -> Result<Box<BSDF + Send + Sync>,Box<s
 }
 
 /// Struct that represent a sampled direction
+#[derive(Clone)]
 pub struct SampledDirection {
     pub weight: Color,
     pub d: Vector3<f32>,
@@ -61,13 +64,20 @@ impl BSDF for BSDFDiffuse {
     }
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
-        if d_in.z <= 0.0 { return PDF::SolidAngle(0.0); }
-        if d_out.z <= 0.0 { PDF::SolidAngle(0.0) }
-            else { PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI) }
+        if d_in.z <= 0.0 {
+            return PDF::SolidAngle(0.0);
+        }
+        if d_out.z <= 0.0 {
+            PDF::SolidAngle(0.0)
+        } else {
+            PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI)
+        }
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
-        if d_in.z <= 0.0 { return Color::zero(); }
+        if d_in.z <= 0.0 {
+            return Color::zero();
+        }
         if d_out.z > 0.0 {
             self.diffuse * d_out.z * std::f32::consts::FRAC_1_PI
         } else {
@@ -108,13 +118,18 @@ impl BSDF for BSDFPhong {
     }
 
     fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
-        if d_in.z <= 0.0 { return PDF::SolidAngle(0.0); }
+        if d_in.z <= 0.0 {
+            return PDF::SolidAngle(0.0);
+        }
         if d_out.z <= 0.0 {
             PDF::SolidAngle(0.0)
         } else {
             let alpha = reflect(d_in).dot(*d_out);
             if alpha > 0.0 {
-                PDF::SolidAngle(alpha.powf(self.exponent) * (self.exponent + 1.0) / (2.0 * std::f32::consts::PI))
+                PDF::SolidAngle(
+                    alpha.powf(self.exponent) * (self.exponent + 1.0)
+                        / (2.0 * std::f32::consts::PI),
+                )
             } else {
                 PDF::SolidAngle(0.0)
             }
@@ -122,14 +137,17 @@ impl BSDF for BSDFPhong {
     }
 
     fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
-        if d_in.z <= 0.0 { return Color::zero(); }
+        if d_in.z <= 0.0 {
+            return Color::zero();
+        }
         if d_out.z <= 0.0 {
             Color::zero()
         } else {
             let alpha = reflect(d_in).dot(*d_out);
             if alpha > 0.0 {
-                self.specular *
-                    (alpha.powf(self.exponent) * (self.exponent + 2.0) / (2.0 * std::f32::consts::PI))
+                self.specular
+                    * (alpha.powf(self.exponent) * (self.exponent + 2.0)
+                        / (2.0 * std::f32::consts::PI))
             } else {
                 Color::zero()
             }
@@ -143,9 +161,10 @@ pub struct BSDFSpecular {
 }
 
 impl BSDF for BSDFSpecular {
-    fn sample(&self, d_in: &Vector3<f32>, sample: Point2<f32>) -> Option<SampledDirection> {
-        if d_in.z <= 0.0 { None }
-        else {
+    fn sample(&self, d_in: &Vector3<f32>, _: Point2<f32>) -> Option<SampledDirection> {
+        if d_in.z <= 0.0 {
+            None
+        } else {
             Some(SampledDirection {
                 weight: self.specular,
                 d: reflect(d_in),
@@ -154,11 +173,11 @@ impl BSDF for BSDFSpecular {
         }
     }
 
-    fn pdf(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+    fn pdf(&self, _: &Vector3<f32>, _: &Vector3<f32>) -> PDF {
         PDF::Discrete(1.0)
     }
 
-    fn eval(&self, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
+    fn eval(&self, _: &Vector3<f32>, _: &Vector3<f32>) -> Color {
         // For now, we do not implement this function
         // as we want to avoid to call this function
         // and does not handle correctly the evaluation

@@ -20,7 +20,6 @@ pub struct Camera {
     screen_dv: Vector3<f32>,
 }
 
-
 impl Camera {
     pub fn new(param: CameraParam) -> Camera {
         let dz = param.dir.normalize();
@@ -40,7 +39,13 @@ impl Camera {
         }
     }
 
-    pub fn look_at(pos: Point3<f32>, at: Point3<f32>, up: Vector3<f32>, img: Vector2<u32>, fov: f32) -> Camera {
+    pub fn look_at(
+        pos: Point3<f32>,
+        at: Point3<f32>,
+        up: Vector3<f32>,
+        img: Vector2<u32>,
+        fov: f32,
+    ) -> Camera {
         let dir = at - pos;
         let param = CameraParam {
             pos,
@@ -60,7 +65,8 @@ impl Camera {
     /// Compute the ray direction going through the pixel passed
     pub fn generate(&self, px: Point2<f32>) -> Ray {
         let d = (self.dir_top_left + px.x / (self.param.img.x as f32) * self.screen_du
-            + px.y / (self.param.img.y as f32) * self.screen_dv).normalize();
+            + px.y / (self.param.img.y as f32) * self.screen_dv)
+            .normalize();
 
         Ray::new(self.param.pos, d)
     }

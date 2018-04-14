@@ -20,6 +20,9 @@ before_install:
   - sudo dpkg -i embree-devel_2.17.2-2_all.deb
   - cd - # Go back to the working directory
   - RUSTUP_DIST_SERVER=https://dev-static.rust-lang.org rustup install stable
+  #- rustup component add rustfmt-preview
 
 script:
+  #- cargo fmt --all -- --write-mode=diff
   - cargo build --verbose --all
+  - cargo test
