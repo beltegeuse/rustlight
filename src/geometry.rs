@@ -1,7 +1,7 @@
 use cgmath::*;
 use embree_rs;
-use material::{BSDF, BSDFDiffuse};
-use math::{Distribution1D, Distribution1DConstruct, uniform_sample_triangle};
+use material::{BSDFDiffuse, BSDF};
+use math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
 use scene::LightSamplingPDF;
 use std;
 use std::sync::Arc;
@@ -13,7 +13,10 @@ use tools::StepRangeInt;
 /// Read obj file format and build a list of meshes
 /// for now, only add diffuse color
 /// custom texture coordinates or normals are not supported yet
-pub fn load_obj(scene: &mut embree_rs::scene::SceneConstruct, file_name: &std::path::Path) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
+pub fn load_obj(
+    scene: &mut embree_rs::scene::SceneConstruct,
+    file_name: &std::path::Path,
+) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name)?;
 
@@ -24,7 +27,10 @@ pub fn load_obj(scene: &mut embree_rs::scene::SceneConstruct, file_name: &std::p
         let mesh = m.mesh;
         // Load vertex position
         info!(" - triangles: {}", mesh.indices.len() / 3);
-        let vertices = mesh.positions.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
+        let vertices = mesh.positions
+            .chunks(3)
+            .map(|i| Vector3::new(i[0], i[1], i[2]))
+            .collect();
         // Load normal
         if mesh.normals.is_empty() {
             // Normally, we want to generate the normal on the fly.
@@ -33,31 +39,39 @@ pub fn load_obj(scene: &mut embree_rs::scene::SceneConstruct, file_name: &std::p
             // For now, just panic if the normal are not provided inside the OBJ.
             panic!("No normal provided, quit");
         }
-        let normals = mesh.normals.chunks(3).map(|i| Vector3::new(i[0], i[1], i[2])).collect();
+        let normals = mesh.normals
+            .chunks(3)
+            .map(|i| Vector3::new(i[0], i[1], i[2]))
+            .collect();
 
-        let uv = if mesh.texcoords.is_empty() { vec![] } else { mesh.texcoords.chunks(2).map(|i| Vector2::new(i[0], i[1])).collect() };
+        let uv = if mesh.texcoords.is_empty() {
+            vec![]
+        } else {
+            mesh.texcoords
+                .chunks(2)
+                .map(|i| Vector2::new(i[0], i[1]))
+                .collect()
+        };
 
-        let trimesh = scene.add_triangle_mesh(embree_rs::scene::GeometryFlags::Static,
-                                              vertices,
-                                              normals,
-                                              uv,
-                                              mesh.indices);
+        let trimesh = scene.add_triangle_mesh(
+            embree_rs::scene::GeometryFlags::Static,
+            vertices,
+            normals,
+            uv,
+            mesh.indices,
+        );
         // Read materials
         let diffuse_color;
         if let Some(id) = mesh.material_id {
             info!(" - BSDF id: {}", id);
             let mat = &materials[id];
-            diffuse_color = Color::new(mat.diffuse[0],
-                                       mat.diffuse[1],
-                                       mat.diffuse[2]);
+            diffuse_color = Color::new(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
         } else {
             diffuse_color = Color::zero();
         }
 
         // Add the mesh info
-        meshes.push(Box::new(Mesh::new(m.name,
-                                       trimesh,
-                                       diffuse_color)));
+        meshes.push(Box::new(Mesh::new(m.name, trimesh, diffuse_color)));
     }
     Ok(meshes)
 }
@@ -104,7 +118,9 @@ impl Mesh {
     pub fn pdf(&self) -> f32 {
         1.0 / (self.cdf.normalization)
     }
-    pub fn flux(&self) -> f32 { self.cdf.normalization * self.emission.channel_max() }
+    pub fn flux(&self) -> f32 {
+        self.cdf.normalization * self.emission.channel_max()
+    }
 
     // FIXME: reuse random number
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {

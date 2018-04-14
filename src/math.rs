@@ -16,7 +16,8 @@ pub fn concentric_sample_disk(u: Point2<f32>) -> Point2<f32> {
         theta = std::f32::consts::FRAC_PI_4 * (u_offset.y / u_offset.x);
     } else {
         r = u_offset.y;
-        theta = std::f32::consts::FRAC_PI_2 - std::f32::consts::FRAC_PI_4 * (u_offset.x / u_offset.y);
+        theta =
+            std::f32::consts::FRAC_PI_2 - std::f32::consts::FRAC_PI_4 * (u_offset.x / u_offset.y);
     }
     Point2 {
         x: theta.cos(),
@@ -26,14 +27,8 @@ pub fn concentric_sample_disk(u: Point2<f32>) -> Point2<f32> {
 
 pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
     let d: Point2<f32> = concentric_sample_disk(u);
-    let z: f32 = (0.0 as f32)
-        .max(1.0 as f32 - d.x * d.x - d.y * d.y)
-        .sqrt();
-    Vector3 {
-        x: d.x,
-        y: d.y,
-        z,
-    }
+    let z: f32 = (0.0 as f32).max(1.0 as f32 - d.x * d.x - d.y * d.y).sqrt();
+    Vector3 { x: d.x, y: d.y, z }
 }
 
 /// Create an orthogonal basis by taking the normal vector
@@ -48,88 +43,87 @@ impl Frame {
         let b = n.x * n.y * a;
         Frame {
             0: Matrix3 {
-            x: Vector3::new(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x),
-            y: Vector3::new(b, sign + n.y * n.y * a, -n.y),
-            z: n,
+                x: Vector3::new(1.0 + sign * n.x * n.x * a, sign * b, -sign * n.x),
+                y: Vector3::new(b, sign + n.y * n.y * a, -n.y),
+                z: n,
+            },
         }
     }
-}
 
-pub fn to_world(&self, v: Vector3<f32>) -> Vector3<f32> {
-    self.0.x * v.x + self.0.y * v.y + self.0.z * v.z
-}
+    pub fn to_world(&self, v: Vector3<f32>) -> Vector3<f32> {
+        self.0.x * v.x + self.0.y * v.y + self.0.z * v.z
+    }
 
-pub fn to_local(&self, v: Vector3<f32>) -> Vector3<f32> {
-    Vector3::new(v.dot(self.0.x), v.dot(self.0.y), v.dot(self.0.z))
-}
+    pub fn to_local(&self, v: Vector3<f32>) -> Vector3<f32> {
+        Vector3::new(v.dot(self.0.x), v.dot(self.0.y), v.dot(self.0.z))
+    }
 }
 
 /// Uniformly distributing samples over isosceles right triangles
 /// actually works for any triangle.
-pub fn uniform_sample_triangle(u: Point2 < f32 >) -> Point2 < f32 > {
-let su0: f32 = u.x.sqrt();
-Point2 {
-x: 1.0 as f32 - su0,
-y: u.y * su0,
+pub fn uniform_sample_triangle(u: Point2<f32>) -> Point2<f32> {
+    let su0: f32 = u.x.sqrt();
+    Point2 {
+        x: 1.0 as f32 - su0,
+        y: u.y * su0,
+    }
 }
-}
-
 
 /// Create 1D distribution
 pub struct Distribution1DConstruct {
-pub elements: Vec < f32 >
+    pub elements: Vec<f32>,
 }
 
 pub struct Distribution1D {
-pub cdf: Vec < f32 >,
-pub normalization: f32,
+    pub cdf: Vec<f32>,
+    pub normalization: f32,
 }
 
 impl Distribution1DConstruct {
-pub fn new(l: usize) -> Distribution1DConstruct {
-let elements = Vec::with_capacity(l);
-Distribution1DConstruct {
-elements
-}
-}
+    pub fn new(l: usize) -> Distribution1DConstruct {
+        let elements = Vec::with_capacity(l);
+        Distribution1DConstruct { elements }
+    }
 
-pub fn add( & mut self, v: f32) {
-self.elements.push(v);
-}
+    pub fn add(&mut self, v: f32) {
+        self.elements.push(v);
+    }
 
-pub fn normalize( & mut self ) -> Distribution1D {
-// Create the new CDF
-let mut cdf = Vec::with_capacity( self.elements.len() + 1);
-let mut cur = 0.0;
-for e in & self.elements {
-cdf.push(cur);
-cur += e;
-}
-cdf.push(cur);
+    pub fn normalize(&mut self) -> Distribution1D {
+        // Create the new CDF
+        let mut cdf = Vec::with_capacity(self.elements.len() + 1);
+        let mut cur = 0.0;
+        for e in &self.elements {
+            cdf.push(cur);
+            cur += e;
+        }
+        cdf.push(cur);
 
-// Normalize the cdf
-cdf.iter_mut().for_each( | x | * x /= cur);
+        // Normalize the cdf
+        cdf.iter_mut().for_each(|x| *x /= cur);
 
-Distribution1D {
-cdf,
-normalization: cur,
-}
-}
+        Distribution1D {
+            cdf,
+            normalization: cur,
+        }
+    }
 }
 
 impl Distribution1D {
-pub fn sample( & self, v: f32) -> usize {
-assert!(v >= 0.0);
-assert!(v < 1.0);
+    pub fn sample(&self, v: f32) -> usize {
+        assert!(v >= 0.0);
+        assert!(v < 1.0);
 
-match self.cdf.binary_search_by( | probe | probe.partial_cmp( & v).unwrap()) {
-Ok(x) => x,
-Err(x) => x - 1
-}
-}
+        match self.cdf
+            .binary_search_by(|probe| probe.partial_cmp(&v).unwrap())
+        {
+            Ok(x) => x,
+            Err(x) => x - 1,
+        }
+    }
 
-pub fn pdf( & self, i: usize) -> f32 {
-assert!(i < self.cdf.len() - 1);
-self.cdf[i + 1] - self.cdf[i]
-}
+    pub fn pdf(&self, i: usize) -> f32 {
+        assert!(i < self.cdf.len() - 1);
+        self.cdf[i + 1] - self.cdf[i]
+    }
 }

@@ -55,7 +55,7 @@ impl MutatorKelemen {
         MutatorKelemen {
             s1,
             s2,
-            log_ratio: (s2 / s1).log2(), // FIXME: Check if it is log2 or log10
+            log_ratio: -(s2 / s1).ln(),
         }
     }
 }
@@ -73,10 +73,11 @@ impl Mutator for MutatorKelemen {
         } else {
             (false, 2.0 * (r - 0.5))
         };
-        let dv = self.s2 + (r * self.log_ratio);
-        if add {
+        let dv = self.s2 * (r * self.log_ratio).exp();
+        assert!(dv < 1.0);
+        let mut v = if add {
             let mut v = v + dv;
-            if v > 1.0 {
+            if v >= 1.0 {
                 v -= 1.0
             }
             v
@@ -86,7 +87,15 @@ impl Mutator for MutatorKelemen {
                 v += 1.0
             }
             v
+        };
+        //FIXME: See why I need to add this test
+        if v == 1.0 {
+            v = 0.0;
         }
+
+        assert!(v < 1.0);
+        assert!(v >= 0.0);
+        v
     }
 }
 
@@ -134,7 +143,7 @@ impl SamplerMCMC for IndependentSamplerReplay {
             self.time_large = self.time;
         }
         self.time += 1;
-        self.indice += 1;
+        self.indice = 0;
     }
 
     fn reject(&mut self) {
@@ -181,17 +190,13 @@ impl IndependentSamplerReplay {
             if self.large_step {
                 self.backup.push((i, self.values[i].value));
                 let value = self.rand();
-                self.values[i] = SampleReplayValue {
-                    value,
-                    modify: self.time,
-                }
+                self.values[i].value = value;
+                self.values[i].modify = self.time;
             } else {
                 if self.values[i].modify < self.time_large {
                     let value = self.rand();
-                    self.values[i] = SampleReplayValue {
-                        value,
-                        modify: self.time_large,
-                    }
+                    self.values[i].value = value;
+                    self.values[i].modify = self.time_large;
                 }
 
                 while self.values[i].modify + 1 < self.time {
@@ -202,10 +207,8 @@ impl IndependentSamplerReplay {
 
                 self.backup.push((i, self.values[i].value));
                 let random = self.rand();
-                self.values[i] = SampleReplayValue {
-                    value: self.mutator.mutate(self.values[i].value, random),
-                    modify: self.time,
-                }
+                self.values[i].value = self.mutator.mutate(self.values[i].value, random);
+                self.values[i].modify += 1;
             }
         }
 

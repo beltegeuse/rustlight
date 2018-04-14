@@ -194,10 +194,14 @@ impl<'a> Path<'a> {
 
         Some(Path { vertices, edges })
     }
+}
 
-    // IDEA:
-    // Add the jacobian value inside the flux and pdf to more easy MIS
-    pub fn shift_geometric(&self, shift_pix: Point2<f32>, scene: &'a Scene) -> Option<Path<'a>> {
+trait ShiftOp<'a> {
+    fn shift(base_path: Path<'a>, shift_pix: Point2<f32>, scene: &'a Scene) -> Option<Path<'a>>;
+}
+pub struct ShiftGeomOp {}
+impl<'a> ShiftOp<'a> for ShiftGeomOp {
+    fn shift(base_path: Path<'a>, shift_pix: Point2<f32>, scene: &'a Scene) -> Option<Path<'a>> {
         // FIXME: Need to implement G-PT shift mapping
         // FIXME: The idea of this code is to shift the path geometry
         // FIXME: without evaluating the direct lighting (compared to G-PT)
@@ -212,10 +216,10 @@ impl<'a> Path<'a> {
         let mut state = ShiftGeometricState::NotConnected;
         let mut pdf = 1.0;
 
-        for i in 1..self.vertices.len() {
+        for i in 1..base_path.vertices.len() {
             match state {
                 ShiftGeometricState::NotConnected => {
-                    let main_currrent = match &self.vertices[i] {
+                    let main_currrent = match &base_path.vertices[i] {
                         &Vertex::Surface(ref x) => x,
                         _ => panic!("Wrong main_current vertex type"),
                     };
@@ -224,13 +228,13 @@ impl<'a> Path<'a> {
                         _ => panic!("main_bsdf_pdf is not in solid angle"),
                     };
 
-                    match self.vertices.get(i + 1) {
+                    match base_path.vertices.get(i + 1) {
                         //FIXME: Are we sure about that? Because the path might be not
                         //FIXME: Because a edge of the path can be missing
                         None => return Some(Path { vertices, edges }),
                         Some(&Vertex::Surface(ref main_next)) => {
                             let new_vertex = {
-                                let main_edge = &self.edges[i - 1];
+                                let main_edge = &base_path.edges[i - 1];
                                 let shift_current = match vertices.last().unwrap() {
                                     &Vertex::Surface(ref x) => x,
                                     _ => panic!("Un-expected path for the shift mapping"), // If we have something else, panic!
@@ -308,7 +312,7 @@ impl<'a> Path<'a> {
                 }
                 ShiftGeometricState::RecentlyConnected => {}
                 ShiftGeometricState::Connected => {
-                    match &self.vertices.get(i) {
+                    match &base_path.vertices.get(i) {
                         &None => return Some(Path { vertices, edges }),
                         &Some(&Vertex::Surface(ref main_next)) => {
                             match &main_next.sampled_bsdf {
@@ -325,7 +329,7 @@ impl<'a> Path<'a> {
                                     };
                                     // Just recopy the path
                                     vertices.push(new_vertex);
-                                    edges.push(self.edges[i - 1].clone());
+                                    edges.push(base_path.edges[i - 1].clone());
                                 }
                                 _ => {
                                     // The main path is dead, stop doing the shift

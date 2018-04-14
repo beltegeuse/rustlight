@@ -235,6 +235,28 @@ fn integrate_image_plane<T: Integrator<Color> + Sync + Send>(
         .sum::<f32>() / (nb_samples as f32)
 }
 
+struct MCMCState {
+    pub value: Color,
+    pub tf: f32,
+    pub pix: Point2<u32>,
+    pub weight: f32,
+}
+
+impl MCMCState {
+    pub fn new(v: Color, pix: Point2<u32>) -> MCMCState {
+        MCMCState {
+            value: v,
+            tf: (v.r + v.g + v.b) / 3.0,
+            pix,
+            weight: 0.0,
+        }
+    }
+
+    pub fn color(&self) -> Color {
+        self.value * (self.weight / self.tf)
+    }
+}
+
 fn classical_mcmc_integration<T: Integrator<Color> + Sync + Send>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
@@ -253,8 +275,7 @@ fn classical_mcmc_integration<T: Integrator<Color> + Sync + Send>(
         let x = (s.next() * scene.camera.size().x as f32) as u32;
         let y = (s.next() * scene.camera.size().y as f32) as u32;
         let c = { int.compute((x, y), scene, s) };
-        let v: f32 = (c.r + c.g + c.b) / 3.0;
-        (c, v, (x, y))
+        MCMCState::new(c, Point2::new(x, y))
     };
 
     ///////////// Compute the normalization factor
@@ -273,20 +294,6 @@ fn classical_mcmc_integration<T: Integrator<Color> + Sync + Send>(
         samplers.push(rustlight::sampler::IndependentSamplerReplay::default());
     }
 
-    pool.install(|| {
-        samplers.par_iter_mut().for_each(|s| {
-            loop {
-                s.large_step = true;
-                s.reject();
-                let (_c, v, _pix) = sample(s);
-                if v != 0.0 {
-                    break;
-                }
-            }
-            s.accept();
-        })
-    });
-
     ///////////// Compute the rendering (with the number of samples)
     info!("Rendering...");
     let start = Instant::now();
@@ -294,28 +301,36 @@ fn classical_mcmc_integration<T: Integrator<Color> + Sync + Send>(
     let img = Mutex::new(Bitmap::new(Point2::new(0, 0), *scene.camera.size()));
     pool.install(|| {
         samplers.par_iter_mut().for_each(|s| {
-            let mut my_img: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
-            let (mut current_value, mut current_tf, mut current_pix) = sample(s);
+            // Initialize the sampler
+            s.large_step = true;
+            let mut current_state = sample(s);
+            while current_state.tf == 0.0 {
+                s.reject();
+                current_state = sample(s);
+            }
             s.accept();
+
+            let mut my_img: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
             (0..nb_samples_per_chains).into_iter().for_each(|_| {
-                let (proposed_value, proposed_tf, proposed_pix) = sample(s);
-                let accept_prob = (proposed_tf / current_tf).min(1.0);
+                // Choose randomly between large and small perturbation
+                s.large_step = s.rand() < 0.3;
+                let mut proposed_state = sample(s);
+                let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
+                // Do waste reclycling
+                current_state.weight += 1.0 - accept_prob;
+                proposed_state.weight += accept_prob;
                 if accept_prob > s.rand() {
+                    my_img.accumulate(current_state.pix, &current_state.color());
                     s.accept();
-                    current_value = proposed_value;
-                    current_tf = proposed_tf;
-                    current_pix = proposed_pix;
+                    current_state = proposed_state;
                 } else {
+                    my_img.accumulate(proposed_state.pix, &proposed_state.color());
                     s.reject();
                 }
-                my_img.accumulate(
-                    Point2 {
-                        x: current_pix.0,
-                        y: current_pix.1,
-                    },
-                    &(current_value * (1.0 / current_tf)),
-                );
             });
+            // Flush the last state
+            my_img.accumulate(current_state.pix, &current_state.color());
+
             my_img.scale(1.0 / (nb_samples_per_chains as f32));
             {
                 img.lock().unwrap().accumulate_bitmap(&my_img);
