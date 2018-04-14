@@ -8,17 +8,153 @@ extern crate image;
 extern crate log;
 extern crate rayon;
 extern crate rustlight;
+// For print a progress bar
+extern crate pbr;
 
+use pbr::ProgressBar;
+use cgmath::prelude::*;
+use cgmath::{Point2, Vector2};
 use byteorder::{LittleEndian, WriteBytesExt};
-use cgmath::Point2;
 use clap::{App, Arg, SubCommand};
 use image::*;
 use rustlight::integrator::ColorGradient;
 use rustlight::Scale;
-use rustlight::scene::Bitmap;
 use rustlight::structure::Color;
 use std::io::prelude::*;
 use std::time::Instant;
+use rayon::prelude::*;
+use rustlight::sampler::SamplerMCMC;
+use rustlight::sampler::Sampler;
+use std::ops::AddAssign;
+use rustlight::integrator::Integrator;
+use rustlight::tools::StepRangeInt;
+use std::sync::Mutex;
+
+pub trait BitmapTrait: Default + AddAssign + Scale<f32> + Clone {}
+impl BitmapTrait for ColorGradient {}
+impl BitmapTrait for Color {}
+
+/// Image block
+/// for easy paralelisation over the thread
+pub struct Bitmap<T: BitmapTrait> {
+    pub pos: Point2<u32>,
+    pub size: Vector2<u32>,
+    pub pixels: Vec<T>,
+}
+
+impl<T: BitmapTrait> Bitmap<T> {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap<T> {
+        Bitmap {
+            pos,
+            size,
+            pixels: vec![T::default(); (size.x * size.y) as usize],
+        }
+    }
+
+    pub fn accumulate_bitmap(&mut self, o: &Bitmap<T>) {
+        for x in 0..o.size.x {
+            for y in 0..o.size.y {
+                let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
+                self.accumulate(c_p, o.get(Point2::new(x, y)));
+            }
+        }
+    }
+
+    pub fn accumulate(&mut self, p: Point2<u32>, f: &T) {
+        assert!(p.x < self.size.x);
+        assert!(p.y < self.size.y);
+        self.pixels[(p.y * self.size.y + p.x) as usize] += f.clone(); // FIXME: Not good for performance
+    }
+
+    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: T) {
+        if p.x >= 0 && p.y >= 0 && p.x < (self.size.x as i32) && p.y < (self.size.y as i32) {
+            self.pixels[((p.y as u32) * self.size.y + p.x as u32) as usize] += f.clone(); // FIXME: Bad performance?
+        }
+    }
+
+    pub fn get(&self, p: Point2<u32>) -> &T {
+        assert!(p.x < self.size.x);
+        assert!(p.y < self.size.y);
+        &self.pixels[(p.y * self.size.y + p.x) as usize]
+    }
+
+    pub fn reset(&mut self) {
+        self.pixels.iter_mut().for_each(|x| *x = T::default());
+    }
+}
+
+impl<T: BitmapTrait> Scale<f32> for Bitmap<T> {
+    fn scale(&mut self, f: f32) {
+        assert!(f > 0.0);
+        self.pixels.iter_mut().for_each(|v| v.scale(f));
+    }
+}
+
+impl<T: BitmapTrait> Iterator for Bitmap<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unimplemented!()
+    }
+}
+
+//////////////////////////////////
+// Helpers
+fn render<T: BitmapTrait + Send>(
+    scene: &::rustlight::scene::Scene,
+    integrator: Box<Integrator<T> + Sync + Send>,
+    nb_samples: usize,
+) -> Bitmap<T> {
+    assert_ne!(nb_samples, 0);
+
+    // Create rendering blocks
+    let mut image_blocks: Vec<Box<Bitmap<T>>> = Vec::new();
+    for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
+        for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
+            let mut block = Bitmap::new(
+                Point2 {
+                    x: ix as u32,
+                    y: iy as u32,
+                },
+                Vector2 {
+                    x: std::cmp::min(16, scene.camera.size().x - ix as u32),
+                    y: std::cmp::min(16, scene.camera.size().y - iy as u32),
+                },
+            );
+            image_blocks.push(Box::new(block));
+        }
+    }
+
+    // Render the image blocks
+    let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
+    image_blocks.par_iter_mut().for_each(|im_block| {
+        let mut sampler: Box<Sampler> = Box::new(rustlight::sampler::IndependentSampler::default());
+        for ix in 0..im_block.size.x {
+            for iy in 0..im_block.size.y {
+                for _ in 0..nb_samples {
+                    let c = integrator.compute(
+                        (ix + im_block.pos.x, iy + im_block.pos.y),
+                        scene,
+                        &mut sampler,
+                    );
+                    im_block.accumulate(Point2 { x: ix, y: iy }, &c);
+                }
+            }
+        }
+        im_block.scale(1.0 / (nb_samples as f32));
+
+        {
+            progress_bar.lock().unwrap().inc();
+        }
+    });
+
+    // Fill the image
+    let mut image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    for im_block in &image_blocks {
+        image.accumulate_bitmap(im_block);
+    }
+    image
+}
 
 fn save_pfm(imgout_path_str: &str, img: &Bitmap<Color>) {
     let mut file = std::fs::File::create(std::path::Path::new(imgout_path_str)).unwrap();
@@ -50,9 +186,13 @@ fn save_png(imgout_path_str: &str, img: &Bitmap<Color>) {
 
 fn classical_mc_integration(
     scene: &rustlight::scene::Scene,
-    nb_samples: u32,
+    nb_samples: usize,
     nb_threads: Option<usize>,
-    int: Box<rustlight::integrator::Integrator<Color> + Sync + Send>,
+    int: Box<
+        Integrator<Color>
+            + Sync
+            + Send,
+    >,
 ) -> Bitmap<Color> {
     ////////////// Do the rendering
     info!("Rendering...");
@@ -62,7 +202,7 @@ fn classical_mc_integration(
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
         .unwrap();
-    let img = pool.install(|| scene.render(int, nb_samples));
+    let img = pool.install(|| render(scene, int, nb_samples));
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
@@ -72,11 +212,71 @@ fn classical_mc_integration(
     return img;
 }
 
+fn classical_mcmc_integration(
+    scene: &rustlight::scene::Scene,
+    nb_samples: usize,
+    nb_threads: Option<usize>,
+    int: Box<
+        Integrator<Color>
+            + Sync
+            + Send,
+    >,
+) -> Bitmap<Color> {
+    ///////////// Prepare the pool for multiple thread
+    let pool = match nb_threads {
+        None => rayon::ThreadPoolBuilder::new(),
+        Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
+    }.build()
+        .unwrap();
+
+    ///////////// Compute the normalization factor
+    info!("Computing normalization factor...");
+    let b = scene.integrate_image_plane(int, 10000);
+    info!("Normalisation factor: {:?}", b);
+
+    ///////////// Compute the state initialization
+    let nb_samples_total = nb_samples * (scene.camera.size().x * scene.camera.size().y) as usize;
+    let nb_samples_per_chains = 100000;
+    let nb_chains = nb_samples_total / nb_samples_per_chains;
+    info!("Number of states: {:?}", nb_chains);
+    // - Generate the samplers
+    let mut samplers = Vec::new();
+    for _ in 0..nb_chains {
+        samplers.push(Box::new(rustlight::sampler::IndependentSamplerReplay::default()));
+    }
+    // - Initialize the samplers
+    // pool.install(|| {
+    //     samplers.iter_mut().for_each(|s| {
+    //         loop {
+    //             s.large_step = true;
+    //             s.reject();
+    //             let x = (s.next() * scene.camera.size().x as f32) as u32;
+    //             let y = (s.next() * scene.camera.size().y as f32) as u32;
+    //             let c = Color::zero();//int.compute((x, y), scene, s.downcast::<Sampler>());
+    //             let v = (c.r + c.g + c.b) / 3.0;
+    //             if v != 0.0 {
+    //                 break;
+    //             }
+    //         }
+    //         s.accept();
+    //     })
+    // });
+
+    ///////////// Compute the rendering (with the number of samples)
+
+    let img = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    img
+}
+
 fn gradient_domain_integration(
     scene: &rustlight::scene::Scene,
-    nb_samples: u32,
+    nb_samples: usize,
     nb_threads: Option<usize>,
-    int: Box<rustlight::integrator::Integrator<ColorGradient> + Sync + Send>,
+    int: Box<
+        Integrator<ColorGradient>
+            + Sync
+            + Send,
+    >,
 ) -> Bitmap<Color> {
     info!("Rendering...");
     let start = Instant::now();
@@ -85,7 +285,7 @@ fn gradient_domain_integration(
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
         .unwrap();
-    let img_grad = pool.install(|| scene.render(int, nb_samples));
+    let img_grad = pool.install(|| render(scene, int, nb_samples));
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
@@ -232,6 +432,7 @@ fn main() {
                 .short("o")
                 .help("output image file"),
         )
+        .arg(Arg::with_name("debug").short("d").help("debug output"))
         .arg(
             Arg::with_name("nbsamples")
                 .short("n")
@@ -307,11 +508,17 @@ fn main() {
         .get_matches();
 
     /////////////// Setup logging system
-    env_logger::Builder::from_default_env()
-        .default_format_timestamp(false)
-        .parse("info")
-        .init();
-
+    if matches.is_present("debug") {
+        // FIXME: add debug flag?
+        env_logger::Builder::from_default_env()
+            .default_format_timestamp(false)
+            .init();
+    } else {
+        env_logger::Builder::from_default_env()
+            .default_format_timestamp(false)
+            .parse("info")
+            .init();
+    }
     /////////////// Check output extension
     let imgout_path_str = matches.value_of("output").unwrap_or("test.pfm");
     let output_ext = match std::path::Path::new(imgout_path_str).extension() {
@@ -320,7 +527,7 @@ fn main() {
     };
 
     //////////////// Load the rendering configuration
-    let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), u32);
+    let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), usize);
     let nb_threads = match matches.value_of("nbthreads").unwrap() {
         "auto" => None,
         x => {

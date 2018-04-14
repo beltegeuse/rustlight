@@ -1,4 +1,3 @@
-use BitmapTrait;
 use cgmath::*;
 use constants;
 use embree_rs;
@@ -71,8 +70,6 @@ impl Color {
         self.r.max(self.g.max(self.b))
     }
 }
-
-impl BitmapTrait for Color {}
 
 impl Default for Color {
     fn default() -> Self {

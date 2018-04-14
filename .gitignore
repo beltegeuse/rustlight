@@ -6,3 +6,8 @@
 *.lock
 /test.pfm
 /test.png
+/*.png
+/*.pfm
+/data/*.blend*
+/data/*.bak
+/data/*

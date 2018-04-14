@@ -9,11 +9,7 @@ pub struct StepRangeInt {
 
 impl StepRangeInt {
     pub fn new(start: usize, end: usize, step: usize) -> StepRangeInt {
-        StepRangeInt {
-            start,
-            end,
-            step,
-        }
+        StepRangeInt { start, end, step }
     }
 }
 

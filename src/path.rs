@@ -52,7 +52,7 @@ impl<'a> Vertex<'a> {
 
     pub fn generate_next(&mut self,
                          scene: &'a Scene,
-                         sampler: Option<&mut Sampler>) -> (Option<Edge>, Option<Vertex<'a>>) {
+                         sampler: Option<&mut Box<Sampler>>) -> (Option<Edge>, Option<Vertex<'a>>) {
         match *self {
             Vertex::Sensor(ref mut v) => {
                 let ray = scene.camera.generate(v.uv);
@@ -143,7 +143,7 @@ enum ShiftGeometricState {
 impl<'a> Path<'a> {
     pub fn from_sensor((ix, iy): (u32, u32),
                        scene: &'a Scene,
-                       sampler: &mut Sampler,
+                       sampler: &mut Box<Sampler>,
                        max_depth: Option<u32>) -> Option<Path<'a>> {
         let pix = Point2::new(
             ix as f32 + sampler.next(),
@@ -239,7 +239,7 @@ impl<'a> Path<'a> {
                                 }
 
                                 // Compute the new direction for evaluating the BSDF
-                                let mut shift_d_out_global = (main_next.its.p - shift_current.its.p);
+                                let mut shift_d_out_global = main_next.its.p - shift_current.its.p;
                                 let shift_distance = shift_d_out_global.magnitude();
                                 shift_d_out_global /= shift_distance;
                                 let shift_d_out_local = shift_current.its.frame.to_local(shift_d_out_global);
