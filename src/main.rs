@@ -490,7 +490,7 @@ fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
 fn main() {
     // Read input args
     let matches = App::new("rustlight")
-        .version("0.0.4")
+        .version("0.0.5")
         .author("Adrien Gruson <adrien.gruson@gmail.com>")
         .about("A Rusty Light Transport simulation program")
         .arg(
@@ -538,7 +538,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("pssmlt")
-                .about("pssmlt")
+                .about("path tracing with MCMC sampling")
                 .arg(
                     Arg::with_name("max")
                         .takes_value(true)

@@ -4,7 +4,7 @@
 
 Physically-based rendering engine implemented with **Rust**.
 
-## Building 
+## Building
 
 NOTE: Need Rust 1.25 at least to support ```repr(align(X))``` routine for embree-rs. To install this version, you can run the following command:
 
@@ -40,6 +40,7 @@ SUBCOMMANDS:
     help             Prints this message or the help of the given subcommand(s)
     path             path tracing
     path-explicit    path tracing with explict light path construction
+    pssmlt           path tracing with MCMC sampling
 
 ```
 
@@ -51,13 +52,13 @@ $ cargo run --release -- -n 128 -o path.pfm ./data/cbox.json path
 ## Features
 
 For now, these are the following features implemented:
-- Integrators: ambiant occlusion, direct, path-tracing and gradient-domain path tracing.
+- Integrators: ambiant occlusion, direct, path-tracing, gradient-domain path tracing, PSSMLT
 - Explicit path building (generate a sensor path and evaluate it later)
 - Filtering: image-domain control variate reconstruction (uniform weights)
 - Materials: diffuse, phong lobe, specular
 - Emitters: multiple surface lights support
 
-## Rendering 
+## Rendering
 
 ![Cornel Box gradient-domain pt](http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/rustlight/cbox_gpt_uni.png)
 
@@ -69,9 +70,8 @@ Rendering algorithms for path-tracing:
 - Fixing gradient-domain path tracing: seems to have wrong gradient when the light source is not visible from the base path
 - Add weighted control variate reconstruction
 - gradient-domain path reuse
-- PSSMLT
 
-Other rendering features: 
+Other rendering features:
 
 - Materials: glass, microfacet with Beckert distribution.
 - Emitters: Environmental and point lights
@@ -84,3 +84,4 @@ This code has been inspired from several repositories:
 - rs_pbrt project: https://github.com/wahn/rs_pbrt
 - the blog post from Brook Heisler: https://bheisler.github.io/post/writing-raytracer-in-rust-part-1/
 - tray_rust project: https://github.com/Twinklebear/tray_rust
+- mitsuba: https://github.com/mitsuba-renderer/mitsuba
