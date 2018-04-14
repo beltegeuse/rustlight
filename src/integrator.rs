@@ -9,7 +9,7 @@ use std::ops::AddAssign;
 use structure::*;
 
 pub trait Integrator<T> {
-    fn compute(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Box<Sampler>) -> T;
+    fn compute<S: Sampler>(&self, pix: (u32, u32), scene: &Scene, sampler: &mut S) -> T;
 }
 
 //////////// AO
@@ -18,7 +18,7 @@ pub struct IntegratorAO {
 }
 
 impl Integrator<Color> for IntegratorAO {
-    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Box<Sampler>) -> Color {
+    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
 
@@ -58,7 +58,7 @@ pub struct IntegratorUniPath {
 }
 
 impl Integrator<Color> for IntegratorUniPath {
-    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Box<Sampler>) -> Color {
+    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
         match Path::from_sensor((ix, iy), scene, sampler, self.max_depth) {
             None => Color::zero(),
             Some(path) => {
@@ -168,7 +168,7 @@ fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
 }
 
 impl Integrator<Color> for IntegratorDirect {
-    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Box<Sampler>) -> Color {
+    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
@@ -275,7 +275,7 @@ pub struct IntegratorPath {
 }
 
 impl Integrator<Color> for IntegratorPath {
-    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Box<Sampler>) -> Color {
+    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
         // Generate the first ray
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let mut ray = scene.camera.generate(pix);
@@ -510,7 +510,12 @@ impl<'a> RayState<'a> {
 }
 
 impl Integrator<ColorGradient> for IntegratorPath {
-    fn compute(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Box<Sampler>) -> ColorGradient {
+    fn compute<S: Sampler>(
+        &self,
+        (ix, iy): (u32, u32),
+        scene: &Scene,
+        sampler: &mut S,
+    ) -> ColorGradient {
         let mut l_i = ColorGradient::default();
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let mut main = match RayState::new(pix, &Point2::new(0, 0), scene) {

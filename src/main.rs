@@ -12,7 +12,6 @@ extern crate rustlight;
 extern crate pbr;
 
 use pbr::ProgressBar;
-use cgmath::prelude::*;
 use cgmath::{Point2, Vector2};
 use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg, SubCommand};
@@ -81,6 +80,13 @@ impl<T: BitmapTrait> Bitmap<T> {
     pub fn reset(&mut self) {
         self.pixels.iter_mut().for_each(|x| *x = T::default());
     }
+
+    pub fn average(&self) -> T {
+        let mut s = T::default();
+        self.pixels.iter().for_each(|x| s += x.clone());
+        s.scale(1.0 / self.pixels.len() as f32);
+        s
+    }
 }
 
 impl<T: BitmapTrait> Scale<f32> for Bitmap<T> {
@@ -100,9 +106,9 @@ impl<T: BitmapTrait> Iterator for Bitmap<T> {
 
 //////////////////////////////////
 // Helpers
-fn render<T: BitmapTrait + Send>(
+fn render<T: BitmapTrait + Send, I: Integrator<T> + Send + Sync>(
     scene: &::rustlight::scene::Scene,
-    integrator: Box<Integrator<T> + Sync + Send>,
+    integrator: &I,
     nb_samples: usize,
 ) -> Bitmap<T> {
     assert_ne!(nb_samples, 0);
@@ -128,7 +134,7 @@ fn render<T: BitmapTrait + Send>(
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
     image_blocks.par_iter_mut().for_each(|im_block| {
-        let mut sampler: Box<Sampler> = Box::new(rustlight::sampler::IndependentSampler::default());
+        let mut sampler = rustlight::sampler::IndependentSampler::default();
         for ix in 0..im_block.size.x {
             for iy in 0..im_block.size.y {
                 for _ in 0..nb_samples {
@@ -184,15 +190,11 @@ fn save_png(imgout_path_str: &str, img: &Bitmap<Color>) {
         .expect("failed to write img into file");
 }
 
-fn classical_mc_integration(
+fn classical_mc_integration<T: Integrator<Color> + Send + Sync>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
     nb_threads: Option<usize>,
-    int: Box<
-        Integrator<Color>
-            + Sync
-            + Send,
-    >,
+    int: T,
 ) -> Bitmap<Color> {
     ////////////// Do the rendering
     info!("Rendering...");
@@ -202,7 +204,7 @@ fn classical_mc_integration(
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
         .unwrap();
-    let img = pool.install(|| render(scene, int, nb_samples));
+    let img = pool.install(|| render(scene, &int, nb_samples));
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
@@ -212,15 +214,32 @@ fn classical_mc_integration(
     return img;
 }
 
-fn classical_mcmc_integration(
+/// Compute the scene average luminance
+/// Usefull for computing the normalisation factor for MCMC
+fn integrate_image_plane<T: Integrator<Color> + Sync + Send>(
+    scene: &rustlight::scene::Scene,
+    integrator: &T,
+    nb_samples: usize,
+) -> f32 {
+    assert_ne!(nb_samples, 0);
+
+    let mut sampler = ::rustlight::sampler::IndependentSampler::default();
+    (0..nb_samples)
+        .into_iter()
+        .map(|_i| {
+            let x = (sampler.next() * scene.camera.size().x as f32) as u32;
+            let y = (sampler.next() * scene.camera.size().y as f32) as u32;
+            let c = integrator.compute((x, y), scene, &mut sampler);
+            (c.r + c.g + c.b) / 3.0
+        })
+        .sum::<f32>() / (nb_samples as f32)
+}
+
+fn classical_mcmc_integration<T: Integrator<Color> + Sync + Send>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
     nb_threads: Option<usize>,
-    int: Box<
-        Integrator<Color>
-            + Sync
-            + Send,
-    >,
+    int: T,
 ) -> Bitmap<Color> {
     ///////////// Prepare the pool for multiple thread
     let pool = match nb_threads {
@@ -229,9 +248,18 @@ fn classical_mcmc_integration(
     }.build()
         .unwrap();
 
+    ///////////// Define the closure
+    let sample = |s: &mut rustlight::sampler::IndependentSamplerReplay| {
+        let x = (s.next() * scene.camera.size().x as f32) as u32;
+        let y = (s.next() * scene.camera.size().y as f32) as u32;
+        let c = { int.compute((x, y), scene, s) };
+        let v: f32 = (c.r + c.g + c.b) / 3.0;
+        (c, v, (x, y))
+    };
+
     ///////////// Compute the normalization factor
     info!("Computing normalization factor...");
-    let b = scene.integrate_image_plane(int, 10000);
+    let b = integrate_image_plane(scene, &int, 10000);
     info!("Normalisation factor: {:?}", b);
 
     ///////////// Compute the state initialization
@@ -239,44 +267,82 @@ fn classical_mcmc_integration(
     let nb_samples_per_chains = 100000;
     let nb_chains = nb_samples_total / nb_samples_per_chains;
     info!("Number of states: {:?}", nb_chains);
-    // - Generate the samplers
+    // - Initialize the samplers
     let mut samplers = Vec::new();
     for _ in 0..nb_chains {
-        samplers.push(Box::new(rustlight::sampler::IndependentSamplerReplay::default()));
+        samplers.push(rustlight::sampler::IndependentSamplerReplay::default());
     }
-    // - Initialize the samplers
-    // pool.install(|| {
-    //     samplers.iter_mut().for_each(|s| {
-    //         loop {
-    //             s.large_step = true;
-    //             s.reject();
-    //             let x = (s.next() * scene.camera.size().x as f32) as u32;
-    //             let y = (s.next() * scene.camera.size().y as f32) as u32;
-    //             let c = Color::zero();//int.compute((x, y), scene, s.downcast::<Sampler>());
-    //             let v = (c.r + c.g + c.b) / 3.0;
-    //             if v != 0.0 {
-    //                 break;
-    //             }
-    //         }
-    //         s.accept();
-    //     })
-    // });
+
+    pool.install(|| {
+        samplers.par_iter_mut().for_each(|s| {
+            loop {
+                s.large_step = true;
+                s.reject();
+                let (_c, v, _pix) = sample(s);
+                if v != 0.0 {
+                    break;
+                }
+            }
+            s.accept();
+        })
+    });
 
     ///////////// Compute the rendering (with the number of samples)
+    info!("Rendering...");
+    let start = Instant::now();
+    let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
+    let img = Mutex::new(Bitmap::new(Point2::new(0, 0), *scene.camera.size()));
+    pool.install(|| {
+        samplers.par_iter_mut().for_each(|s| {
+            let mut my_img: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+            let (mut current_value, mut current_tf, mut current_pix) = sample(s);
+            s.accept();
+            (0..nb_samples_per_chains).into_iter().for_each(|_| {
+                let (proposed_value, proposed_tf, proposed_pix) = sample(s);
+                let accept_prob = (proposed_tf / current_tf).min(1.0);
+                if accept_prob > s.rand() {
+                    s.accept();
+                    current_value = proposed_value;
+                    current_tf = proposed_tf;
+                    current_pix = proposed_pix;
+                } else {
+                    s.reject();
+                }
+                my_img.accumulate(
+                    Point2 {
+                        x: current_pix.0,
+                        y: current_pix.1,
+                    },
+                    &(current_value * (1.0 / current_tf)),
+                );
+            });
+            my_img.scale(1.0 / (nb_samples_per_chains as f32));
+            {
+                img.lock().unwrap().accumulate_bitmap(&my_img);
+                progress_bar.lock().unwrap().inc();
+            }
+        });
+    });
+    let mut img: Bitmap<Color> = img.into_inner().unwrap();
+    let elapsed = start.elapsed();
+    info!(
+        "Elapsed: {} ms",
+        (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
+    );
 
-    let img = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    // ==== Compute and scale to the normalization factor
+    let img_avg = img.average();
+    let img_avg_lum = (img_avg.r + img_avg.g + img_avg.b) / 3.0;
+    img.scale(b / img_avg_lum);
+
     img
 }
 
-fn gradient_domain_integration(
+fn gradient_domain_integration<T: Integrator<ColorGradient> + Sync + Send>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
     nb_threads: Option<usize>,
-    int: Box<
-        Integrator<ColorGradient>
-            + Sync
-            + Send,
-    >,
+    int: T,
 ) -> Bitmap<Color> {
     info!("Rendering...");
     let start = Instant::now();
@@ -285,7 +351,7 @@ fn gradient_domain_integration(
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
         .unwrap();
-    let img_grad = pool.install(|| render(scene, int, nb_samples));
+    let img_grad = pool.install(|| render(scene, &int, nb_samples));
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
@@ -456,6 +522,22 @@ fn main() {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("pssmlt")
+                .about("pssmlt")
+                .arg(
+                    Arg::with_name("max")
+                        .takes_value(true)
+                        .short("m")
+                        .default_value("inf"),
+                )
+                .arg(
+                    Arg::with_name("min")
+                        .takes_value(true)
+                        .short("n")
+                        .default_value("inf"),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("path-explicit")
                 .about("path tracing with explict light path construction")
                 .arg(
@@ -564,7 +646,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                Box::new(rustlight::integrator::IntegratorUniPath { max_depth }),
+                rustlight::integrator::IntegratorUniPath { max_depth },
             )
         }
         ("path", Some(m)) => {
@@ -575,10 +657,24 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                Box::new(rustlight::integrator::IntegratorPath {
+                rustlight::integrator::IntegratorPath {
                     max_depth,
                     min_depth,
-                }),
+                },
+            )
+        }
+        ("pssmlt", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_depth = match_infinity(m.value_of("min").unwrap());
+
+            classical_mcmc_integration(
+                &scene,
+                nb_samples,
+                nb_threads,
+                rustlight::integrator::IntegratorPath {
+                    max_depth,
+                    min_depth,
+                },
             )
         }
         ("gd-path", Some(m)) => {
@@ -589,10 +685,10 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                Box::new(rustlight::integrator::IntegratorPath {
+                rustlight::integrator::IntegratorPath {
                     max_depth,
                     min_depth,
-                }),
+                },
             )
         }
         ("ao", Some(m)) => {
@@ -602,17 +698,17 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                Box::new(rustlight::integrator::IntegratorAO { max_distance: dist }),
+                rustlight::integrator::IntegratorAO { max_distance: dist },
             )
         }
         ("direct", Some(m)) => classical_mc_integration(
             &scene,
             nb_samples,
             nb_threads,
-            Box::new(rustlight::integrator::IntegratorDirect {
+            rustlight::integrator::IntegratorDirect {
                 nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
                 nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
-            }),
+            },
         ),
         _ => panic!("unknown integrator"),
     };

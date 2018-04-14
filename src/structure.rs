@@ -20,17 +20,13 @@ pub enum PDF {
 impl PDF {
     pub fn is_zero(&self) -> bool {
         match self {
-            &PDF::Discrete(v)
-            | &PDF::SolidAngle(v)
-            | &PDF::Area(v) => (v == 0.0),
+            &PDF::Discrete(v) | &PDF::SolidAngle(v) | &PDF::Area(v) => (v == 0.0),
         }
     }
 
     pub fn value(&self) -> f32 {
         match self {
-            &PDF::Discrete(v)
-            | &PDF::SolidAngle(v)
-            | &PDF::Area(v) => v,
+            &PDF::Discrete(v) | &PDF::SolidAngle(v) | &PDF::Area(v) => v,
         }
     }
 }
@@ -61,10 +57,12 @@ impl Color {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
     }
     pub fn to_rgba(&self) -> Rgba<u8> {
-        Rgba::from_channels((self.r.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
-                            (self.g.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
-                            (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
-                            255)
+        Rgba::from_channels(
+            (self.r.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
+            (self.g.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
+            (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
+            255,
+        )
     }
     pub fn channel_max(&self) -> f32 {
         self.r.max(self.g.max(self.b))
@@ -243,11 +241,7 @@ impl Ray {
     }
 
     pub fn to_embree(&self) -> embree_rs::ray::Ray {
-        embree_rs::ray::Ray::new(
-            &self.o,
-            &self.d,
-            self.tnear,
-            self.tfar)
+        embree_rs::ray::Ray::new(&self.o, &self.d, self.tnear, self.tfar)
     }
 }
 
@@ -272,8 +266,11 @@ pub struct Intersection<'a> {
 }
 
 impl<'a> Intersection<'a> {
-    pub fn new(embree_its: embree_rs::ray::Intersection,
-               d: Vector3<f32>, mesh: &'a Arc<Mesh>) -> Intersection<'a> {
+    pub fn new(
+        embree_its: embree_rs::ray::Intersection,
+        d: Vector3<f32>,
+        mesh: &'a Arc<Mesh>,
+    ) -> Intersection<'a> {
         let frame = Frame::new(embree_its.n_s);
         let wi = frame.to_local(d);
         Intersection {
@@ -292,5 +289,3 @@ impl<'a> Intersection<'a> {
         self.wi.z
     }
 }
-
-

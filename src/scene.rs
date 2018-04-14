@@ -2,18 +2,13 @@ use camera::{Camera, CameraParam};
 use cgmath::*;
 use embree_rs;
 use geometry;
-use integrator::*;
 use material::*;
 use math::{Distribution1D, Distribution1DConstruct};
-use rayon::prelude::*;
-use sampler;
 use serde_json;
 use std;
 use std::error::Error;
-use std::sync::{Arc};
-use std::u32;
+use std::sync::Arc;
 use structure::*;
-use sampler::Sampler;
 
 /// Light sample representation
 pub struct LightSampling<'a> {
@@ -226,26 +221,5 @@ impl<'a> Scene<'a> {
     pub fn random_select_emitter(&self, v: f32) -> (f32, &geometry::Mesh) {
         let id_light = self.emitters_cdf.sample(v);
         (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
-    }
-
-    /// Compute the scene average luminance
-    /// Usefull for computing the normalisation factor for MCMC
-    pub fn integrate_image_plane(
-        &self,
-        integrator: Box<Integrator<Color> + Sync + Send>,
-        nb_samples: usize,
-    ) -> f32 {
-        assert_ne!(nb_samples, 0);
-
-        let mut sampler: Box<Sampler> = Box::new(sampler::IndependentSampler::default());
-        (0..nb_samples)
-            .into_iter()
-            .map(|_i| {
-                let x = (sampler.next() * self.camera.size().x as f32) as u32;
-                let y = (sampler.next() * self.camera.size().y as f32) as u32;
-                let c = integrator.compute((x, y), self, &mut sampler);
-                (c.r + c.g + c.b) / 3.0
-            })
-            .sum::<f32>() / (nb_samples as f32)
     }
 }

@@ -62,24 +62,29 @@ impl MutatorKelemen {
 
 impl Default for MutatorKelemen {
     fn default() -> Self {
-        MutatorKelemen::new(
-            1.0 / 1024.0,
-            1.0 / 64.0,
-        )
+        MutatorKelemen::new(1.0 / 1024.0, 1.0 / 64.0)
     }
 }
 
 impl Mutator for MutatorKelemen {
     fn mutate(&self, v: f32, r: f32) -> f32 {
-        let (add, r) = if r < 0.5 { (true, r * 2.0) } else {(false, 2.0 * (r - 0.5))};
+        let (add, r) = if r < 0.5 {
+            (true, r * 2.0)
+        } else {
+            (false, 2.0 * (r - 0.5))
+        };
         let dv = self.s2 + (r * self.log_ratio);
         if add {
             let mut v = v + dv;
-            if v > 1.0 { v -= 1.0 }
+            if v > 1.0 {
+                v -= 1.0
+            }
             v
         } else {
             let mut v = v - dv;
-            if v < 0.0 { v += 1.0 }
+            if v < 0.0 {
+                v += 1.0
+            }
             v
         }
     }
@@ -101,6 +106,8 @@ pub struct IndependentSamplerReplay {
     indice: usize,
     pub large_step: bool,
 }
+
+unsafe impl Send for IndependentSamplerReplay {}
 
 impl Sampler for IndependentSamplerReplay {
     fn next(&mut self) -> f32 {
@@ -159,18 +166,15 @@ impl Default for IndependentSamplerReplay {
 //FIXME: Make not representable a sampler that are not accept
 impl IndependentSamplerReplay {
     // Constructor to change the mutator technique
-    fn mutator(mut self, mutator: Box<Mutator>) -> Self {
+    pub fn mutator(mut self, mutator: Box<Mutator>) -> Self {
         self.mutator = mutator;
         self
     }
 
     fn sample(&mut self, i: usize) -> f32 {
-        while i > self.values.len() {
+        while i >= self.values.len() {
             let value = self.rand();
-            self.values.push(SampleReplayValue {
-                value,
-                modify: 0,
-            })
+            self.values.push(SampleReplayValue { value, modify: 0 })
         }
 
         if self.values[i].modify < self.time {
@@ -192,18 +196,14 @@ impl IndependentSamplerReplay {
 
                 while self.values[i].modify + 1 < self.time {
                     let random = self.rand();
-                    self.values[i].value = self.mutator.mutate(
-                        self.values[i].value, random);
+                    self.values[i].value = self.mutator.mutate(self.values[i].value, random);
                     self.values[i].modify += 1;
                 }
 
                 self.backup.push((i, self.values[i].value));
                 let random = self.rand();
                 self.values[i] = SampleReplayValue {
-                    value: self.mutator.mutate(
-                        self.values[i].value,
-                        random
-                    ),
+                    value: self.mutator.mutate(self.values[i].value, random),
                     modify: self.time,
                 }
             }
@@ -212,7 +212,8 @@ impl IndependentSamplerReplay {
         self.values[i].value
     }
 
-    fn rand(&mut self) -> f32 {
+    // FIXME: Do not expose this function
+    pub fn rand(&mut self) -> f32 {
         self.dist.ind_sample(&mut self.rnd)
     }
 }
