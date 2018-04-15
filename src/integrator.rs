@@ -85,12 +85,12 @@ impl Integrator<Color> for IntegratorUniPath {
                             {
                                 // Compute the contribution of direct lighting
                                 if let PDF::SolidAngle(pdf_bsdf) =
-                                    v.its.mesh.bsdf.pdf(&v.its.wi, &d_out_local)
+                                    v.its.mesh.bsdf.pdf(&v.its.uv, &v.its.wi, &d_out_local)
                                 {
                                     // Compute MIS weights
                                     let weight_light = mis_weight(light_pdf, pdf_bsdf);
                                     l_i += weight_light * v.throughput
-                                        * v.its.mesh.bsdf.eval(&v.its.wi, &d_out_local)
+                                        * v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local)
                                         * light_record.weight;
                                 }
                             }
@@ -218,11 +218,12 @@ impl Integrator<Color> for IntegratorDirect {
             {
                 // Compute the contribution of direct lighting
                 // FIXME: A bit waste full, need to detect before sampling the light...
-                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.wi, &d_out_local) {
+                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local)
+                {
                     // Compute MIS weights
                     let weight_light =
                         mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
-                    l_i += weight_light * its.mesh.bsdf.eval(&its.wi, &d_out_local)
+                    l_i += weight_light * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
                         * weight_nb_light * light_record.weight;
                 }
             }
@@ -233,7 +234,7 @@ impl Integrator<Color> for IntegratorDirect {
         /////////////////////////////////
         // Compute an new direction (diffuse)
         for _ in 0..self.nb_bsdf_samples {
-            if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.wi, sampler.next2d()) {
+            if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.uv, &its.wi, sampler.next2d()) {
                 // Generate the new ray and do the intersection
                 let d_out_world = its.frame.to_world(sampled_bsdf.d);
                 let ray = Ray::new(its.p, d_out_world);
@@ -317,11 +318,11 @@ impl Integrator<Color> for IntegratorPath {
             {
                 // Compute the contribution of direct lighting
                 // FIXME: A bit waste full, need to detect before sampling the light...
-                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.wi, &d_out_local) {
+                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local) {
                     // Compute MIS weights
                     let weight_light = mis_weight(light_pdf, pdf_bsdf);
                     if self.min_depth.map_or(true, |min| depth >= min) {
-                        l_i += weight_light * throughput * its.mesh.bsdf.eval(&its.wi, &d_out_local)
+                        l_i += weight_light * throughput * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
                             * light_record.weight;
                     }
                 }
@@ -331,7 +332,7 @@ impl Integrator<Color> for IntegratorPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let sampled_bsdf = match its.mesh.bsdf.sample(&its.wi, sampler.next2d()) {
+            let sampled_bsdf = match its.mesh.bsdf.sample(&its.uv, &its.wi, sampler.next2d()) {
                 Some(x) => x,
                 None => return l_i,
             };
@@ -564,12 +565,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                 let main_d_out_local = main.its.frame.to_local(main_light_record.d);
                 // Evaluate BSDF values and light values
                 let main_light_pdf = main_light_record.pdf.value() as f64;
-                let main_bsdf_value = main.its.mesh.bsdf.eval(&main.its.wi, &main_d_out_local); // f(...) * cos(...)
+                let main_bsdf_value = main.its.mesh.bsdf.eval(&main.its.uv, &main.its.wi, &main_d_out_local); // f(...) * cos(...)
                 let main_bsdf_pdf = if main_light_visible {
                     main.its
                         .mesh
                         .bsdf
-                        .pdf(&main.its.wi, &main_d_out_local)
+                        .pdf(&main.its.uv, &main.its.wi, &main_d_out_local)
                         .value() as f64
                 } else {
                     0.0
@@ -619,13 +620,13 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     let shift_bsdf_pdf = main.its
                                         .mesh
                                         .bsdf
-                                        .pdf(&shift_d_in_local, &main_d_out_local)
+                                        .pdf(&s.its.uv, &shift_d_in_local, &main_d_out_local)
                                         .value()
                                         as f64;
                                     let shift_bsdf_value = main.its
                                         .mesh
                                         .bsdf
-                                        .eval(&shift_d_in_local, &main_d_out_local);
+                                        .eval(&s.its.uv, &shift_d_in_local, &main_d_out_local);
                                     // Compute and return
                                     let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER)
                                         * (main_light_pdf.powi(MIS_POWER)
@@ -657,11 +658,11 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 // BSDF
                                 let shift_light_pdf = shift_light_record.pdf.value() as f64;
                                 let shift_bsdf_value =
-                                    shift_hit_mesh.bsdf.eval(&s.its.wi, &shift_d_out_local);
+                                    shift_hit_mesh.bsdf.eval(&s.its.uv, &s.its.wi, &shift_d_out_local);
                                 let shift_bsdf_pdf = if shift_light_visible {
                                     shift_hit_mesh
                                         .bsdf
-                                        .pdf(&s.its.wi, &shift_d_out_local)
+                                        .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
                                         .value() as f64
                                 } else {
                                     0.0
@@ -706,7 +707,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let main_sampled_bsdf = match main.its.mesh.bsdf.sample(&main.its.wi, sampler.next2d())
+            let main_sampled_bsdf = match main.its.mesh.bsdf.sample(&main.its.uv, &main.its.wi, sampler.next2d())
             {
                 Some(x) => x,
                 None => return l_i,
@@ -777,13 +778,13 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 let shift_bsdf_pdf = main_pred_its
                                     .mesh
                                     .bsdf
-                                    .pdf(&shift_d_in_local, &main_sampled_bsdf.d)
+                                    .pdf(&main_pred_its.uv, &shift_d_in_local, &main_sampled_bsdf.d)
                                     .value()
                                     as f64;
                                 let shift_bsdf_value = main_pred_its
                                     .mesh
                                     .bsdf
-                                    .eval(&shift_d_in_local, &main_sampled_bsdf.d);
+                                    .eval(&main_pred_its.uv, &shift_d_in_local, &main_sampled_bsdf.d);
                                 // Update main path
                                 let shift_pdf_pred = s.pdf;
                                 s.throughput *= &(shift_bsdf_value / (main_bsdf_pdf as f32));
@@ -817,9 +818,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 assert!(jacobian >= 0.0);
                                 // BSDF
                                 let shift_bsdf_value =
-                                    s.its.mesh.bsdf.eval(&s.its.wi, &shift_d_out_local);
+                                    s.its.mesh.bsdf.eval(&s.its.uv, &s.its.wi, &shift_d_out_local);
                                 let shift_bsdf_pdf =
-                                    s.its.mesh.bsdf.pdf(&s.its.wi, &shift_d_out_local).value()
+                                    s.its.mesh.bsdf.pdf(&s.its.uv, &s.its.wi, &shift_d_out_local).value()
                                         as f64;
                                 // Update shift path
                                 let shift_pdf_pred = s.pdf;

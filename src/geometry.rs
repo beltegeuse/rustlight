@@ -1,6 +1,7 @@
 use cgmath::*;
 use embree_rs;
-use material::{BSDFDiffuse, BSDF};
+use image;
+use material::*;
 use math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
 use scene::LightSamplingPDF;
 use std;
@@ -19,6 +20,8 @@ pub fn load_obj(
 ) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name)?;
+    let wk = file_name.parent().unwrap();
+    info!("Working directory for loading the scene: {:?}", wk);
 
     // Read models
     let mut meshes = vec![];
@@ -60,18 +63,40 @@ pub fn load_obj(
             uv,
             mesh.indices,
         );
-        // Read materials
-        let diffuse_color;
+        // Read materials and push the mesh
         if let Some(id) = mesh.material_id {
             info!(" - BSDF id: {}", id);
             let mat = &materials[id];
-            diffuse_color = Color::new(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
+            if !mat.diffuse_texture.is_empty() {
+                let path_texture = wk.join(&mat.diffuse_texture);
+                info!("Read texture: {:?}", path_texture);
+                let img = image::open(path_texture).expect("Impossible to load the image");
+                meshes.push(Box::new(Mesh::new(
+                    m.name,
+                    trimesh,
+                    Box::new(BSDFDiffuse {
+                        diffuse: BSDFColor::TextureColor(Texture { img }),
+                    }),
+                )));
+            } else {
+                let diffuse_color = Color::new(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
+                meshes.push(Box::new(Mesh::new(
+                    m.name,
+                    trimesh,
+                    Box::new(BSDFDiffuse {
+                        diffuse: BSDFColor::UniformColor(diffuse_color),
+                    }),
+                )));
+            }
         } else {
-            diffuse_color = Color::zero();
+            meshes.push(Box::new(Mesh::new(
+                m.name,
+                trimesh,
+                Box::new(BSDFDiffuse {
+                    diffuse: BSDFColor::UniformColor(Color::zero()),
+                }),
+            )));
         }
-
-        // Add the mesh info
-        meshes.push(Box::new(Mesh::new(m.name, trimesh, diffuse_color)));
     }
     Ok(meshes)
 }
@@ -92,7 +117,11 @@ pub struct SampledPosition {
 }
 
 impl Mesh {
-    pub fn new(name: String, trimesh: Arc<embree_rs::scene::TriangleMesh>, diffuse: Color) -> Mesh {
+    pub fn new(
+        name: String,
+        trimesh: Arc<embree_rs::scene::TriangleMesh>,
+        bsdf: Box<BSDF + Send + Sync>,
+    ) -> Mesh {
         // Construct the mesh
         assert_eq!(trimesh.indices.len() % 3, 0);
         let nb_tri = trimesh.indices.len() / 3;
@@ -109,7 +138,7 @@ impl Mesh {
         Mesh {
             name,
             trimesh,
-            bsdf: Box::new(BSDFDiffuse { diffuse }),
+            bsdf,
             emission: Color::zero(),
             cdf: dist_const.normalize(),
         }

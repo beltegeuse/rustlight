@@ -1,2 +1,5 @@
 {
+    "rust-client.channel": "nightly",
+    "rust-client.updateOnStartup": true,
+    "rust.build_on_save": true,
 }

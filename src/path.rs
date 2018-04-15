@@ -84,7 +84,7 @@ impl<'a> Vertex<'a> {
                 assert!(!sampler.is_none());
                 let sampler = sampler.unwrap();
 
-                v.sampled_bsdf = match v.its.mesh.bsdf.sample(&v.its.wi, sampler.next2d()) {
+                v.sampled_bsdf = match v.its.mesh.bsdf.sample(&v.its.uv, &v.its.wi, sampler.next2d()) {
                     Some(x) => Some(x),
                     None => return (None, None),
                 };
@@ -256,12 +256,12 @@ impl<'a> ShiftOp<'a> for ShiftGeomOp {
                                     .its
                                     .mesh
                                     .bsdf
-                                    .eval(&shift_current.its.wi, &shift_d_out_local);
+                                    .eval(&shift_current.its.uv, &shift_current.its.wi, &shift_d_out_local);
                                 let shift_bsdf_pdf = match shift_current
                                     .its
                                     .mesh
                                     .bsdf
-                                    .pdf(&shift_current.its.wi, &shift_d_out_local)
+                                    .pdf(&shift_current.its.uv, &shift_current.its.wi, &shift_d_out_local)
                                 {
                                     PDF::SolidAngle(x) => x,
                                     _ => panic!("shift_bsdf_pdf is not in Solid angle"),

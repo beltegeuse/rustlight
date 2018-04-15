@@ -116,7 +116,7 @@ impl Distribution1D {
 
         match self.cdf
             .binary_search_by(|probe| probe.partial_cmp(&v).unwrap())
-        {
+        { 
             Ok(x) => x,
             Err(x) => x - 1,
         }
