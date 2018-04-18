@@ -11,23 +11,23 @@ extern crate rustlight;
 // For print a progress bar
 extern crate pbr;
 
-use pbr::ProgressBar;
-use cgmath::{Point2, Vector2};
 use byteorder::{LittleEndian, WriteBytesExt};
+use cgmath::{Point2, Vector2};
 use clap::{App, Arg, SubCommand};
 use image::*;
-use rustlight::integrator::ColorGradient;
-use rustlight::Scale;
-use rustlight::structure::Color;
-use std::io::prelude::*;
-use std::time::Instant;
+use pbr::ProgressBar;
 use rayon::prelude::*;
-use rustlight::sampler::SamplerMCMC;
-use rustlight::sampler::Sampler;
-use std::ops::AddAssign;
+use rustlight::integrator::ColorGradient;
 use rustlight::integrator::Integrator;
+use rustlight::sampler::Sampler;
+use rustlight::sampler::SamplerMCMC;
+use rustlight::structure::Color;
 use rustlight::tools::StepRangeInt;
+use rustlight::Scale;
+use std::io::prelude::*;
+use std::ops::AddAssign;
 use std::sync::Mutex;
+use std::time::Instant;
 
 pub trait BitmapTrait: Default + AddAssign + Scale<f32> + Clone {}
 impl BitmapTrait for ColorGradient {}
@@ -106,7 +106,7 @@ impl<T: BitmapTrait> Iterator for Bitmap<T> {
 
 //////////////////////////////////
 // Helpers
-fn render<T: BitmapTrait + Send, I: Integrator<T> + Send + Sync>(
+fn render<T: BitmapTrait + Send, I: Integrator<T>>(
     scene: &::rustlight::scene::Scene,
     integrator: &I,
     nb_samples: usize,
@@ -216,7 +216,7 @@ fn classical_mc_integration<T: Integrator<Color> + Send + Sync>(
 
 /// Compute the scene average luminance
 /// Usefull for computing the normalisation factor for MCMC
-fn integrate_image_plane<T: Integrator<Color> + Sync + Send>(
+fn integrate_image_plane<T: Integrator<Color>>(
     scene: &rustlight::scene::Scene,
     integrator: &T,
     nb_samples: usize,
@@ -257,7 +257,7 @@ impl MCMCState {
     }
 }
 
-fn classical_mcmc_integration<T: Integrator<Color> + Sync + Send>(
+fn classical_mcmc_integration<T: Integrator<Color>>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
     nb_threads: Option<usize>,
@@ -353,7 +353,7 @@ fn classical_mcmc_integration<T: Integrator<Color> + Sync + Send>(
     img
 }
 
-fn gradient_domain_integration<T: Integrator<ColorGradient> + Sync + Send>(
+fn gradient_domain_integration<T: Integrator<ColorGradient>>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
     nb_threads: Option<usize>,

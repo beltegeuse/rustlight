@@ -5,7 +5,7 @@ use rand::distributions::{IndependentSample, Range};
 
 // FIXME: This code is not used for now.
 // FIXME: Found a way to make compatible with multi-threading
-pub trait Sampler {
+pub trait Sampler: Send {
     fn next(&mut self) -> f32;
     fn next2d(&mut self) -> Point2<f32>;
 }
@@ -40,7 +40,7 @@ impl Default for IndependentSampler {
     }
 }
 
-pub trait Mutator {
+pub trait Mutator: Send {
     fn mutate(&self, v: f32, r: f32) -> f32;
 }
 
@@ -115,8 +115,6 @@ pub struct IndependentSamplerReplay {
     indice: usize,
     pub large_step: bool,
 }
-
-unsafe impl Send for IndependentSamplerReplay {}
 
 impl Sampler for IndependentSamplerReplay {
     fn next(&mut self) -> f32 {
