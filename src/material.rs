@@ -50,10 +50,10 @@ fn deserialize_from_str<'de, D>(deserializer: D) -> Result<DynamicImage, D::Erro
 where
     D: Deserializer<'de>,
 {
-    let s: String = Deserialize::deserialize(deserializer)?;
-    let img = DynamicImage::new_rgb8(1, 1);
+    let _s: String = Deserialize::deserialize(deserializer)?;
+    let _img = DynamicImage::new_rgb8(1, 1);
     unimplemented!();
-    Ok(img)
+    // Ok(_img)
 }
 
 #[derive(Deserialize)]
@@ -105,7 +105,7 @@ pub struct SampledDirection {
     pub pdf: PDF,
 }
 
-pub trait BSDF {
+pub trait BSDF: Send + Sync {
     /// sample an random direction based on the BSDF value
     /// @d_in: the incomming direction in the local space
     /// @sample: random number 2D

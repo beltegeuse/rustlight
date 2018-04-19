@@ -353,30 +353,84 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     img
 }
 
-fn gradient_domain_integration<T: Integrator<ColorGradient>>(
-    scene: &rustlight::scene::Scene,
-    nb_samples: usize,
-    nb_threads: Option<usize>,
-    int: T,
+fn reconstruct(
+    img_size: Vector2<u32>,
+    primal_image: &Bitmap<Color>,
+    dx_image: &Bitmap<Color>,
+    dy_image: &Bitmap<Color>,
 ) -> Bitmap<Color> {
-    info!("Rendering...");
+    info!("Reconstruction...");
     let start = Instant::now();
-    let pool = match nb_threads {
-        None => rayon::ThreadPoolBuilder::new(),
-        Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
-    }.build()
-        .unwrap();
-    let img_grad = pool.install(|| render(scene, &int, nb_samples));
+    // Reconstruction (image-space covariate, uniform reconstruction)
+    let mut current: Box<Bitmap<Color>> =
+        Box::new(Bitmap::new(Point2::new(0, 0), img_size.clone()));
+    let mut next: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), img_size.clone()));
+    // 1) Init
+    for y in 0..img_size.y {
+        for x in 0..img_size.x {
+            let pos = Point2::new(x, y);
+            current.accumulate(pos, primal_image.get(pos));
+        }
+    }
+    for _iter in 0..50 {
+        // FIXME: Do it multi-threaded
+        next.reset(); // Reset all to black
+        for y in 0..img_size.y {
+            for x in 0..img_size.x {
+                let pos = Point2::new(x, y);
+                let mut c = current.get(pos).clone();
+                let mut w = 1.0;
+                if x > 0 {
+                    let pos_off = Point2::new(x - 1, y);
+                    c += current.get(pos_off).clone() + dx_image.get(pos_off).clone();
+                    w += 1.0;
+                }
+                if x < img_size.x - 1 {
+                    let pos_off = Point2::new(x + 1, y);
+                    c += current.get(pos_off).clone() - dx_image.get(pos).clone();
+                    w += 1.0;
+                }
+                if y > 0 {
+                    let pos_off = Point2::new(x, y - 1);
+                    c += current.get(pos_off).clone() + dy_image.get(pos_off).clone();
+                    w += 1.0;
+                }
+                if y < img_size.y - 1 {
+                    let pos_off = Point2::new(x, y + 1);
+                    c += current.get(pos_off).clone() - dy_image.get(pos).clone();
+                    w += 1.0;
+                }
+                c.scale(1.0 / w);
+                next.accumulate(pos, &c);
+            }
+        }
+        std::mem::swap(&mut current, &mut next);
+    }
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
         (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
     );
 
-    // Generates images buffers (dx, dy, primal)
-    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
-    let mut dx_image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
-    let mut dy_image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    // Export the reconstruction
+    let mut image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_size.clone());
+    for x in 0..img_size.x {
+        for y in 0..img_size.y {
+            let pos = Point2::new(x, y);
+            // FIXME: Add very direct image
+            let pix_value = next.get(pos).clone(); //+ img_grad.get(pos).very_direct.clone();
+            image.accumulate(pos, &pix_value);
+        }
+    }
+    image
+}
+
+fn decompose_grad_color(
+    img_grad: &Bitmap<ColorGradient>,
+) -> (Bitmap<Color>, Bitmap<Color>, Bitmap<Color>) {
+    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+    let mut dx_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+    let mut dy_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
     for y in 0..img_grad.size.y {
         for x in 0..img_grad.size.x {
             let pos = Point2::new(x, y);
@@ -403,78 +457,34 @@ fn gradient_domain_integration<T: Integrator<ColorGradient>>(
     // Scale the throughtput image
     primal_image.scale(1.0 / 4.0); // TODO: Wrong at the corners, need to fix it
 
-    // Output the images
-    // FIXME: Add the ability to output images
-    /*{
-        save_pfm("out_primal.pfm", &primal_image);
-        save_pfm("out_dx.pfm", &dx_image);
-        save_pfm("out_dy.pfm", &dy_image);
-    }*/
+    (primal_image, dx_image, dy_image)
+}
 
-    info!("Reconstruction...");
+fn gradient_domain_integration<T: Integrator<ColorGradient>>(
+    scene: &rustlight::scene::Scene,
+    nb_samples: usize,
+    nb_threads: Option<usize>,
+    int: T,
+) -> Bitmap<Color> {
+    info!("Rendering...");
     let start = Instant::now();
-    // Reconstruction (image-space covariate, uniform reconstruction)
-    let mut current: Box<Bitmap<Color>> =
-        Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
-    let mut next: Box<Bitmap<Color>> =
-        Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
-    // 1) Init
-    for y in 0..img_grad.size.y {
-        for x in 0..img_grad.size.x {
-            let pos = Point2::new(x, y);
-            current.accumulate(pos, primal_image.get(pos));
-        }
-    }
-    for _iter in 0..50 {
-        // FIXME: Do it multi-threaded
-        next.reset(); // Reset all to black
-        for y in 0..img_grad.size.y {
-            for x in 0..img_grad.size.x {
-                let pos = Point2::new(x, y);
-                let mut c = current.get(pos).clone();
-                let mut w = 1.0;
-                if x > 0 {
-                    let pos_off = Point2::new(x - 1, y);
-                    c += current.get(pos_off).clone() + dx_image.get(pos_off).clone();
-                    w += 1.0;
-                }
-                if x < img_grad.size.x - 1 {
-                    let pos_off = Point2::new(x + 1, y);
-                    c += current.get(pos_off).clone() - dx_image.get(pos).clone();
-                    w += 1.0;
-                }
-                if y > 0 {
-                    let pos_off = Point2::new(x, y - 1);
-                    c += current.get(pos_off).clone() + dy_image.get(pos_off).clone();
-                    w += 1.0;
-                }
-                if y < img_grad.size.y - 1 {
-                    let pos_off = Point2::new(x, y + 1);
-                    c += current.get(pos_off).clone() - dy_image.get(pos).clone();
-                    w += 1.0;
-                }
-                c.scale(1.0 / w);
-                next.accumulate(pos, &c);
-            }
-        }
-        std::mem::swap(&mut current, &mut next);
-    }
+    let pool = match nb_threads {
+        None => rayon::ThreadPoolBuilder::new(),
+        Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
+    }.build()
+        .unwrap();
+    let img_grad = pool.install(|| render(scene, &int, nb_samples));
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
         (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
     );
 
-    // Export the reconstruction
-    let mut image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), scene.camera.size().clone());
-    for x in 0..img_grad.size.x {
-        for y in 0..img_grad.size.y {
-            let pos = Point2::new(x, y);
-            let pix_value = next.get(pos).clone() + img_grad.get(pos).very_direct.clone();
-            image.accumulate(pos, &pix_value);
-        }
-    }
-    image
+    // Generates images buffers (dx, dy, primal)
+    let (primal_image, dx_image, dy_image) = decompose_grad_color(&img_grad);
+
+    // Reconst
+    reconstruct(img_grad.size, &primal_image, &dx_image, &dy_image)
 }
 
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
