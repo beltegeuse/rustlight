@@ -105,7 +105,7 @@ pub fn load_obj(
 pub struct Mesh {
     pub name: String,
     pub trimesh: Arc<embree_rs::scene::TriangleMesh>,
-    pub bsdf: Box<BSDF + Send + Sync>,
+    pub bsdf: Box<BSDF>,
     pub emission: Color,
     pub cdf: Distribution1D,
 }
@@ -120,7 +120,7 @@ impl Mesh {
     pub fn new(
         name: String,
         trimesh: Arc<embree_rs::scene::TriangleMesh>,
-        bsdf: Box<BSDF + Send + Sync>,
+        bsdf: Box<BSDF>,
     ) -> Mesh {
         // Construct the mesh
         assert_eq!(trimesh.indices.len() % 3, 0);
