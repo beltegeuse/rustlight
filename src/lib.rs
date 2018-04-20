@@ -33,7 +33,7 @@ pub trait Scale<T> {
 // all the modules
 pub mod structure;
 pub mod sampler;
-pub mod material;
+pub mod bsdfs;
 pub mod geometry;
 pub mod camera;
 pub mod scene;

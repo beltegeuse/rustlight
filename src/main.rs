@@ -19,7 +19,6 @@ use pbr::ProgressBar;
 use rayon::prelude::*;
 use rustlight::integrators::*;
 use rustlight::integrators::gradient_domain::*;
-use rustlight::integrators;
 
 use rustlight::sampler::Sampler;
 use rustlight::sampler::SamplerMCMC;

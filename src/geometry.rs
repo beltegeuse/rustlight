@@ -1,7 +1,7 @@
 use cgmath::*;
 use embree_rs;
 use image;
-use material::*;
+use bsdfs;
 use math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
 use scene::LightSamplingPDF;
 use std;
@@ -74,8 +74,8 @@ pub fn load_obj(
                 meshes.push(Box::new(Mesh::new(
                     m.name,
                     trimesh,
-                    Box::new(BSDFDiffuse {
-                        diffuse: BSDFColor::TextureColor(Texture { img }),
+                    Box::new(bsdfs::diffuse::BSDFDiffuse {
+                        diffuse: bsdfs::BSDFColor::TextureColor(bsdfs::Texture { img }),
                     }),
                 )));
             } else {
@@ -83,8 +83,8 @@ pub fn load_obj(
                 meshes.push(Box::new(Mesh::new(
                     m.name,
                     trimesh,
-                    Box::new(BSDFDiffuse {
-                        diffuse: BSDFColor::UniformColor(diffuse_color),
+                    Box::new(bsdfs::diffuse::BSDFDiffuse {
+                        diffuse: bsdfs::BSDFColor::UniformColor(diffuse_color),
                     }),
                 )));
             }
@@ -92,8 +92,8 @@ pub fn load_obj(
             meshes.push(Box::new(Mesh::new(
                 m.name,
                 trimesh,
-                Box::new(BSDFDiffuse {
-                    diffuse: BSDFColor::UniformColor(Color::zero()),
+                Box::new(bsdfs::diffuse::BSDFDiffuse {
+                    diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
                 }),
             )));
         }
@@ -105,7 +105,7 @@ pub fn load_obj(
 pub struct Mesh {
     pub name: String,
     pub trimesh: Arc<embree_rs::scene::TriangleMesh>,
-    pub bsdf: Box<BSDF>,
+    pub bsdf: Box<bsdfs::BSDF>,
     pub emission: Color,
     pub cdf: Distribution1D,
 }
@@ -120,7 +120,7 @@ impl Mesh {
     pub fn new(
         name: String,
         trimesh: Arc<embree_rs::scene::TriangleMesh>,
-        bsdf: Box<BSDF>,
+        bsdf: Box<bsdfs::BSDF>,
     ) -> Mesh {
         // Construct the mesh
         assert_eq!(trimesh.indices.len() % 3, 0);

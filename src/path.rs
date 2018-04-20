@@ -1,5 +1,5 @@
 use cgmath::*;
-use material::*;
+use bsdfs::*;
 use sampler::*;
 use scene::*;
 use structure::*;
