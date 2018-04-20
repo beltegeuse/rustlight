@@ -17,8 +17,9 @@ use clap::{App, Arg, SubCommand};
 use image::*;
 use pbr::ProgressBar;
 use rayon::prelude::*;
-use rustlight::integrator::ColorGradient;
-use rustlight::integrator::Integrator;
+use rustlight::integrators::*;
+use rustlight::integrators::gradient_domain::*;
+
 use rustlight::sampler::Sampler;
 use rustlight::sampler::SamplerMCMC;
 use rustlight::structure::Color;
@@ -101,6 +102,44 @@ impl<T: BitmapTrait> Iterator for Bitmap<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         unimplemented!()
+    }
+}
+
+struct VarianceEstimator {
+    pub mean: f32,
+    pub mean_sqr: f32,
+    pub sample_count: u32,
+}
+impl VarianceEstimator {
+    fn add(&mut self, v: f32) {
+        self.sample_count += 1;
+        let delta = v - self.mean;
+        self.mean += delta / self.sample_count as f32;
+        self.mean_sqr += delta * (v - self.mean);
+    }
+
+    fn variance(&self) -> f32 {
+        self.mean_sqr / (self.sample_count - 1) as f32
+    }
+}
+impl Default for VarianceEstimator {
+    fn default() -> Self {
+        Self {
+            mean: 0.0,
+            mean_sqr: 0.0,
+            sample_count: 0,
+        }
+    }
+}
+trait Variance<T: BitmapTrait> {
+    fn update(&mut self, v: &T);
+}
+struct VarianceColor {
+    pub variance_estimator: VarianceEstimator,
+}
+impl Variance<Color> for VarianceColor {
+    fn update(&mut self, v: &Color) {
+        self.variance_estimator.add(v.luminance());
     }
 }
 
@@ -353,6 +392,113 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     img
 }
 
+fn reconstruct(
+    img_size: Vector2<u32>,
+    primal_image: &Bitmap<Color>,
+    dx_image: &Bitmap<Color>,
+    dy_image: &Bitmap<Color>,
+) -> Bitmap<Color> {
+    info!("Reconstruction...");
+    let start = Instant::now();
+    // Reconstruction (image-space covariate, uniform reconstruction)
+    let mut current: Box<Bitmap<Color>> =
+        Box::new(Bitmap::new(Point2::new(0, 0), img_size.clone()));
+    let mut next: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), img_size.clone()));
+    // 1) Init
+    for y in 0..img_size.y {
+        for x in 0..img_size.x {
+            let pos = Point2::new(x, y);
+            current.accumulate(pos, primal_image.get(pos));
+        }
+    }
+    for _iter in 0..50 {
+        // FIXME: Do it multi-threaded
+        next.reset(); // Reset all to black
+        for y in 0..img_size.y {
+            for x in 0..img_size.x {
+                let pos = Point2::new(x, y);
+                let mut c = current.get(pos).clone();
+                let mut w = 1.0;
+                if x > 0 {
+                    let pos_off = Point2::new(x - 1, y);
+                    c += current.get(pos_off).clone() + dx_image.get(pos_off).clone();
+                    w += 1.0;
+                }
+                if x < img_size.x - 1 {
+                    let pos_off = Point2::new(x + 1, y);
+                    c += current.get(pos_off).clone() - dx_image.get(pos).clone();
+                    w += 1.0;
+                }
+                if y > 0 {
+                    let pos_off = Point2::new(x, y - 1);
+                    c += current.get(pos_off).clone() + dy_image.get(pos_off).clone();
+                    w += 1.0;
+                }
+                if y < img_size.y - 1 {
+                    let pos_off = Point2::new(x, y + 1);
+                    c += current.get(pos_off).clone() - dy_image.get(pos).clone();
+                    w += 1.0;
+                }
+                c.scale(1.0 / w);
+                next.accumulate(pos, &c);
+            }
+        }
+        std::mem::swap(&mut current, &mut next);
+    }
+    let elapsed = start.elapsed();
+    info!(
+        "Elapsed: {} ms",
+        (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
+    );
+
+    // Export the reconstruction
+    let mut image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_size.clone());
+    for x in 0..img_size.x {
+        for y in 0..img_size.y {
+            let pos = Point2::new(x, y);
+            // FIXME: Add very direct image
+            let pix_value = next.get(pos).clone(); //+ img_grad.get(pos).very_direct.clone();
+            image.accumulate(pos, &pix_value);
+        }
+    }
+    image
+}
+
+fn decompose_grad_color(
+    img_grad: &Bitmap<ColorGradient>,
+) -> (Bitmap<Color>, Bitmap<Color>, Bitmap<Color>) {
+    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+    let mut dx_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+    let mut dy_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+    for y in 0..img_grad.size.y {
+        for x in 0..img_grad.size.x {
+            let pos = Point2::new(x, y);
+            let curr = img_grad.get(pos);
+            primal_image.accumulate(pos, &curr.main);
+            for (i, off) in GRADIENT_ORDER.iter().enumerate() {
+                let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
+                primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
+                match GRADIENT_DIRECTION[i] {
+                    GradientDirection::X(v) => match v {
+                        1 => dx_image.accumulate(pos, &curr.gradients[i]),
+                        -1 => dx_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
+                        _ => panic!("wrong displacement X"), // FIXME: Fix the enum
+                    },
+                    GradientDirection::Y(v) => match v {
+                        1 => dy_image.accumulate(pos, &curr.gradients[i]),
+                        -1 => dy_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
+                        _ => panic!("wrong displacement Y"),
+                    },
+                }
+            }
+        }
+    }
+    // Scale the throughtput image
+    primal_image.scale(1.0 / 4.0); // TODO: Wrong at the corners, need to fix it
+
+    (primal_image, dx_image, dy_image)
+}
+
 fn gradient_domain_integration<T: Integrator<ColorGradient>>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
@@ -374,107 +520,10 @@ fn gradient_domain_integration<T: Integrator<ColorGradient>>(
     );
 
     // Generates images buffers (dx, dy, primal)
-    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
-    let mut dx_image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
-    let mut dy_image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
-    for y in 0..img_grad.size.y {
-        for x in 0..img_grad.size.x {
-            let pos = Point2::new(x, y);
-            let curr = img_grad.get(pos);
-            primal_image.accumulate(pos, &curr.main);
-            for (i, off) in rustlight::integrator::GRADIENT_ORDER.iter().enumerate() {
-                let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
-                primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
-                match rustlight::integrator::GRADIENT_DIRECTION[i] {
-                    rustlight::integrator::GradientDirection::X(v) => match v {
-                        1 => dx_image.accumulate(pos, &curr.gradients[i]),
-                        -1 => dx_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
-                        _ => panic!("wrong displacement X"), // FIXME: Fix the enum
-                    },
-                    rustlight::integrator::GradientDirection::Y(v) => match v {
-                        1 => dy_image.accumulate(pos, &curr.gradients[i]),
-                        -1 => dy_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
-                        _ => panic!("wrong displacement Y"),
-                    },
-                }
-            }
-        }
-    }
-    // Scale the throughtput image
-    primal_image.scale(1.0 / 4.0); // TODO: Wrong at the corners, need to fix it
+    let (primal_image, dx_image, dy_image) = decompose_grad_color(&img_grad);
 
-    // Output the images
-    // FIXME: Add the ability to output images
-    /*{
-        save_pfm("out_primal.pfm", &primal_image);
-        save_pfm("out_dx.pfm", &dx_image);
-        save_pfm("out_dy.pfm", &dy_image);
-    }*/
-
-    info!("Reconstruction...");
-    let start = Instant::now();
-    // Reconstruction (image-space covariate, uniform reconstruction)
-    let mut current: Box<Bitmap<Color>> =
-        Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
-    let mut next: Box<Bitmap<Color>> =
-        Box::new(Bitmap::new(Point2::new(0, 0), scene.camera.size().clone()));
-    // 1) Init
-    for y in 0..img_grad.size.y {
-        for x in 0..img_grad.size.x {
-            let pos = Point2::new(x, y);
-            current.accumulate(pos, primal_image.get(pos));
-        }
-    }
-    for _iter in 0..50 {
-        // FIXME: Do it multi-threaded
-        next.reset(); // Reset all to black
-        for y in 0..img_grad.size.y {
-            for x in 0..img_grad.size.x {
-                let pos = Point2::new(x, y);
-                let mut c = current.get(pos).clone();
-                let mut w = 1.0;
-                if x > 0 {
-                    let pos_off = Point2::new(x - 1, y);
-                    c += current.get(pos_off).clone() + dx_image.get(pos_off).clone();
-                    w += 1.0;
-                }
-                if x < img_grad.size.x - 1 {
-                    let pos_off = Point2::new(x + 1, y);
-                    c += current.get(pos_off).clone() - dx_image.get(pos).clone();
-                    w += 1.0;
-                }
-                if y > 0 {
-                    let pos_off = Point2::new(x, y - 1);
-                    c += current.get(pos_off).clone() + dy_image.get(pos_off).clone();
-                    w += 1.0;
-                }
-                if y < img_grad.size.y - 1 {
-                    let pos_off = Point2::new(x, y + 1);
-                    c += current.get(pos_off).clone() - dy_image.get(pos).clone();
-                    w += 1.0;
-                }
-                c.scale(1.0 / w);
-                next.accumulate(pos, &c);
-            }
-        }
-        std::mem::swap(&mut current, &mut next);
-    }
-    let elapsed = start.elapsed();
-    info!(
-        "Elapsed: {} ms",
-        (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-    );
-
-    // Export the reconstruction
-    let mut image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), scene.camera.size().clone());
-    for x in 0..img_grad.size.x {
-        for y in 0..img_grad.size.y {
-            let pos = Point2::new(x, y);
-            let pix_value = next.get(pos).clone() + img_grad.get(pos).very_direct.clone();
-            image.accumulate(pos, &pix_value);
-        }
-    }
-    image
+    // Reconst
+    reconstruct(img_grad.size, &primal_image, &dx_image, &dy_image)
 }
 
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
@@ -661,7 +710,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorUniPath { max_depth },
+                rustlight::integrators::path_explicit::IntegratorUniPath { max_depth },
             )
         }
         ("path", Some(m)) => {
@@ -672,7 +721,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorPath {
+                rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 },
@@ -686,7 +735,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorPath {
+                rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 },
@@ -700,7 +749,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorPath {
+                rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 },
@@ -713,14 +762,14 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorAO { max_distance: dist },
+                rustlight::integrators::ao::IntegratorAO { max_distance: dist },
             )
         }
         ("direct", Some(m)) => classical_mc_integration(
             &scene,
             nb_samples,
             nb_threads,
-            rustlight::integrator::IntegratorDirect {
+            rustlight::integrators::direct::IntegratorDirect {
                 nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
                 nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
             },

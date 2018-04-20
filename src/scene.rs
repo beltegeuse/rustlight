@@ -2,7 +2,7 @@ use camera::{Camera, CameraParam};
 use cgmath::*;
 use embree_rs;
 use geometry;
-use material::*;
+use bsdfs::*;
 use math::{Distribution1D, Distribution1DConstruct};
 use serde_json;
 use std; 

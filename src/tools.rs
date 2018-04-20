@@ -27,3 +27,19 @@ impl Iterator for StepRangeInt {
         }
     }
 }
+
+
+pub trait ModuloSignedExt {
+    fn modulo(&self, n: Self) -> Self;
+}
+macro_rules! modulo_signed_ext_impl {
+    ($($t:ty)*) => ($(
+        impl ModuloSignedExt for $t {
+            #[inline]
+            fn modulo(&self, n: Self) -> Self {
+                (self % n + n) % n
+            }
+        }
+    )*)
+}
+modulo_signed_ext_impl! { f32 }
