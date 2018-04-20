@@ -104,6 +104,44 @@ impl<T: BitmapTrait> Iterator for Bitmap<T> {
     }
 }
 
+struct VarianceEstimator {
+    pub mean: f32,
+    pub mean_sqr: f32,
+    pub sample_count: u32,
+}
+impl VarianceEstimator {
+    fn add(&mut self, v: f32) {
+        self.sample_count += 1;
+        let delta = v - self.mean;
+        self.mean += delta / self.sample_count as f32;
+        self.mean_sqr += delta * (v - self.mean);
+    }
+
+    fn variance(&self) -> f32 {
+        self.mean_sqr / (self.sample_count - 1) as f32
+    }
+}
+impl Default for VarianceEstimator {
+    fn default() -> Self {
+        Self {
+            mean: 0.0,
+            mean_sqr: 0.0,
+            sample_count: 0,
+        }
+    }
+}
+trait Variance<T: BitmapTrait> {
+    fn update(&mut self, v: &T);
+}
+struct VarianceColor {
+    pub variance_estimator: VarianceEstimator,
+}
+impl Variance<Color> for VarianceColor {
+    fn update(&mut self, v: &Color) {
+        self.variance_estimator.add(v.luminance());
+    }
+}
+
 //////////////////////////////////
 // Helpers
 fn render<T: BitmapTrait + Send, I: Integrator<T>>(

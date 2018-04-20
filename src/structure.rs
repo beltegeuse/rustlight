@@ -4,10 +4,10 @@ use embree_rs;
 use geometry::Mesh;
 use image::*;
 use math::Frame;
-use Scale;
 use std;
 use std::ops::*;
 use std::sync::Arc;
+use Scale;
 
 /// PDF represented into different spaces
 #[derive(Clone)]
@@ -66,6 +66,11 @@ impl Color {
     }
     pub fn channel_max(&self) -> f32 {
         self.r.max(self.g.max(self.b))
+    }
+
+    pub fn luminance(&self) -> f32 {
+        // FIXME: sRGB??
+        self.r * 0.212671 + self.g * 0.715160 + self.b * 0.072169
     }
 }
 
