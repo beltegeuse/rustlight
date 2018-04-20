@@ -37,7 +37,7 @@ pub mod material;
 pub mod geometry;
 pub mod camera;
 pub mod scene;
-pub mod integrator;
+pub mod integrators;
 pub mod math;
 pub mod path;
 pub mod tools;

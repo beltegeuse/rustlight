@@ -17,8 +17,10 @@ use clap::{App, Arg, SubCommand};
 use image::*;
 use pbr::ProgressBar;
 use rayon::prelude::*;
-use rustlight::integrator::ColorGradient;
-use rustlight::integrator::Integrator;
+use rustlight::integrators::*;
+use rustlight::integrators::gradient_domain::*;
+use rustlight::integrators;
+
 use rustlight::sampler::Sampler;
 use rustlight::sampler::SamplerMCMC;
 use rustlight::structure::Color;
@@ -474,16 +476,16 @@ fn decompose_grad_color(
             let pos = Point2::new(x, y);
             let curr = img_grad.get(pos);
             primal_image.accumulate(pos, &curr.main);
-            for (i, off) in rustlight::integrator::GRADIENT_ORDER.iter().enumerate() {
+            for (i, off) in GRADIENT_ORDER.iter().enumerate() {
                 let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
                 primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
-                match rustlight::integrator::GRADIENT_DIRECTION[i] {
-                    rustlight::integrator::GradientDirection::X(v) => match v {
+                match GRADIENT_DIRECTION[i] {
+                    GradientDirection::X(v) => match v {
                         1 => dx_image.accumulate(pos, &curr.gradients[i]),
                         -1 => dx_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
                         _ => panic!("wrong displacement X"), // FIXME: Fix the enum
                     },
-                    rustlight::integrator::GradientDirection::Y(v) => match v {
+                    GradientDirection::Y(v) => match v {
                         1 => dy_image.accumulate(pos, &curr.gradients[i]),
                         -1 => dy_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
                         _ => panic!("wrong displacement Y"),
@@ -709,7 +711,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorUniPath { max_depth },
+                rustlight::integrators::path_explicit::IntegratorUniPath { max_depth },
             )
         }
         ("path", Some(m)) => {
@@ -720,7 +722,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorPath {
+                rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 },
@@ -734,7 +736,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorPath {
+                rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 },
@@ -748,7 +750,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorPath {
+                rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 },
@@ -761,14 +763,14 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrator::IntegratorAO { max_distance: dist },
+                rustlight::integrators::ao::IntegratorAO { max_distance: dist },
             )
         }
         ("direct", Some(m)) => classical_mc_integration(
             &scene,
             nb_samples,
             nb_threads,
-            rustlight::integrator::IntegratorDirect {
+            rustlight::integrators::direct::IntegratorDirect {
                 nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
                 nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
             },
