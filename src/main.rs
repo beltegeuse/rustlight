@@ -17,11 +17,10 @@ use clap::{App, Arg, SubCommand};
 use image::*;
 use pbr::ProgressBar;
 use rayon::prelude::*;
-use rustlight::integrators::*;
 use rustlight::integrators::gradient_domain::*;
-
-use rustlight::sampler::Sampler;
-use rustlight::sampler::SamplerMCMC;
+use rustlight::integrators::*;
+use rustlight::samplers::Sampler;
+use rustlight::samplers::SamplerMCMC;
 use rustlight::structure::Color;
 use rustlight::tools::StepRangeInt;
 use rustlight::Scale;
@@ -173,7 +172,7 @@ fn render<T: BitmapTrait + Send, I: Integrator<T>>(
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
     image_blocks.par_iter_mut().for_each(|im_block| {
-        let mut sampler = rustlight::sampler::IndependentSampler::default();
+        let mut sampler = rustlight::samplers::independent::IndependentSampler::default();
         for ix in 0..im_block.size.x {
             for iy in 0..im_block.size.y {
                 for _ in 0..nb_samples {
@@ -262,7 +261,7 @@ fn integrate_image_plane<T: Integrator<Color>>(
 ) -> f32 {
     assert_ne!(nb_samples, 0);
 
-    let mut sampler = ::rustlight::sampler::IndependentSampler::default();
+    let mut sampler = ::rustlight::samplers::independent::IndependentSampler::default();
     (0..nb_samples)
         .into_iter()
         .map(|_i| {
@@ -311,7 +310,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
         .unwrap();
 
     ///////////// Define the closure
-    let sample = |s: &mut rustlight::sampler::IndependentSamplerReplay| {
+    let sample = |s: &mut rustlight::samplers::mcmc::IndependentSamplerReplay| {
         let x = (s.next() * scene.camera.size().x as f32) as u32;
         let y = (s.next() * scene.camera.size().y as f32) as u32;
         let c = { int.compute((x, y), scene, s) };
@@ -331,7 +330,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     // - Initialize the samplers
     let mut samplers = Vec::new();
     for _ in 0..nb_chains {
-        samplers.push(rustlight::sampler::IndependentSamplerReplay::default());
+        samplers.push(rustlight::samplers::mcmc::IndependentSamplerReplay::default());
     }
 
     ///////////// Compute the rendering (with the number of samples)

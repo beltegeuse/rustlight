@@ -1,6 +1,6 @@
-use cgmath::*;
 use bsdfs::*;
-use sampler::*;
+use cgmath::*;
+use samplers::*;
 use scene::*;
 use structure::*;
 

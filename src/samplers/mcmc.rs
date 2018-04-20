@@ -1,44 +1,7 @@
 use cgmath::Point2;
-// For random number
 use rand;
 use rand::distributions::{IndependentSample, Range};
-
-// FIXME: This code is not used for now.
-// FIXME: Found a way to make compatible with multi-threading
-pub trait Sampler: Send {
-    fn next(&mut self) -> f32;
-    fn next2d(&mut self) -> Point2<f32>;
-}
-
-pub trait SamplerMCMC {
-    fn accept(&mut self);
-    fn reject(&mut self);
-}
-
-pub struct IndependentSampler {
-    rnd: rand::StdRng,
-    dist: Range<f32>,
-}
-
-impl Sampler for IndependentSampler {
-    fn next(&mut self) -> f32 {
-        self.dist.ind_sample(&mut self.rnd)
-    }
-    fn next2d(&mut self) -> Point2<f32> {
-        let x = self.dist.ind_sample(&mut self.rnd);
-        let y = self.dist.ind_sample(&mut self.rnd);
-        Point2::new(x, y)
-    }
-}
-
-impl Default for IndependentSampler {
-    fn default() -> IndependentSampler {
-        IndependentSampler {
-            rnd: rand::StdRng::new().unwrap(),
-            dist: Range::new(0.0, 1.0),
-        }
-    }
-}
+use samplers::*;
 
 pub trait Mutator: Send {
     fn mutate(&self, v: f32, r: f32) -> f32;
