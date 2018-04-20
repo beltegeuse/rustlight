@@ -300,6 +300,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
     nb_threads: Option<usize>,
+    large_prob: f32,
     int: T,
 ) -> Bitmap<Color> {
     ///////////// Prepare the pool for multiple thread
@@ -352,7 +353,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
             let mut my_img: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
             (0..nb_samples_per_chains).into_iter().for_each(|_| {
                 // Choose randomly between large and small perturbation
-                s.large_step = s.rand() < 0.3;
+                s.large_step = s.rand() < large_prob;
                 let mut proposed_state = sample(s);
                 let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
                 // Do waste reclycling
@@ -557,6 +558,13 @@ fn main() {
                 .help("number of thread for the computation"),
         )
         .arg(
+            Arg::with_name("image_scale")
+                .takes_value(true)
+                .short("s")
+                .default_value("1.0")
+                .help("image scaling factor"),
+        )
+        .arg(
             Arg::with_name("output")
                 .takes_value(true)
                 .short("o")
@@ -599,6 +607,12 @@ fn main() {
                         .takes_value(true)
                         .short("n")
                         .default_value("inf"),
+                )
+                .arg(
+                    Arg::with_name("large_prob")
+                        .takes_value(true)
+                        .short("p")
+                        .default_value("0.3"),
                 ),
         )
         .subcommand(
@@ -700,7 +714,17 @@ fn main() {
     let wk = scene_path
         .parent()
         .expect("impossible to extract parent directory for OBJ loading");
-    let scene = rustlight::scene::Scene::new(&data, wk).expect("error when loading the scene");
+    let mut scene = rustlight::scene::Scene::new(&data, wk).expect("error when loading the scene");
+
+    ///////////////// Tweak the image size
+    {
+        let image_scale = value_t_or_exit!(matches.value_of("image_scale"), f32);
+        if image_scale != 1.0 {
+            info!("Scale the image: {:?}", image_scale);
+            assert!(image_scale != 0.0);
+            scene.camera.scale_image(image_scale);
+        }
+    }
 
     let img = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
@@ -730,11 +754,13 @@ fn main() {
         ("pssmlt", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
-
+            let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
+            assert!(large_prob > 0.0 && large_prob <= 1.0);
             classical_mcmc_integration(
                 &scene,
                 nb_samples,
                 nb_threads,
+                large_prob,
                 rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
