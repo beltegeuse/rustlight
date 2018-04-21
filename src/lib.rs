@@ -36,7 +36,7 @@ pub mod camera;
 pub mod geometry;
 pub mod integrators;
 pub mod math;
-pub mod path;
+pub mod paths;
 pub mod samplers;
 pub mod scene;
 pub mod structure;

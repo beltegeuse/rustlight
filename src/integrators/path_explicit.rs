@@ -1,7 +1,8 @@
-use structure::*;
-use scene::*;
-use path::*;
 use integrators::*;
+use paths::path::*;
+use paths::vertex::*;
+use scene::*;
+use structure::*;
 
 pub struct IntegratorUniPath {
     pub max_depth: Option<u32>,
@@ -32,18 +33,18 @@ impl Integrator<Color> for IntegratorUniPath {
                             let d_out_local = v.its.frame.to_local(light_record.d);
                             if light_record.is_valid() && scene.visible(&v.its.p, &light_record.p)
                                 && d_out_local.z > 0.0
-                                {
-                                    // Compute the contribution of direct lighting
-                                    if let PDF::SolidAngle(pdf_bsdf) =
+                            {
+                                // Compute the contribution of direct lighting
+                                if let PDF::SolidAngle(pdf_bsdf) =
                                     v.its.mesh.bsdf.pdf(&v.its.uv, &v.its.wi, &d_out_local)
-                                        {
-                                            // Compute MIS weights
-                                            let weight_light = mis_weight(light_pdf, pdf_bsdf);
-                                            l_i += weight_light * v.throughput
-                                                * v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local)
-                                                * light_record.weight;
-                                        }
+                                {
+                                    // Compute MIS weights
+                                    let weight_light = mis_weight(light_pdf, pdf_bsdf);
+                                    l_i += weight_light * v.throughput
+                                        * v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local)
+                                        * light_record.weight;
                                 }
+                            }
 
                             /////////////////////////////////////////
                             // BSDF Sampling
