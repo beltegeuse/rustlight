@@ -397,6 +397,7 @@ fn reconstruct(
     primal_image: &Bitmap<Color>,
     dx_image: &Bitmap<Color>,
     dy_image: &Bitmap<Color>,
+    very_direct: &Bitmap<Color>,
 ) -> Bitmap<Color> {
     info!("Reconstruction...");
     let start = Instant::now();
@@ -456,8 +457,7 @@ fn reconstruct(
     for x in 0..img_size.x {
         for y in 0..img_size.y {
             let pos = Point2::new(x, y);
-            // FIXME: Add very direct image
-            let pix_value = next.get(pos).clone(); //+ img_grad.get(pos).very_direct.clone();
+            let pix_value = next.get(pos).clone() + very_direct.get(pos).clone();
             image.accumulate(pos, &pix_value);
         }
     }
@@ -466,15 +466,17 @@ fn reconstruct(
 
 fn decompose_grad_color(
     img_grad: &Bitmap<ColorGradient>,
-) -> (Bitmap<Color>, Bitmap<Color>, Bitmap<Color>) {
+) -> (Bitmap<Color>, Bitmap<Color>, Bitmap<Color>, Bitmap<Color>) {
     let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
     let mut dx_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
     let mut dy_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+    let mut very_direct = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
     for y in 0..img_grad.size.y {
         for x in 0..img_grad.size.x {
             let pos = Point2::new(x, y);
             let curr = img_grad.get(pos);
             primal_image.accumulate(pos, &curr.main);
+            very_direct.accumulate(pos, &curr.very_direct);
             for (i, off) in GRADIENT_ORDER.iter().enumerate() {
                 let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
                 primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
@@ -496,7 +498,7 @@ fn decompose_grad_color(
     // Scale the throughtput image
     primal_image.scale(1.0 / 4.0); // TODO: Wrong at the corners, need to fix it
 
-    (primal_image, dx_image, dy_image)
+    (primal_image, dx_image, dy_image, very_direct)
 }
 
 fn gradient_domain_integration<T: Integrator<ColorGradient>>(
@@ -520,10 +522,16 @@ fn gradient_domain_integration<T: Integrator<ColorGradient>>(
     );
 
     // Generates images buffers (dx, dy, primal)
-    let (primal_image, dx_image, dy_image) = decompose_grad_color(&img_grad);
+    let (primal_image, dx_image, dy_image, very_direct) = decompose_grad_color(&img_grad);
 
     // Reconst
-    reconstruct(img_grad.size, &primal_image, &dx_image, &dy_image)
+    reconstruct(
+        img_grad.size,
+        &primal_image,
+        &dx_image,
+        &dy_image,
+        &very_direct,
+    )
 }
 
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
