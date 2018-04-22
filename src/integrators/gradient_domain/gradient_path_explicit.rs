@@ -104,7 +104,9 @@ impl Integrator<ColorGradient> for IntegratorUniPath {
                                                 );
                                                 let d_out_local =
                                                     v.its.frame.to_local(light_record.d);
-                                                if light_record.is_valid() && d_out_local.z > 0.0 {
+                                                if light_record.is_valid() && d_out_local.z > 0.0
+                                                    && scene.visible(&v.its.p, &light_record.p)
+                                                {
                                                     if let PDF::SolidAngle(pdf_bsdf) = v.its
                                                         .mesh
                                                         .bsdf
@@ -134,11 +136,11 @@ impl Integrator<ColorGradient> for IntegratorUniPath {
                                     .collect::<Vec<(Color, f32)>>();
 
                                 for (i, v) in shift_info.into_iter().enumerate() {
-                                    let mut nb_valid = if base_info.1 == 0.0 { 0.0 } else { 1.0 };
+                                    let mut pdf_total = base_info.1;
                                     if v.1 > 0.0 {
-                                        nb_valid += 1.0;
+                                        pdf_total += v.1;
                                     }
-                                    let weight = 1.0 / nb_valid;
+                                    let weight = base_pdf / pdf_total;
                                     l_i.main += base_info.0 * weight;
                                     l_i.radiances[i] += v.0 * weight;
                                     l_i.gradients[i] += (v.0 - base_info.0) * weight;
@@ -156,14 +158,83 @@ impl Integrator<ColorGradient> for IntegratorUniPath {
                     } else {
                         // If the main light touch a light
                         // we need to do the MIS
+                        // FIXME: Assuming non diract functions
                         if v.its.mesh.is_light() && v.its.cos_theta() > 0.0 {
                             let (pred_vertex_pos, pred_vertex_pdf) =
                                 match &base_path.vertices[i - 1] {
                                     &Vertex::Surface(ref v) => {
-                                        (v.its.p, &v.sampled_bsdf.as_ref().unwrap().pdf)
+                                        (v.its.p, v.sampled_bsdf.as_ref().unwrap().pdf.value())
                                     }
                                     _ => panic!("Wrong vertex type"),
                                 };
+
+                            // FIXME: Assuming non diract functions
+                            let light_pdf = scene
+                                .direct_pdf(LightSamplingPDF {
+                                    mesh: v.its.mesh,
+                                    o: pred_vertex_pos,
+                                    p: v.its.p,
+                                    n: v.its.n_g, // FIXME: Geometrical normal?
+                                    dir: base_path.edges[i - 1].d,
+                                })
+                                .value();
+
+                            let (base_pdf, base_info) = (
+                                pred_vertex_pdf,
+                                (
+                                    v.throughput * (&v.its.mesh.emission),
+                                    pred_vertex_pdf + light_pdf,
+                                ),
+                            );
+
+                            let shift_info = shift_paths.iter().map(|shift_path| {
+                                if shift_path.is_none() {
+                                    return (Color::zero(), 0.0);
+                                }
+                                let shift_path = shift_path.as_ref().unwrap();
+                                match shift_path.vertices.get(i) {
+                                    None => (Color::zero(), 0.0),
+                                    Some(&ShiftVertex::Surface(ref v)) => {
+                                        if !(v.its.mesh.is_light() && v.its.cos_theta() > 0.0) {
+                                            return (Color::zero(), 0.0);
+                                        }
+
+                                        let (pred_vertex_pos, pred_vertex_pdf) =
+                                            match &shift_path.vertices[i - 1] {
+                                                &ShiftVertex::Surface(ref v) => {
+                                                    (v.its.p, v.pdf_bsdf.as_ref().unwrap().value())
+                                                }
+                                                _ => panic!("Wrong vertex type"),
+                                            };
+
+                                        let light_pdf = scene
+                                            .direct_pdf(LightSamplingPDF {
+                                                mesh: v.its.mesh,
+                                                o: pred_vertex_pos,
+                                                p: v.its.p,
+                                                n: v.its.n_g, // FIXME: Geometrical normal?
+                                                dir: shift_path.edges[i - 1].d,
+                                            })
+                                            .value();
+                                        (
+                                            v.throughput * (&v.its.mesh.emission),
+                                            light_pdf + pred_vertex_pdf,
+                                        )
+                                    }
+                                    _ => panic!("Wrong vertex type!"),
+                                }
+                            });
+
+                            for (i, v) in shift_info.into_iter().enumerate() {
+                                let mut pdf_total = base_info.1;
+                                if v.1 > 0.0 {
+                                    pdf_total += v.1;
+                                }
+                                let weight = base_pdf / pdf_total;
+                                l_i.main += base_info.0 * weight;
+                                l_i.radiances[i] += v.0 * weight;
+                                l_i.gradients[i] += (v.0 - base_info.0) * weight;
+                            }
                         }
                     }
                 }

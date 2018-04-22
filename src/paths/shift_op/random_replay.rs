@@ -109,12 +109,17 @@ impl<'a> ShiftOp<'a> for ShiftRandomReplay {
                                         // FIXME: Check the measure
                                         pdf_ratio *=
                                             main_next.sampled_bsdf.as_ref().unwrap().pdf.value()
-                                                / v.sampled_bsdf.unwrap().pdf.value();
+                                                / v.sampled_bsdf.as_ref().unwrap().pdf.value();
                                     }
                                     Some(ShiftVertex::Surface(SurfaceVertexShift {
                                         its: v.its,
                                         throughput: v.throughput,
                                         pdf_ratio: current_pdf_ratio,
+                                        pdf_bsdf: if let &Some(ref bsdf_sampled) = &v.sampled_bsdf {
+                                            Some(bsdf_sampled.pdf.clone())
+                                        } else {
+                                            None
+                                        },
                                     }))
                                 }
                                 _ => panic!("Encounter wrong type"),

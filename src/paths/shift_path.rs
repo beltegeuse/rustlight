@@ -8,6 +8,7 @@ use structure::*;
 #[derive(Clone)]
 pub struct SurfaceVertexShift<'a> {
     pub its: Intersection<'a>,
+    pub pdf_bsdf: Option<PDF>,
     /// Containts the throughput times the jacobian
     pub throughput: Color,
     /// Contains the ratio of PDF (with the Jacobian embeeded)
