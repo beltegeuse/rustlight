@@ -641,6 +641,16 @@ fn main() {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("gd-path-explicit")
+                .about("gradient-domain path tracing with explicit path generation")
+                .arg(
+                    Arg::with_name("max")
+                        .takes_value(true)
+                        .short("m")
+                        .default_value("inf"),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("ao").about("ambiant occlusion").arg(
                 Arg::with_name("distance")
                     .takes_value(true)
@@ -778,6 +788,15 @@ fn main() {
                     max_depth,
                     min_depth,
                 },
+            )
+        }
+        ("gd-path-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            gradient_domain_integration(
+                &scene,
+                nb_samples,
+                nb_threads,
+                rustlight::integrators::path_explicit::IntegratorUniPath { max_depth },
             )
         }
         ("ao", Some(m)) => {

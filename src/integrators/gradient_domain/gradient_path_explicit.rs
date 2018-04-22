@@ -64,81 +64,108 @@ impl Integrator<ColorGradient> for IntegratorUniPath {
                             v.its.mesh.bsdf.pdf(&v.its.uv, &v.its.wi, &d_out_local)
                         {
                             // Compute pdf values
-                            let base_info = if scene.visible(&v.its.p, &light_record.p) {
+                            let (base_pdf, base_info) = if scene.visible(&v.its.p, &light_record.p)
+                            {
                                 (
-                                    v.throughput
-                                        * v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local)
-                                        * light_record.weight,
-                                    light_pdf + pdf_bsdf,
+                                    light_pdf,
+                                    (
+                                        v.throughput
+                                            * v.its.mesh.bsdf.eval(
+                                                &v.its.uv,
+                                                &v.its.wi,
+                                                &d_out_local,
+                                            )
+                                            * light_record.weight,
+                                        light_pdf + pdf_bsdf,
+                                    ),
                                 )
                             } else {
-                                (Color::zero(), 0.0)
+                                (0.0, (Color::zero(), 0.0))
                             };
 
-                            let shift_info = shift_paths
-                                .iter()
-                                .map(|shift_path| {
-                                    if shift_path.is_none() {
-                                        return (Color::zero(), 0.0);
-                                    }
-                                    let shift_path = shift_path.as_ref().unwrap();
-                                    match shift_path.vertices.get(i) {
-                                        None => (Color::zero(), 0.0),
-                                        Some(&ShiftVertex::Surface(ref v)) => {
-                                            let light_record = scene.sample_light(
-                                                &v.its.p,
-                                                random_light_num.0,
-                                                random_light_num.1,
-                                                random_light_num.2,
-                                            );
-                                            let d_out_local = v.its.frame.to_local(light_record.d);
-                                            if light_record.is_valid() && d_out_local.z > 0.0 {
-                                                if let PDF::SolidAngle(pdf_bsdf) = v.its
-                                                    .mesh
-                                                    .bsdf
-                                                    .pdf(&v.its.uv, &v.its.wi, &d_out_local)
-                                                {
-                                                    // FIXME: Need to check the visibility
-                                                    (
-                                                        v.throughput
-                                                            * v.its.mesh.bsdf.eval(
-                                                                &v.its.uv,
-                                                                &v.its.wi,
-                                                                &d_out_local,
-                                                            )
-                                                            * light_record.weight,
-                                                        (light_pdf + pdf_bsdf) * v.pdf_ratio,
-                                                    )
+                            // FIXME: Check if this condition is correct or not
+                            if base_pdf != 0.0 {
+                                // For the shift here the strategy is to replay the random numbers.
+                                let shift_info = shift_paths
+                                    .iter()
+                                    .map(|shift_path| {
+                                        if shift_path.is_none() {
+                                            return (Color::zero(), 0.0);
+                                        }
+                                        let shift_path = shift_path.as_ref().unwrap();
+                                        match shift_path.vertices.get(i) {
+                                            None => (Color::zero(), 0.0),
+                                            Some(&ShiftVertex::Surface(ref v)) => {
+                                                let light_record = scene.sample_light(
+                                                    &v.its.p,
+                                                    random_light_num.0,
+                                                    random_light_num.1,
+                                                    random_light_num.2,
+                                                );
+                                                let d_out_local =
+                                                    v.its.frame.to_local(light_record.d);
+                                                if light_record.is_valid() && d_out_local.z > 0.0 {
+                                                    if let PDF::SolidAngle(pdf_bsdf) = v.its
+                                                        .mesh
+                                                        .bsdf
+                                                        .pdf(&v.its.uv, &v.its.wi, &d_out_local)
+                                                    {
+                                                        // FIXME: Need to check the visibility
+                                                        (
+                                                            v.throughput
+                                                                * v.its.mesh.bsdf.eval(
+                                                                    &v.its.uv,
+                                                                    &v.its.wi,
+                                                                    &d_out_local,
+                                                                )
+                                                                * light_record.weight,
+                                                            (light_pdf + pdf_bsdf) * v.pdf_ratio,
+                                                        )
+                                                    } else {
+                                                        (Color::zero(), 0.0)
+                                                    }
                                                 } else {
                                                     (Color::zero(), 0.0)
                                                 }
-                                            } else {
-                                                (Color::zero(), 0.0)
                                             }
+                                            _ => panic!("Not covered case"),
                                         }
-                                        _ => panic!("Not covered case"),
+                                    })
+                                    .collect::<Vec<(Color, f32)>>();
+
+                                for (i, v) in shift_info.into_iter().enumerate() {
+                                    let mut nb_valid = if base_info.1 == 0.0 { 0.0 } else { 1.0 };
+                                    if v.1 > 0.0 {
+                                        nb_valid += 1.0;
                                     }
-                                })
-                                .collect::<Vec<(Color, f32)>>();
-
-                            // Compute MIS
-                            let mut nb_valid = if base_info.1 == 0.0 { 0 } else { 1 };
-                            nb_valid += shift_info
-                                .iter()
-                                .map(|&(_c, p)| p)
-                                .filter(|p| *p > 0.0)
-                                .count();
-                            let weight = 1.0 / nb_valid as f32;
-
-                            l_i.main += base_info.0 * weight;
-                            for (i, v) in shift_info.into_iter().enumerate() {
-                                l_i.radiances[i] += v.0 * weight;
-                                l_i.gradients[i] += (v.0 - base_info.0) * weight;
+                                    let weight = 1.0 / nb_valid;
+                                    l_i.main += base_info.0 * weight;
+                                    l_i.radiances[i] += v.0 * weight;
+                                    l_i.gradients[i] += (v.0 - base_info.0) * weight;
+                                }
                             }
                         }
                     }
 
-                    // FIXME: No BSDF sampling for now
+                    ///////////////////////////////
+                    // BSDF Sampling
+                    if i == 1 {
+                        if v.its.cos_theta() > 0.0 {
+                            l_i.very_direct += v.its.mesh.emission * v.throughput;
+                        }
+                    } else {
+                        // If the main light touch a light
+                        // we need to do the MIS
+                        if v.its.mesh.is_light() && v.its.cos_theta() > 0.0 {
+                            let (pred_vertex_pos, pred_vertex_pdf) =
+                                match &base_path.vertices[i - 1] {
+                                    &Vertex::Surface(ref v) => {
+                                        (v.its.p, &v.sampled_bsdf.as_ref().unwrap().pdf)
+                                    }
+                                    _ => panic!("Wrong vertex type"),
+                                };
+                        }
+                    }
                 }
                 _ => {}
             }
