@@ -55,7 +55,7 @@ impl Integrator<Color> for IntegratorPath {
                         {
                             // Compute MIS weights
                             let weight_light = mis_weight(light_pdf, pdf_bsdf);
-                            if self.min_depth.map_or(true, |min| depth >= min) {
+                            if self.min_depth.map_or(true, |min| depth >= min) || weight_light > 0.0 {
                                 l_i += weight_light * throughput
                                     * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
                                     * light_record.weight;
@@ -71,6 +71,10 @@ impl Integrator<Color> for IntegratorPath {
                 Some(x) => x,
                 None => return l_i,
             };
+
+            if sampled_bsdf.pdf.is_zero() {
+                return l_i;
+            }
 
             // Update the throughput
             throughput *= &sampled_bsdf.weight;
@@ -94,7 +98,7 @@ impl Integrator<Color> for IntegratorPath {
                     PDF::Discrete(_v) => 1.0,
                     _ => panic!("Unsupported type."),
                 };
-                if self.min_depth.map_or(true, |min| depth >= min) {
+                if self.min_depth.map_or(true, |min| depth >= min) || weight_bsdf > 0.0 {
                     l_i += throughput * (&its.mesh.emission) * weight_bsdf;
                 }
             }
