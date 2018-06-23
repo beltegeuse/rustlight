@@ -1,4 +1,4 @@
-use sampler::*;
+use samplers::*;
 use scene::*;
 
 pub trait Integrator<T>: Sync + Send {
@@ -24,7 +24,7 @@ fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
 
 pub mod ao;
 pub mod direct;
+pub mod gradient_domain;
 pub mod path;
 pub mod path_explicit;
-pub mod gradient_domain;
 pub mod prelude;

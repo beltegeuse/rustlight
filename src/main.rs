@@ -17,11 +17,10 @@ use clap::{App, Arg, SubCommand};
 use image::*;
 use pbr::ProgressBar;
 use rayon::prelude::*;
-use rustlight::integrators::*;
 use rustlight::integrators::gradient_domain::*;
-
-use rustlight::sampler::Sampler;
-use rustlight::sampler::SamplerMCMC;
+use rustlight::integrators::*;
+use rustlight::samplers::Sampler;
+use rustlight::samplers::SamplerMCMC;
 use rustlight::structure::Color;
 use rustlight::tools::StepRangeInt;
 use rustlight::Scale;
@@ -173,7 +172,7 @@ fn render<T: BitmapTrait + Send, I: Integrator<T>>(
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
     image_blocks.par_iter_mut().for_each(|im_block| {
-        let mut sampler = rustlight::sampler::IndependentSampler::default();
+        let mut sampler = rustlight::samplers::independent::IndependentSampler::default();
         for ix in 0..im_block.size.x {
             for iy in 0..im_block.size.y {
                 for _ in 0..nb_samples {
@@ -262,7 +261,7 @@ fn integrate_image_plane<T: Integrator<Color>>(
 ) -> f32 {
     assert_ne!(nb_samples, 0);
 
-    let mut sampler = ::rustlight::sampler::IndependentSampler::default();
+    let mut sampler = ::rustlight::samplers::independent::IndependentSampler::default();
     (0..nb_samples)
         .into_iter()
         .map(|_i| {
@@ -300,6 +299,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     scene: &rustlight::scene::Scene,
     nb_samples: usize,
     nb_threads: Option<usize>,
+    large_prob: f32,
     int: T,
 ) -> Bitmap<Color> {
     ///////////// Prepare the pool for multiple thread
@@ -310,7 +310,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
         .unwrap();
 
     ///////////// Define the closure
-    let sample = |s: &mut rustlight::sampler::IndependentSamplerReplay| {
+    let sample = |s: &mut rustlight::samplers::mcmc::IndependentSamplerReplay| {
         let x = (s.next() * scene.camera.size().x as f32) as u32;
         let y = (s.next() * scene.camera.size().y as f32) as u32;
         let c = { int.compute((x, y), scene, s) };
@@ -330,7 +330,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     // - Initialize the samplers
     let mut samplers = Vec::new();
     for _ in 0..nb_chains {
-        samplers.push(rustlight::sampler::IndependentSamplerReplay::default());
+        samplers.push(rustlight::samplers::mcmc::IndependentSamplerReplay::default());
     }
 
     ///////////// Compute the rendering (with the number of samples)
@@ -352,7 +352,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
             let mut my_img: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
             (0..nb_samples_per_chains).into_iter().for_each(|_| {
                 // Choose randomly between large and small perturbation
-                s.large_step = s.rand() < 0.3;
+                s.large_step = s.rand() < large_prob;
                 let mut proposed_state = sample(s);
                 let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
                 // Do waste reclycling
@@ -397,6 +397,7 @@ fn reconstruct(
     primal_image: &Bitmap<Color>,
     dx_image: &Bitmap<Color>,
     dy_image: &Bitmap<Color>,
+    very_direct: &Bitmap<Color>,
 ) -> Bitmap<Color> {
     info!("Reconstruction...");
     let start = Instant::now();
@@ -456,8 +457,7 @@ fn reconstruct(
     for x in 0..img_size.x {
         for y in 0..img_size.y {
             let pos = Point2::new(x, y);
-            // FIXME: Add very direct image
-            let pix_value = next.get(pos).clone(); //+ img_grad.get(pos).very_direct.clone();
+            let pix_value = next.get(pos).clone() + very_direct.get(pos).clone();
             image.accumulate(pos, &pix_value);
         }
     }
@@ -466,15 +466,17 @@ fn reconstruct(
 
 fn decompose_grad_color(
     img_grad: &Bitmap<ColorGradient>,
-) -> (Bitmap<Color>, Bitmap<Color>, Bitmap<Color>) {
+) -> (Bitmap<Color>, Bitmap<Color>, Bitmap<Color>, Bitmap<Color>) {
     let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
     let mut dx_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
     let mut dy_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+    let mut very_direct = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
     for y in 0..img_grad.size.y {
         for x in 0..img_grad.size.x {
             let pos = Point2::new(x, y);
             let curr = img_grad.get(pos);
             primal_image.accumulate(pos, &curr.main);
+            very_direct.accumulate(pos, &curr.very_direct);
             for (i, off) in GRADIENT_ORDER.iter().enumerate() {
                 let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
                 primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
@@ -496,7 +498,7 @@ fn decompose_grad_color(
     // Scale the throughtput image
     primal_image.scale(1.0 / 4.0); // TODO: Wrong at the corners, need to fix it
 
-    (primal_image, dx_image, dy_image)
+    (primal_image, dx_image, dy_image, very_direct)
 }
 
 fn gradient_domain_integration<T: Integrator<ColorGradient>>(
@@ -520,10 +522,16 @@ fn gradient_domain_integration<T: Integrator<ColorGradient>>(
     );
 
     // Generates images buffers (dx, dy, primal)
-    let (primal_image, dx_image, dy_image) = decompose_grad_color(&img_grad);
+    let (primal_image, dx_image, dy_image, very_direct) = decompose_grad_color(&img_grad);
 
     // Reconst
-    reconstruct(img_grad.size, &primal_image, &dx_image, &dy_image)
+    reconstruct(
+        img_grad.size,
+        &primal_image,
+        &dx_image,
+        &dy_image,
+        &very_direct,
+    )
 }
 
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
@@ -555,6 +563,13 @@ fn main() {
                 .short("t")
                 .default_value("auto")
                 .help("number of thread for the computation"),
+        )
+        .arg(
+            Arg::with_name("image_scale")
+                .takes_value(true)
+                .short("s")
+                .default_value("1.0")
+                .help("image scaling factor"),
         )
         .arg(
             Arg::with_name("output")
@@ -599,6 +614,12 @@ fn main() {
                         .takes_value(true)
                         .short("n")
                         .default_value("inf"),
+                )
+                .arg(
+                    Arg::with_name("large_prob")
+                        .takes_value(true)
+                        .short("p")
+                        .default_value("0.3"),
                 ),
         )
         .subcommand(
@@ -624,6 +645,16 @@ fn main() {
                     Arg::with_name("min")
                         .takes_value(true)
                         .short("n")
+                        .default_value("inf"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("gd-path-explicit")
+                .about("gradient-domain path tracing with explicit path generation")
+                .arg(
+                    Arg::with_name("max")
+                        .takes_value(true)
+                        .short("m")
                         .default_value("inf"),
                 ),
         )
@@ -700,7 +731,17 @@ fn main() {
     let wk = scene_path
         .parent()
         .expect("impossible to extract parent directory for OBJ loading");
-    let scene = rustlight::scene::Scene::new(&data, wk).expect("error when loading the scene");
+    let mut scene = rustlight::scene::Scene::new(&data, wk).expect("error when loading the scene");
+
+    ///////////////// Tweak the image size
+    {
+        let image_scale = value_t_or_exit!(matches.value_of("image_scale"), f32);
+        if image_scale != 1.0 {
+            info!("Scale the image: {:?}", image_scale);
+            assert!(image_scale != 0.0);
+            scene.camera.scale_image(image_scale);
+        }
+    }
 
     let img = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
@@ -730,11 +771,13 @@ fn main() {
         ("pssmlt", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
-
+            let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
+            assert!(large_prob > 0.0 && large_prob <= 1.0);
             classical_mcmc_integration(
                 &scene,
                 nb_samples,
                 nb_threads,
+                large_prob,
                 rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
@@ -753,6 +796,15 @@ fn main() {
                     max_depth,
                     min_depth,
                 },
+            )
+        }
+        ("gd-path-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            gradient_domain_integration(
+                &scene,
+                nb_samples,
+                nb_threads,
+                rustlight::integrators::path_explicit::IntegratorUniPath { max_depth },
             )
         }
         ("ao", Some(m)) => {

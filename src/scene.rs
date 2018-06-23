@@ -1,11 +1,11 @@
+use bsdfs::*;
 use camera::{Camera, CameraParam};
 use cgmath::*;
 use embree_rs;
 use geometry;
-use bsdfs::*;
 use math::{Distribution1D, Distribution1DConstruct};
 use serde_json;
-use std; 
+use std;
 use std::error::Error;
 use std::sync::Arc;
 use structure::*;
@@ -47,7 +47,7 @@ impl<'a> LightSamplingPDF<'a> {
 }
 
 /// Scene representation
-pub struct Scene<'a> {
+pub struct Scene {
     /// Main camera
     pub camera: Camera,
     // Geometry information
@@ -55,33 +55,29 @@ pub struct Scene<'a> {
     pub emitters: Vec<Arc<geometry::Mesh>>,
     emitters_cdf: Distribution1D,
     #[allow(dead_code)]
-    embree_device: embree_rs::scene::Device<'a>,
-    embree_scene: embree_rs::scene::Scene<'a>,
+    embree_device: embree_rs::Device,
+    embree_scene: embree_rs::Scene,
 }
 
-impl<'a> Scene<'a> {
+impl Scene {
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: &str, wk: &std::path::Path) -> Result<Scene<'a>, Box<Error>> {
+    pub fn new(data: &str, wk: &std::path::Path) -> Result<Scene, Box<Error>> {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(data)?;
 
         // Allocate embree
-        let mut device = embree_rs::scene::Device::new();
-        let mut scene_embree = embree_rs::scene::SceneConstruct::new(
-            &mut device,
-            embree_rs::scene::SceneFlags::STATIC,
-            embree_rs::scene::AlgorithmFlags::INTERSECT1,
-        );
+        let mut device = embree_rs::Device::debug();
+        let mut scene_embree = embree_rs::SceneConstruct::new(&device);
 
         // Read the object
         let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
         let obj_path = wk.join(obj_path_str);
-        let mut meshes = geometry::load_obj(&mut scene_embree, obj_path.as_path())?;
+        let mut meshes = geometry::load_obj(&device, &mut scene_embree, obj_path.as_path())?;
 
         // Build embree as we will not geometry for now
         info!("Build the acceleration structure");
-        let scene_embree = device.commit(scene_embree)?;
+        let scene_embree = scene_embree.commit()?;
 
         // Update meshes information
         //  - which are light?
@@ -167,12 +163,14 @@ impl<'a> Scene<'a> {
 
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
-        !self.embree_scene
-            .occluded(embree_rs::ray::Ray::new(p0, &d, 0.00001, 0.9999))
+        !self
+            .embree_scene
+            .occluded(embree_rs::Ray::new(*p0, d).near(0.00001).far(0.9999))
     }
 
     pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> PDF {
-        let emitter_id = self.emitters
+        let emitter_id = self
+            .emitters
             .iter()
             .position(|m| Arc::ptr_eq(light_sampling.mesh, m))
             .unwrap();

@@ -62,6 +62,13 @@ impl Camera {
         &self.param.img
     }
 
+    pub fn scale_image(&mut self, s: f32) {
+        self.param.img = Vector2::new(
+            (s * self.param.img.x as f32) as u32,
+            (s * self.param.img.y as f32) as u32,
+        );
+    }
+
     /// Compute the ray direction going through the pixel passed
     pub fn generate(&self, px: Point2<f32>) -> Ray {
         let d = (self.dir_top_left + px.x / (self.param.img.x as f32) * self.screen_du

@@ -1,7 +1,7 @@
-use std;
 use bsdfs::*;
+use cgmath::*;
 use math::cosine_sample_hemisphere;
-use bsdfs::*;
+use std;
 
 #[derive(Deserialize)]
 pub struct BSDFDiffuse {

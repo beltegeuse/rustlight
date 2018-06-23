@@ -1,7 +1,7 @@
+use bsdfs;
 use cgmath::*;
 use embree_rs;
 use image;
-use bsdfs;
 use math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
 use scene::LightSamplingPDF;
 use std;
@@ -15,7 +15,8 @@ use tools::StepRangeInt;
 /// for now, only add diffuse color
 /// custom texture coordinates or normals are not supported yet
 pub fn load_obj(
-    scene: &mut embree_rs::scene::SceneConstruct,
+    device: &embree_rs::Device,
+    scene: &mut embree_rs::SceneConstruct,
     file_name: &std::path::Path,
 ) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
@@ -30,7 +31,8 @@ pub fn load_obj(
         let mesh = m.mesh;
         // Load vertex position
         info!(" - triangles: {}", mesh.indices.len() / 3);
-        let vertices = mesh.positions
+        let vertices = mesh
+            .positions
             .chunks(3)
             .map(|i| Vector3::new(i[0], i[1], i[2]))
             .collect();
@@ -42,7 +44,8 @@ pub fn load_obj(
             // For now, just panic if the normal are not provided inside the OBJ.
             panic!("No normal provided, quit");
         }
-        let normals = mesh.normals
+        let normals = mesh
+            .normals
             .chunks(3)
             .map(|i| Vector3::new(i[0], i[1], i[2]))
             .collect();
@@ -56,13 +59,7 @@ pub fn load_obj(
                 .collect()
         };
 
-        let trimesh = scene.add_triangle_mesh(
-            embree_rs::scene::GeometryFlags::Static,
-            vertices,
-            normals,
-            uv,
-            mesh.indices,
-        );
+        let trimesh = scene.add_triangle_mesh(device, vertices, normals, uv, mesh.indices);
         // Read materials and push the mesh
         if let Some(id) = mesh.material_id {
             info!(" - BSDF id: {}", id);
@@ -104,7 +101,7 @@ pub fn load_obj(
 /// (Triangle) Mesh information
 pub struct Mesh {
     pub name: String,
-    pub trimesh: Arc<embree_rs::scene::TriangleMesh>,
+    pub trimesh: Arc<embree_rs::TriangleMesh>,
     pub bsdf: Box<bsdfs::BSDF>,
     pub emission: Color,
     pub cdf: Distribution1D,
@@ -119,7 +116,7 @@ pub struct SampledPosition {
 impl Mesh {
     pub fn new(
         name: String,
-        trimesh: Arc<embree_rs::scene::TriangleMesh>,
+        trimesh: Arc<embree_rs::TriangleMesh>,
         bsdf: Box<bsdfs::BSDF>,
     ) -> Mesh {
         // Construct the mesh

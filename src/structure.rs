@@ -245,8 +245,10 @@ impl Ray {
         }
     }
 
-    pub fn to_embree(&self) -> embree_rs::ray::Ray {
-        embree_rs::ray::Ray::new(&self.o, &self.d, self.tnear, self.tfar)
+    pub fn to_embree(&self) -> embree_rs::Ray {
+        embree_rs::Ray::new(self.o, self.d)
+            .near(self.tnear)
+            .far(self.tfar)
     }
 }
 
@@ -272,7 +274,7 @@ pub struct Intersection<'a> {
 
 impl<'a> Intersection<'a> {
     pub fn new(
-        embree_its: embree_rs::ray::Intersection,
+        embree_its: embree_rs::Intersection,
         d: Vector3<f32>,
         mesh: &'a Arc<Mesh>,
     ) -> Intersection<'a> {
