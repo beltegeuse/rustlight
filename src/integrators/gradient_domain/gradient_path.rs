@@ -1,9 +1,9 @@
 use cgmath::*;
-use structure::*;
-use scene::*;
 use integrators::gradient_domain::*;
-use integrators::*;
 use integrators::path::*;
+use integrators::*;
+use scene::*;
+use structure::*;
 
 struct RayStateData<'a> {
     pub pdf: f64,
@@ -57,11 +57,13 @@ impl<'a> RayState<'a> {
 
     pub fn new((x, y): (f32, f32), off: &Point2<i32>, scene: &'a Scene) -> RayState<'a> {
         let pix = Point2::new(x + off.x as f32, y + off.y as f32);
-        if pix.x < 0.0 || pix.x > (scene.camera.size().x as f32) || pix.y < 0.0
+        if pix.x < 0.0
+            || pix.x > (scene.camera.size().x as f32)
+            || pix.y < 0.0
             || pix.y > (scene.camera.size().y as f32)
-            {
-                return RayState::Dead;
-            }
+        {
+            return RayState::Dead;
+        }
 
         let ray = scene.camera.generate(pix);
         let its = match scene.trace(&ray) {
@@ -172,7 +174,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 // only
                                 let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER)
                                     * (main_light_pdf.powi(MIS_POWER)
-                                    + main_bsdf_pdf.powi(MIS_POWER));
+                                        + main_bsdf_pdf.powi(MIS_POWER));
                                 let shift_contrib =
                                     s.throughput * main_bsdf_value * main_emitter_rad;
                                 (shift_weight_dem, shift_contrib)
@@ -189,12 +191,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     (0.0, Color::zero())
                                 } else {
                                     // BSDF
-                                    let shift_bsdf_pdf = main.its
-                                        .mesh
-                                        .bsdf
-                                        .pdf(&s.its.uv, &shift_d_in_local, &main_d_out_local)
-                                        .value()
-                                        as f64;
+                                    let shift_bsdf_pdf =
+                                        main.its
+                                            .mesh
+                                            .bsdf
+                                            .pdf(&s.its.uv, &shift_d_in_local, &main_d_out_local)
+                                            .value() as f64;
                                     let shift_bsdf_value = main.its.mesh.bsdf.eval(
                                         &s.its.uv,
                                         &shift_d_in_local,
@@ -203,7 +205,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     // Compute and return
                                     let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER)
                                         * (main_light_pdf.powi(MIS_POWER)
-                                        + shift_bsdf_pdf.powi(MIS_POWER));
+                                            + shift_bsdf_pdf.powi(MIS_POWER));
                                     let shift_contrib =
                                         s.throughput * shift_bsdf_value * main_emitter_rad;
                                     (shift_weight_dem, shift_contrib)
@@ -223,7 +225,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 let shift_emitter_rad = if shift_light_visible {
                                     shift_light_record.weight
                                         * (shift_light_record.pdf.value()
-                                        / main_light_record.pdf.value())
+                                            / main_light_record.pdf.value())
                                 } else {
                                     Color::zero()
                                 };
@@ -248,8 +250,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     * main_geom_dsquared)
                                     .abs()
                                     / (main_geom_cos_light
-                                    * (s.its.p - shift_light_record.p).magnitude2())
-                                    .abs())
+                                        * (s.its.p - shift_light_record.p).magnitude2())
+                                        .abs())
                                     as f64;
                                 assert!(jacobian.is_finite());
                                 assert!(jacobian >= 0.0);
@@ -257,8 +259,9 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 let shift_weight_dem = (jacobian * (s.pdf / main.pdf))
                                     .powi(MIS_POWER)
                                     * (shift_light_pdf.powi(MIS_POWER)
-                                    + shift_bsdf_pdf.powi(MIS_POWER));
-                                let shift_contrib = (jacobian as f32) * s.throughput
+                                        + shift_bsdf_pdf.powi(MIS_POWER));
+                                let shift_contrib = (jacobian as f32)
+                                    * s.throughput
                                     * shift_bsdf_value
                                     * shift_emitter_rad;
                                 (shift_weight_dem, shift_contrib)
@@ -271,8 +274,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             assert!(weight.is_finite());
                             assert!(weight >= 0.0);
                             assert!(weight <= 1.0);
-                            l_i.main += main_contrib * weight;
-                            l_i.radiances[i] += shift_contrib * weight;
+                            l_i.main += main_contrib; // * weight;
+                                                      //l_i.radiances[i] += shift_contrib * weight;
                             l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
                         }
                     }
@@ -373,7 +376,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)
                                     .powi(MIS_POWER)
                                     * (shift_bsdf_pdf.powi(MIS_POWER)
-                                    + main_light_pdf.powi(MIS_POWER));
+                                        + main_light_pdf.powi(MIS_POWER));
                                 let shift_contrib = s.throughput * main_emitter_rad;
                                 (shift_weight_dem, shift_contrib, RayState::Connected(s))
                             }
@@ -391,8 +394,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     * main.its.dist.powi(2))
                                     .abs()
                                     / (main.its.n_g.dot(-main.ray.d)
-                                    * (s.its.p - main.its.p).magnitude2())
-                                    .abs())
+                                        * (s.its.p - main.its.p).magnitude2())
+                                        .abs())
                                     as f64;
                                 assert!(jacobian.is_finite());
                                 assert!(jacobian >= 0.0);
@@ -402,12 +405,12 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                     &s.its.wi,
                                     &shift_d_out_local,
                                 );
-                                let shift_bsdf_pdf = s.its
-                                    .mesh
-                                    .bsdf
-                                    .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
-                                    .value()
-                                    as f64;
+                                let shift_bsdf_pdf =
+                                    s.its
+                                        .mesh
+                                        .bsdf
+                                        .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
+                                        .value() as f64;
                                 // Update shift path
                                 let shift_pdf_pred = s.pdf;
                                 s.throughput *=
@@ -419,11 +422,11 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 // - the main are not on a emitter, just do a reconnection
                                 let (shift_emitter_rad, shift_emitter_pdf) = if main_light_pdf
                                     == 0.0
-                                    {
-                                        // The base path did not hit a light source
-                                        // FIXME: Do not use the trick of 0 PDF
-                                        (Color::zero(), 0.0)
-                                    } else {
+                                {
+                                    // The base path did not hit a light source
+                                    // FIXME: Do not use the trick of 0 PDF
+                                    (Color::zero(), 0.0)
+                                } else {
                                     let shift_emitter_pdf = scene
                                         .direct_pdf(LightSamplingPDF {
                                             mesh: main_next_mesh,
@@ -442,7 +445,7 @@ impl Integrator<ColorGradient> for IntegratorPath {
                                 let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)
                                     .powi(MIS_POWER)
                                     * (shift_bsdf_pdf.powi(MIS_POWER)
-                                    + shift_emitter_pdf.powi(MIS_POWER));
+                                        + shift_emitter_pdf.powi(MIS_POWER));
                                 let shift_contrib = s.throughput * shift_emitter_rad;
                                 (
                                     shift_weight_dem,
@@ -460,8 +463,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                         assert!(weight.is_finite());
                         assert!(weight >= 0.0);
                         assert!(weight <= 1.0);
-                        l_i.main += main_contrib * weight;
-                        l_i.radiances[i] += shift_contrib * weight;
+                        l_i.main += main_contrib; // * weight;
+                                                  //l_i.radiances[i] += shift_contrib * weight;
                         l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
                     }
                     // Return the new state

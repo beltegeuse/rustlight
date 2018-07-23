@@ -104,10 +104,12 @@ impl Integrator<ColorGradient> for IntegratorUniPath {
                                                 );
                                                 let d_out_local =
                                                     v.its.frame.to_local(light_record.d);
-                                                if light_record.is_valid() && d_out_local.z > 0.0
+                                                if light_record.is_valid()
+                                                    && d_out_local.z > 0.0
                                                     && scene.visible(&v.its.p, &light_record.p)
                                                 {
-                                                    if let PDF::SolidAngle(pdf_bsdf) = v.its
+                                                    if let PDF::SolidAngle(pdf_bsdf) = v
+                                                        .its
                                                         .mesh
                                                         .bsdf
                                                         .pdf(&v.its.uv, &v.its.wi, &d_out_local)
@@ -141,8 +143,8 @@ impl Integrator<ColorGradient> for IntegratorUniPath {
                                         pdf_total += v.1;
                                     }
                                     let weight = base_pdf / pdf_total;
-                                    l_i.main += base_info.0 * weight;
-                                    l_i.radiances[i] += v.0 * weight;
+                                    l_i.main += base_info.0; // * weight;
+                                                             //l_i.radiances[i] += v.0 * weight;
                                     l_i.gradients[i] += (v.0 - base_info.0) * weight;
                                 }
                             }
@@ -231,8 +233,8 @@ impl Integrator<ColorGradient> for IntegratorUniPath {
                                     pdf_total += v.1;
                                 }
                                 let weight = base_pdf / pdf_total;
-                                l_i.main += base_info.0 * weight;
-                                l_i.radiances[i] += v.0 * weight;
+                                l_i.main += base_info.0; // * weight;
+                                                         //l_i.radiances[i] += v.0 * weight;
                                 l_i.gradients[i] += (v.0 - base_info.0) * weight;
                             }
                         }

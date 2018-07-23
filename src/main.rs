@@ -29,82 +29,170 @@ use std::ops::AddAssign;
 use std::sync::Mutex;
 use std::time::Instant;
 
-pub trait BitmapTrait: Default + AddAssign + Scale<f32> + Clone {}
-impl BitmapTrait for ColorGradient {}
-impl BitmapTrait for Color {}
+/// The different way to store the informations
+pub trait BitmapTrait: Default + AddAssign + Scale<f32> + Clone {
+    // Number of channel needed for the bitmap storage
+    fn size() -> usize;
+    fn get(&self, channel: usize) -> Color;
+    fn index(name: &str) -> usize;
+}
+impl BitmapTrait for ColorGradient {
+    fn size() -> usize {
+        1 + 4 + 1 // Very direct + Throughput + Gradient
+    }
+    fn get(&self, channel: usize) -> Color {
+        match channel {
+            0 => self.very_direct.clone(),
+            1 => self.main.clone(),
+            2 => self.gradients[0].clone(),
+            3 => self.gradients[1].clone(),
+            4 => self.gradients[2].clone(),
+            5 => self.gradients[3].clone(),
+            _ => unimplemented!(),
+        }
+    }
+    fn index(name: &str) -> usize {
+        match name {
+            "very_direct" => 0,
+            "main" => 1,
+            "dy_pos" => 2,
+            "dy_neg" => 3,
+            "dx_pos" => 4,
+            "dx_neg" => 5,
+            _ => unimplemented!(),
+        }
+    }
+}
+impl BitmapTrait for Color {
+    fn size() -> usize {
+        1
+    }
+    fn get(&self, _channel: usize) -> Color {
+        self.clone()
+    }
+    fn index(name: &str) -> usize {
+        0
+    }
+}
 
 /// Image block
 /// for easy paralelisation over the thread
-pub struct Bitmap<T: BitmapTrait> {
+pub struct Bitmap {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
-    pub pixels: Vec<T>,
+    pub pixels: Vec<Vec<Color>>,
+    pub variances: Vec<Vec<VarianceEstimator>>,
 }
 
-impl<T: BitmapTrait> Bitmap<T> {
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap<T> {
+impl Bitmap {
+    pub fn new(nb_channels: usize, pos: Point2<u32>, size: Vector2<u32>) -> Bitmap {
+        let mut pixels = vec![];
+        let mut variances = vec![];
+        for _ in 0..nb_channels {
+            pixels.push(vec![Color::default(); (size.x * size.y) as usize]);
+            variances.push(vec![
+                VarianceEstimator::default();
+                (size.x * size.y) as usize
+            ]);
+        }
         Bitmap {
             pos,
             size,
-            pixels: vec![T::default(); (size.x * size.y) as usize],
+            pixels,
+            variances,
         }
     }
 
-    pub fn accumulate_bitmap(&mut self, o: &Bitmap<T>) {
-        for x in 0..o.size.x {
+    pub fn accumulate_bitmap(&mut self, o: &Bitmap) {
+        assert!(o.pixels.len() == self.pixels.len());
+        // This is special, it does not allowed to write twice the same pixels
+        // This function is only when we
+
+        for channel in 0..self.pixels.len() {
             for y in 0..o.size.y {
-                let c_p = Point2::new(o.pos.x + x, o.pos.y + y);
-                self.accumulate(c_p, o.get(Point2::new(x, y)));
+                for x in 0..o.size.x {
+                    let p = Point2::new(o.pos.x + x, o.pos.y + y);
+                    let index = (p.y * self.size.y + p.x) as usize;
+                    let index_other = (y * o.size.y + x) as usize;
+                    self.pixels[channel][index] = o.pixels[channel][index_other];
+                    self.variances[channel][index] = o.variances[channel][index_other];
+                }
             }
         }
     }
 
-    pub fn accumulate(&mut self, p: Point2<u32>, f: &T) {
+    pub fn accumulate(&mut self, p: Point2<u32>, f: Color, channel: usize) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        self.pixels[(p.y * self.size.y + p.x) as usize] += f.clone(); // FIXME: Not good for performance
+        assert!(self.pixels.len() > channel);
+        let index = (p.y * self.size.y + p.x) as usize;
+        self.pixels[channel][index] += f;
+        self.variances[channel][index].add(f.luminance());
     }
 
-    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: T) {
+    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: Color, channel: usize) {
         if p.x >= 0 && p.y >= 0 && p.x < (self.size.x as i32) && p.y < (self.size.y as i32) {
-            self.pixels[((p.y as u32) * self.size.y + p.x as u32) as usize] += f.clone(); // FIXME: Bad performance?
+            self.accumulate(
+                Point2 {
+                    x: p.x as u32,
+                    y: p.y as u32,
+                },
+                f,
+                channel,
+            );
         }
     }
 
-    pub fn get(&self, p: Point2<u32>) -> &T {
+    pub fn get(&self, p: Point2<u32>, channel: usize) -> &Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        &self.pixels[(p.y * self.size.y + p.x) as usize]
+        &self.pixels[channel][(p.y * self.size.y + p.x) as usize]
+    }
+
+    pub fn get_variance(&self, p: Point2<u32>, channel: usize) -> f32 {
+        assert!(p.x < self.size.x);
+        assert!(p.y < self.size.y);
+        self.variances[channel][(p.y * self.size.y + p.x) as usize].variance()
     }
 
     pub fn reset(&mut self) {
-        self.pixels.iter_mut().for_each(|x| *x = T::default());
+        for channel in 0..self.pixels.len() {
+            self.pixels[channel]
+                .iter_mut()
+                .for_each(|x| *x = Color::default());
+            self.variances[channel]
+                .iter_mut()
+                .for_each(|x| *x = VarianceEstimator::default());
+        }
     }
 
-    pub fn average(&self) -> T {
-        let mut s = T::default();
-        self.pixels.iter().for_each(|x| s += x.clone());
+    pub fn average_pixel(&self, channel: usize) -> Color {
+        let mut s = Color::default();
+        self.pixels[channel].iter().for_each(|x| s += x.clone());
         s.scale(1.0 / self.pixels.len() as f32);
         s
     }
 }
 
-impl<T: BitmapTrait> Scale<f32> for Bitmap<T> {
+impl Scale<f32> for Bitmap {
     fn scale(&mut self, f: f32) {
         assert!(f > 0.0);
-        self.pixels.iter_mut().for_each(|v| v.scale(f));
+        for channel in 0..self.pixels.len() {
+            self.pixels[channel].iter_mut().for_each(|v| v.scale(f));
+        }
     }
 }
 
-impl<T: BitmapTrait> Iterator for Bitmap<T> {
-    type Item = T;
+impl Iterator for Bitmap {
+    type Item = Color;
 
     fn next(&mut self) -> Option<Self::Item> {
         unimplemented!()
     }
 }
 
-struct VarianceEstimator {
+#[derive(Clone, Debug, Copy)]
+pub struct VarianceEstimator {
     pub mean: f32,
     pub mean_sqr: f32,
     pub sample_count: u32,
@@ -130,17 +218,6 @@ impl Default for VarianceEstimator {
         }
     }
 }
-trait Variance<T: BitmapTrait> {
-    fn update(&mut self, v: &T);
-}
-struct VarianceColor {
-    pub variance_estimator: VarianceEstimator,
-}
-impl Variance<Color> for VarianceColor {
-    fn update(&mut self, v: &Color) {
-        self.variance_estimator.add(v.luminance());
-    }
-}
 
 //////////////////////////////////
 // Helpers
@@ -148,14 +225,15 @@ fn render<T: BitmapTrait + Send, I: Integrator<T>>(
     scene: &::rustlight::scene::Scene,
     integrator: &I,
     nb_samples: usize,
-) -> Bitmap<T> {
+) -> Bitmap {
     assert_ne!(nb_samples, 0);
 
     // Create rendering blocks
-    let mut image_blocks: Vec<Box<Bitmap<T>>> = Vec::new();
+    let mut image_blocks: Vec<Box<Bitmap>> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
             let mut block = Bitmap::new(
+                T::size(),
                 Point2 {
                     x: ix as u32,
                     y: iy as u32,
@@ -181,7 +259,9 @@ fn render<T: BitmapTrait + Send, I: Integrator<T>>(
                         scene,
                         &mut sampler,
                     );
-                    im_block.accumulate(Point2 { x: ix, y: iy }, &c);
+                    for channel in 0..T::size() {
+                        im_block.accumulate(Point2 { x: ix, y: iy }, c.get(channel), channel);
+                    }
                 }
             }
         }
@@ -193,20 +273,20 @@ fn render<T: BitmapTrait + Send, I: Integrator<T>>(
     });
 
     // Fill the image
-    let mut image = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+    let mut image = Bitmap::new(T::size(), Point2::new(0, 0), *scene.camera.size());
     for im_block in &image_blocks {
         image.accumulate_bitmap(im_block);
     }
     image
 }
 
-fn save_pfm(imgout_path_str: &str, img: &Bitmap<Color>) {
+fn save_pfm(imgout_path_str: &str, img: &Bitmap) {
     let mut file = std::fs::File::create(std::path::Path::new(imgout_path_str)).unwrap();
     let header = format!("PF\n{} {}\n-1.0\n", img.size.y, img.size.x);
     file.write(header.as_bytes()).unwrap();
     for y in 0..img.size.y {
         for x in 0..img.size.x {
-            let p = img.get(Point2::new(img.size.x - x - 1, img.size.y - y - 1));
+            let p = img.get(Point2::new(img.size.x - x - 1, img.size.y - y - 1), 0);
             file.write_f32::<LittleEndian>(p.r.abs()).unwrap();
             file.write_f32::<LittleEndian>(p.g.abs()).unwrap();
             file.write_f32::<LittleEndian>(p.b.abs()).unwrap();
@@ -214,12 +294,13 @@ fn save_pfm(imgout_path_str: &str, img: &Bitmap<Color>) {
     }
 }
 
-fn save_png(imgout_path_str: &str, img: &Bitmap<Color>) {
+fn save_png(imgout_path_str: &str, img: &Bitmap) {
     // The image that we will render
     let mut image_ldr = DynamicImage::new_rgb8(img.size.x, img.size.y);
     for x in 0..img.size.x {
         for y in 0..img.size.y {
-            image_ldr.put_pixel(x, y, img.get(Point2::new(img.size.x - x - 1, y)).to_rgba())
+            let p = Point2::new(img.size.x - x - 1, y);
+            image_ldr.put_pixel(x, y, img.get(p, 0).to_rgba())
         }
     }
     let ref mut fout = std::fs::File::create(imgout_path_str).unwrap();
@@ -233,7 +314,7 @@ fn classical_mc_integration<T: Integrator<Color> + Send + Sync>(
     nb_samples: usize,
     nb_threads: Option<usize>,
     int: T,
-) -> Bitmap<Color> {
+) -> Bitmap {
     ////////////// Do the rendering
     info!("Rendering...");
     let start = Instant::now();
@@ -301,7 +382,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     nb_threads: Option<usize>,
     large_prob: f32,
     int: T,
-) -> Bitmap<Color> {
+) -> Bitmap {
     ///////////// Prepare the pool for multiple thread
     let pool = match nb_threads {
         None => rayon::ThreadPoolBuilder::new(),
@@ -337,7 +418,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     info!("Rendering...");
     let start = Instant::now();
     let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
-    let img = Mutex::new(Bitmap::new(Point2::new(0, 0), *scene.camera.size()));
+    let img = Mutex::new(Bitmap::new(1, Point2::new(0, 0), *scene.camera.size()));
     pool.install(|| {
         samplers.par_iter_mut().for_each(|s| {
             // Initialize the sampler
@@ -349,7 +430,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
             }
             s.accept();
 
-            let mut my_img: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), *scene.camera.size());
+            let mut my_img: Bitmap = Bitmap::new(1, Point2::new(0, 0), *scene.camera.size());
             (0..nb_samples_per_chains).into_iter().for_each(|_| {
                 // Choose randomly between large and small perturbation
                 s.large_step = s.rand() < large_prob;
@@ -359,16 +440,16 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
                 current_state.weight += 1.0 - accept_prob;
                 proposed_state.weight += accept_prob;
                 if accept_prob > s.rand() {
-                    my_img.accumulate(current_state.pix, &current_state.color());
+                    my_img.accumulate(current_state.pix, current_state.color(), 0);
                     s.accept();
                     current_state = proposed_state;
                 } else {
-                    my_img.accumulate(proposed_state.pix, &proposed_state.color());
+                    my_img.accumulate(proposed_state.pix, proposed_state.color(), 0);
                     s.reject();
                 }
             });
             // Flush the last state
-            my_img.accumulate(current_state.pix, &current_state.color());
+            my_img.accumulate(current_state.pix, current_state.color(), 0);
 
             my_img.scale(1.0 / (nb_samples_per_chains as f32));
             {
@@ -377,7 +458,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
             }
         });
     });
-    let mut img: Bitmap<Color> = img.into_inner().unwrap();
+    let mut img: Bitmap = img.into_inner().unwrap();
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
@@ -385,7 +466,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
     );
 
     // ==== Compute and scale to the normalization factor
-    let img_avg = img.average();
+    let img_avg = img.average_pixel(0);
     let img_avg_lum = (img_avg.r + img_avg.g + img_avg.b) / 3.0;
     img.scale(b / img_avg_lum);
 
@@ -393,55 +474,55 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
 }
 
 fn reconstruct(
+    iterations: usize,
     img_size: Vector2<u32>,
-    primal_image: &Bitmap<Color>,
-    dx_image: &Bitmap<Color>,
-    dy_image: &Bitmap<Color>,
-    very_direct: &Bitmap<Color>,
-) -> Bitmap<Color> {
+    primal_image: &Bitmap,
+    dx_image: &Bitmap,
+    dy_image: &Bitmap,
+    very_direct: &Bitmap,
+) -> Bitmap {
     info!("Reconstruction...");
     let start = Instant::now();
     // Reconstruction (image-space covariate, uniform reconstruction)
-    let mut current: Box<Bitmap<Color>> =
-        Box::new(Bitmap::new(Point2::new(0, 0), img_size.clone()));
-    let mut next: Box<Bitmap<Color>> = Box::new(Bitmap::new(Point2::new(0, 0), img_size.clone()));
+    let mut current: Box<Bitmap> = Box::new(Bitmap::new(1, Point2::new(0, 0), img_size.clone()));
+    let mut next: Box<Bitmap> = Box::new(Bitmap::new(1, Point2::new(0, 0), img_size.clone()));
     // 1) Init
     for y in 0..img_size.y {
         for x in 0..img_size.x {
             let pos = Point2::new(x, y);
-            current.accumulate(pos, primal_image.get(pos));
+            current.accumulate(pos, *primal_image.get(pos, 0), 0);
         }
     }
-    for _iter in 0..50 {
+    for _iter in 0..iterations {
         // FIXME: Do it multi-threaded
         next.reset(); // Reset all to black
         for y in 0..img_size.y {
             for x in 0..img_size.x {
                 let pos = Point2::new(x, y);
-                let mut c = current.get(pos).clone();
+                let mut c = current.get(pos, 0).clone();
                 let mut w = 1.0;
                 if x > 0 {
                     let pos_off = Point2::new(x - 1, y);
-                    c += current.get(pos_off).clone() + dx_image.get(pos_off).clone();
+                    c += current.get(pos_off, 0).clone() + dx_image.get(pos_off, 0).clone();
                     w += 1.0;
                 }
                 if x < img_size.x - 1 {
                     let pos_off = Point2::new(x + 1, y);
-                    c += current.get(pos_off).clone() - dx_image.get(pos).clone();
+                    c += current.get(pos_off, 0).clone() - dx_image.get(pos, 0).clone();
                     w += 1.0;
                 }
                 if y > 0 {
                     let pos_off = Point2::new(x, y - 1);
-                    c += current.get(pos_off).clone() + dy_image.get(pos_off).clone();
+                    c += current.get(pos_off, 0).clone() + dy_image.get(pos_off, 0).clone();
                     w += 1.0;
                 }
                 if y < img_size.y - 1 {
                     let pos_off = Point2::new(x, y + 1);
-                    c += current.get(pos_off).clone() - dy_image.get(pos).clone();
+                    c += current.get(pos_off, 0).clone() - dy_image.get(pos, 0).clone();
                     w += 1.0;
                 }
                 c.scale(1.0 / w);
-                next.accumulate(pos, &c);
+                next.accumulate(pos, c, 0);
             }
         }
         std::mem::swap(&mut current, &mut next);
@@ -453,42 +534,63 @@ fn reconstruct(
     );
 
     // Export the reconstruction
-    let mut image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_size.clone());
+    let mut image: Bitmap = Bitmap::new(1, Point2::new(0, 0), img_size.clone());
     for x in 0..img_size.x {
         for y in 0..img_size.y {
             let pos = Point2::new(x, y);
-            let pix_value = next.get(pos).clone() + very_direct.get(pos).clone();
-            image.accumulate(pos, &pix_value);
+            let pix_value = next.get(pos, 0).clone() + very_direct.get(pos, 0).clone();
+            image.accumulate(pos, pix_value, 0);
         }
     }
     image
 }
 
-fn decompose_grad_color(
-    img_grad: &Bitmap<ColorGradient>,
-) -> (Bitmap<Color>, Bitmap<Color>, Bitmap<Color>, Bitmap<Color>) {
-    let mut primal_image: Bitmap<Color> = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
-    let mut dx_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
-    let mut dy_image = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
-    let mut very_direct = Bitmap::new(Point2::new(0, 0), img_grad.size.clone());
+/// This function decompose the multi channel bitmap to several bitmaps
+/// These bitmap will be more easy to process
+fn decompose_grad_color(img_grad: &Bitmap) -> (Bitmap, Bitmap, Bitmap, Bitmap) {
+    let mut primal_image = Bitmap::new(1, Point2::new(0, 0), img_grad.size.clone());
+    let mut dx_image = Bitmap::new(1, Point2::new(0, 0), img_grad.size.clone());
+    let mut dy_image = Bitmap::new(1, Point2::new(0, 0), img_grad.size.clone());
+    let mut very_direct = Bitmap::new(1, Point2::new(0, 0), img_grad.size.clone());
+
     for y in 0..img_grad.size.y {
         for x in 0..img_grad.size.x {
             let pos = Point2::new(x, y);
-            let curr = img_grad.get(pos);
-            primal_image.accumulate(pos, &curr.main);
-            very_direct.accumulate(pos, &curr.very_direct);
+            primal_image.accumulate(pos, *img_grad.get(pos, ColorGradient::index("main")), 0);
+            very_direct.accumulate(
+                pos,
+                *img_grad.get(pos, ColorGradient::index("very_direct")),
+                0,
+            );
             for (i, off) in GRADIENT_ORDER.iter().enumerate() {
                 let pos_off: Point2<i32> = Point2::new(pos.x as i32 + off.x, pos.y as i32 + off.y);
-                primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
+                // FIXME: The primal image will be wrong
+                // primal_image.accumulate_safe(pos_off, curr.radiances[i].clone());
                 match GRADIENT_DIRECTION[i] {
                     GradientDirection::X(v) => match v {
-                        1 => dx_image.accumulate(pos, &curr.gradients[i]),
-                        -1 => dx_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
+                        1 => dx_image.accumulate(
+                            pos,
+                            *img_grad.get(pos, ColorGradient::index("dx_pos")),
+                            0,
+                        ),
+                        -1 => dx_image.accumulate_safe(
+                            pos_off,
+                            (*img_grad.get(pos, ColorGradient::index("dx_neg"))) * -1.0,
+                            0,
+                        ),
                         _ => panic!("wrong displacement X"), // FIXME: Fix the enum
                     },
                     GradientDirection::Y(v) => match v {
-                        1 => dy_image.accumulate(pos, &curr.gradients[i]),
-                        -1 => dy_image.accumulate_safe(pos_off, curr.gradients[i].clone() * -1.0),
+                        1 => dy_image.accumulate(
+                            pos,
+                            *img_grad.get(pos, ColorGradient::index("dy_pos")),
+                            0,
+                        ),
+                        -1 => dy_image.accumulate_safe(
+                            pos_off,
+                            (*img_grad.get(pos, ColorGradient::index("dy_neg"))) * -1.0,
+                            0,
+                        ),
                         _ => panic!("wrong displacement Y"),
                     },
                 }
@@ -496,7 +598,7 @@ fn decompose_grad_color(
         }
     }
     // Scale the throughtput image
-    primal_image.scale(1.0 / 4.0); // TODO: Wrong at the corners, need to fix it
+    primal_image.scale(1.0 / 8.0); // TODO: Wrong at the corners, need to fix it
 
     (primal_image, dx_image, dy_image, very_direct)
 }
@@ -506,7 +608,8 @@ fn gradient_domain_integration<T: Integrator<ColorGradient>>(
     nb_samples: usize,
     nb_threads: Option<usize>,
     int: T,
-) -> Bitmap<Color> {
+    iterations: usize,
+) -> Bitmap {
     info!("Rendering...");
     let start = Instant::now();
     let pool = match nb_threads {
@@ -526,6 +629,7 @@ fn gradient_domain_integration<T: Integrator<ColorGradient>>(
 
     // Reconst
     reconstruct(
+        iterations,
         img_grad.size,
         &primal_image,
         &dx_image,
@@ -546,6 +650,18 @@ fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
 
 fn main() {
     // Read input args
+    let max_arg = Arg::with_name("max")
+        .takes_value(true)
+        .short("m")
+        .default_value("inf");
+    let min_arg = Arg::with_name("min")
+        .takes_value(true)
+        .short("n")
+        .default_value("inf");
+    let iterations_arg = Arg::with_name("iterations")
+        .takes_value(true)
+        .short("r")
+        .default_value("50");
     let matches = App::new("rustlight")
         .version("0.0.5")
         .author("Adrien Gruson <adrien.gruson@gmail.com>")
@@ -587,34 +703,14 @@ fn main() {
         .subcommand(
             SubCommand::with_name("path")
                 .about("path tracing")
-                .arg(
-                    Arg::with_name("max")
-                        .takes_value(true)
-                        .short("m")
-                        .default_value("inf"),
-                )
-                .arg(
-                    Arg::with_name("min")
-                        .takes_value(true)
-                        .short("n")
-                        .default_value("inf"),
-                ),
+                .arg(&max_arg)
+                .arg(&min_arg),
         )
         .subcommand(
             SubCommand::with_name("pssmlt")
                 .about("path tracing with MCMC sampling")
-                .arg(
-                    Arg::with_name("max")
-                        .takes_value(true)
-                        .short("m")
-                        .default_value("inf"),
-                )
-                .arg(
-                    Arg::with_name("min")
-                        .takes_value(true)
-                        .short("n")
-                        .default_value("inf"),
-                )
+                .arg(&max_arg)
+                .arg(&min_arg)
                 .arg(
                     Arg::with_name("large_prob")
                         .takes_value(true)
@@ -625,38 +721,20 @@ fn main() {
         .subcommand(
             SubCommand::with_name("path-explicit")
                 .about("path tracing with explict light path construction")
-                .arg(
-                    Arg::with_name("max")
-                        .takes_value(true)
-                        .short("m")
-                        .default_value("inf"),
-                ),
+                .arg(&max_arg),
         )
         .subcommand(
             SubCommand::with_name("gd-path")
                 .about("gradient-domain path tracing")
-                .arg(
-                    Arg::with_name("max")
-                        .takes_value(true)
-                        .short("m")
-                        .default_value("inf"),
-                )
-                .arg(
-                    Arg::with_name("min")
-                        .takes_value(true)
-                        .short("n")
-                        .default_value("inf"),
-                ),
+                .arg(&max_arg)
+                .arg(&min_arg)
+                .arg(&iterations_arg),
         )
         .subcommand(
             SubCommand::with_name("gd-path-explicit")
                 .about("gradient-domain path tracing with explicit path generation")
-                .arg(
-                    Arg::with_name("max")
-                        .takes_value(true)
-                        .short("m")
-                        .default_value("inf"),
-                ),
+                .arg(&max_arg)
+                .arg(&iterations_arg),
         )
         .subcommand(
             SubCommand::with_name("ao").about("ambiant occlusion").arg(
@@ -743,6 +821,7 @@ fn main() {
         }
     }
 
+    ///////////////// Call the integrator for generating the bitmap
     let img = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
@@ -787,6 +866,7 @@ fn main() {
         ("gd-path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
+            let iterations = m.value_of("iterations").unwrap().parse::<usize>().unwrap();
 
             gradient_domain_integration(
                 &scene,
@@ -796,15 +876,19 @@ fn main() {
                     max_depth,
                     min_depth,
                 },
+                iterations,
             )
         }
         ("gd-path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let iterations = m.value_of("iterations").unwrap().parse::<usize>().unwrap();
+
             gradient_domain_integration(
                 &scene,
                 nb_samples,
                 nb_threads,
                 rustlight::integrators::path_explicit::IntegratorUniPath { max_depth },
+                iterations,
             )
         }
         ("ao", Some(m)) => {

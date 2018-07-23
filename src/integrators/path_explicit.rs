@@ -31,7 +31,8 @@ impl Integrator<Color> for IntegratorUniPath {
                             };
 
                             let d_out_local = v.its.frame.to_local(light_record.d);
-                            if light_record.is_valid() && scene.visible(&v.its.p, &light_record.p)
+                            if light_record.is_valid()
+                                && scene.visible(&v.its.p, &light_record.p)
                                 && d_out_local.z > 0.0
                             {
                                 // Compute the contribution of direct lighting
@@ -40,7 +41,8 @@ impl Integrator<Color> for IntegratorUniPath {
                                 {
                                     // Compute MIS weights
                                     let weight_light = mis_weight(light_pdf, pdf_bsdf);
-                                    l_i += weight_light * v.throughput
+                                    l_i += weight_light
+                                        * v.throughput
                                         * v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local)
                                         * light_record.weight;
                                 }
