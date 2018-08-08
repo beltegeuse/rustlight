@@ -1,7 +1,7 @@
 use cgmath::*;
-use structure::*;
-use scene::*;
 use integrators::*;
+use scene::*;
+use structure::*;
 
 pub struct IntegratorDirect {
     pub nb_bsdf_samples: u32,
@@ -54,20 +54,23 @@ impl Integrator<Color> for IntegratorDirect {
             };
 
             let d_out_local = its.frame.to_local(light_record.d);
-            if light_record.is_valid() && scene.visible(&its.p, &light_record.p)
+            if light_record.is_valid()
+                && scene.visible(&its.p, &light_record.p)
                 && d_out_local.z > 0.0
+            {
+                // Compute the contribution of direct lighting
+                // FIXME: A bit waste full, need to detect before sampling the light...
+                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local)
                 {
-                    // Compute the contribution of direct lighting
-                    // FIXME: A bit waste full, need to detect before sampling the light...
-                    if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local)
-                        {
-                            // Compute MIS weights
-                            let weight_light =
-                                mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
-                            l_i += weight_light * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
-                                * weight_nb_light * light_record.weight;
-                        }
+                    // Compute MIS weights
+                    let weight_light =
+                        mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
+                    l_i += weight_light
+                        * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
+                        * weight_nb_light
+                        * light_record.weight;
                 }
+            }
         }
 
         /////////////////////////////////
@@ -100,7 +103,9 @@ impl Integrator<Color> for IntegratorDirect {
                         }
                     };
 
-                    l_i += weight_bsdf * sampled_bsdf.weight * (&next_its.mesh.emission)
+                    l_i += weight_bsdf
+                        * sampled_bsdf.weight
+                        * (&next_its.mesh.emission)
                         * weight_nb_bsdf;
                 }
             }

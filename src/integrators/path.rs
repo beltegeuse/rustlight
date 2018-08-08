@@ -37,30 +37,37 @@ impl Integrator<Color> for IntegratorPath {
             /////////////////////////////////
             // Light sampling
             /////////////////////////////////
-            // Explict connect to the light source
-            let light_record =
-                scene.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
-            let light_pdf = match light_record.pdf {
-                PDF::SolidAngle(v) => v,
-                _ => panic!("Unsupported light, abord"),
-            };
+            // Explict connect to the light source.
+            // We do this operation only and only if we know that
+            // the BSDF is not totally specular.
+            if !its.mesh.bsdf.is_smooth() {
+                let light_record =
+                    scene.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
+                let light_pdf = match light_record.pdf {
+                    PDF::SolidAngle(v) => v,
+                    _ => panic!("Unsupported light, abord"),
+                };
 
-            let d_out_local = its.frame.to_local(light_record.d);
-            if light_record.is_valid()
-                && scene.visible(&its.p, &light_record.p)
-                && d_out_local.z > 0.0
-            {
-                // Compute the contribution of direct lighting
-                // FIXME: A bit waste full, need to detect before sampling the light...
-                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local)
+                let d_out_local = its.frame.to_local(light_record.d);
+                if light_record.is_valid()
+                    && scene.visible(&its.p, &light_record.p)
+                    && d_out_local.z > 0.0
                 {
-                    // Compute MIS weights
-                    let weight_light = mis_weight(light_pdf, pdf_bsdf);
-                    if self.min_depth.map_or(true, |min| depth >= min) || weight_light > 0.0 {
-                        l_i += weight_light
-                            * throughput
-                            * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
-                            * light_record.weight;
+                    // Compute the contribution of direct lighting
+                    // FIXME: A bit waste full, need to detect before sampling the light...
+                    if let PDF::SolidAngle(pdf_bsdf) =
+                        its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local)
+                    {
+                        // Compute MIS weights
+                        let weight_light = mis_weight(light_pdf, pdf_bsdf);
+                        if self.min_depth.map_or(true, |min| depth >= min) || weight_light > 0.0 {
+                            l_i += weight_light
+                                * throughput
+                                * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
+                                * light_record.weight;
+                        }
+                    } else {
+                        unreachable!();
                     }
                 }
             }

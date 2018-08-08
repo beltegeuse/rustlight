@@ -48,4 +48,8 @@ impl BSDF for BSDFDiffuse {
             Color::zero()
         }
     }
+
+    fn is_smooth(&self) -> bool {
+        return false;
+    }
 }

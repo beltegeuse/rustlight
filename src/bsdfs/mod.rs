@@ -1,7 +1,7 @@
-use structure::*;
+use image::*;
 use serde::{Deserialize, Deserializer};
 use serde_json;
-use image::*;
+use structure::*;
 
 use cgmath::InnerSpace;
 use cgmath::{Point2, Vector2, Vector3};
@@ -34,8 +34,8 @@ impl Texture {
 }
 
 fn deserialize_from_str<'de, D>(deserializer: D) -> Result<DynamicImage, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let _s: String = Deserialize::deserialize(deserializer)?;
     let _img = DynamicImage::new_rgb8(1, 1);
@@ -93,16 +93,18 @@ pub trait BSDF: Send + Sync {
     fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF;
     /// eval the bsdf value : $fs(...)$
     fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color;
+    /// check if it is smooth
+    //TODO: Replace this using flags
+    fn is_smooth(&self) -> bool;
 }
-
 
 pub mod diffuse;
 pub mod phong;
 pub mod specular;
 
 use bsdfs::diffuse::BSDFDiffuse;
-use bsdfs::specular::BSDFSpecular;
 use bsdfs::phong::BSDFPhong;
+use bsdfs::specular::BSDFSpecular;
 /// Dispatch coded BSDF
 pub fn parse_bsdf(
     b: &serde_json::Value,
@@ -116,4 +118,3 @@ pub fn parse_bsdf(
     };
     Ok(new_bsdf)
 }
-

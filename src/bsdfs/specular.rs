@@ -33,4 +33,8 @@ impl BSDF for BSDFSpecular {
         // and does not handle correctly the evaluation
         unimplemented!()
     }
+
+    fn is_smooth(&self) -> bool {
+        return false;
+    }
 }

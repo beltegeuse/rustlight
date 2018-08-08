@@ -4,9 +4,8 @@ use scene::*;
 pub trait Integrator<T>: Sync + Send {
     fn compute<S: Sampler>(&self, pix: (u32, u32), scene: &Scene, sampler: &mut S) -> T;
 }
-
 /// Power heuristic for path tracing or direct lighting
-fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
+pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
     if pdf_a == 0.0 {
         warn!("MIS weight requested for 0.0 pdf");
         return 0.0;
