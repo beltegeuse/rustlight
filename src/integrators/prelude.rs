@@ -1,1 +1,1 @@
-pub use super::{Integrator, gradient_domain::ColorGradient, gradient_domain::GRADIENT_ORDER, gradient_domain::GradientDirection};
+pub use super::{Integrator};
