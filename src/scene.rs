@@ -12,7 +12,7 @@ use structure::*;
 
 /// Light sample representation
 pub struct LightSampling<'a> {
-    pub emitter: &'a geometry::Mesh,
+    pub emitter: &'a Arc<geometry::Mesh>,
     pub pdf: PDF,
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
@@ -216,7 +216,7 @@ impl Scene {
             weight: emission,
         }
     }
-    pub fn random_select_emitter(&self, v: f32) -> (f32, &geometry::Mesh) {
+    pub fn random_select_emitter(&self, v: f32) -> (f32, &Arc<geometry::Mesh>) {
         let id_light = self.emitters_cdf.sample(v);
         (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
     }

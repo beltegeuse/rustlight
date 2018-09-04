@@ -3,7 +3,6 @@ use serde::{Deserialize, Deserializer};
 use serde_json;
 use structure::*;
 
-use cgmath::InnerSpace;
 use cgmath::{Point2, Vector2, Vector3};
 
 use std;

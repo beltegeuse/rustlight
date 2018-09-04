@@ -10,7 +10,7 @@
             "name": "Launch Program",
             "target": "${workspaceRoot}/target/debug/rustlight",
             "cwd": "${workspaceRoot}",
-            "arguments": "-n 16 -o spssmlt_corrected_cbox_16.pfm ./data/cbox.json spssmlt",
+            "arguments": "-n 16 -o debug.pfm ./data/scenes/cbox/cbox.json path-explicit-naive",
         }
     ]
 }

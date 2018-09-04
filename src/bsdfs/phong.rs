@@ -1,5 +1,5 @@
 use bsdfs::*;
-use cgmath::Vector3;
+use cgmath::{InnerSpace, Vector3};
 use math::Frame;
 use std;
 
