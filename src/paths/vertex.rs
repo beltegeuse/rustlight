@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use structure::*;
+use paths::path::AvailableSamplingStrategy;
 use Scale;
 
 #[derive(Clone)]
@@ -21,6 +22,7 @@ pub struct Edge<'a> {
     pub pdf_direction: PDF,
     pub weight: Color,
     pub rr_weight: f32,
+    pub sampling_strategy: AvailableSamplingStrategy,
 }
 
 impl<'a> Edge<'a> {
@@ -30,6 +32,7 @@ impl<'a> Edge<'a> {
         weight: Color,
         rr_weight: f32,
         next_vertex: &Rc<VertexPtr<'a>>,
+        sampling_strategy: AvailableSamplingStrategy,
     ) -> Rc<EdgePtr<'a>> {
         let mut d = next_vertex.borrow().position() - org_vertex.borrow().position();
         let dist = d.magnitude();
@@ -43,6 +46,7 @@ impl<'a> Edge<'a> {
             pdf_direction,
             weight,
             rr_weight,
+            sampling_strategy,
         }));
 
         match *next_vertex.borrow_mut() {
@@ -60,6 +64,7 @@ impl<'a> Edge<'a> {
         weight: Color,
         rr_weight: f32,
         scene: &'a Scene,
+        sampling_strategy: AvailableSamplingStrategy,
     ) -> (Rc<EdgePtr<'a>>, Option<Rc<VertexPtr<'a>>>) {
         // TODO: When there will be volume, we need to sample a distance inside the volume
         let edge = Rc::new(RefCell::new(Edge {
@@ -70,6 +75,7 @@ impl<'a> Edge<'a> {
             pdf_direction,
             weight,
             rr_weight,
+            sampling_strategy,
         }));
 
         let its = match scene.trace(&ray) {

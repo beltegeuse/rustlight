@@ -31,6 +31,12 @@ pub trait SamplingStrategy<S: Sampler> {
     ) -> Option<f32>;
 }
 
+#[derive(Clone, PartialEq)]
+pub enum AvailableSamplingStrategy {
+    Directional,
+    Emitter,
+}
+
 pub struct DirectionalSamplingStrategy {}
 impl DirectionalSamplingStrategy {
     pub fn bounce<'a, S: Sampler>(
@@ -42,8 +48,15 @@ impl DirectionalSamplingStrategy {
         match *vertex.borrow() {
             Vertex::Sensor(ref v) => {
                 let ray = scene.camera.generate(v.uv);
-                let (edge, new_vertex) =
-                    Edge::from_ray(ray, &vertex, PDF::SolidAngle(1.0), Color::one(), 1.0, scene);
+                let (edge, new_vertex) = Edge::from_ray(
+                    ray,
+                    &vertex,
+                    PDF::SolidAngle(1.0),
+                    Color::one(),
+                    1.0,
+                    scene,
+                    AvailableSamplingStrategy::Directional,
+                );
                 return (Some(edge), new_vertex);
             }
             Vertex::Surface(ref v) => {
@@ -76,6 +89,7 @@ impl DirectionalSamplingStrategy {
                         sampled_bsdf.weight,
                         rr_weight,
                         scene,
+                        AvailableSamplingStrategy::Directional,
                     );
                     return (Some(edge), new_vertex);
                 }
@@ -180,8 +194,19 @@ impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
                     weight.r /= light_record.emitter.emission.r;
                     weight.g /= light_record.emitter.emission.g;
                     weight.b /= light_record.emitter.emission.b;
+
+                    // Need to evaluate the BSDF
+                    weight *= &v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local);
+
                     (
-                        Edge::from_vertex(&vertex, light_record.pdf, weight, 1.0, &next_vertex),
+                        Edge::from_vertex(
+                            &vertex,
+                            light_record.pdf,
+                            weight,
+                            1.0,
+                            &next_vertex,
+                            AvailableSamplingStrategy::Emitter,
+                        ),
                         next_vertex,
                     )
                 } else {
@@ -298,24 +323,22 @@ impl<'a> Path<'a> {
             Vertex::Surface(ref v) => {
                 for (i, edge) in v.edge_out.iter().enumerate() {
                     let contrib = edge.borrow().contribution();
-                    if !contrib.is_zero() && i == 1 {
-                        // let weight = if let PDF::SolidAngle(v) = edge.borrow().pdf_direction {
-                        //     let total: f32 = samplings
-                        //         .iter()
-                        //         .map(|s| {
-                        //             if let Some(v) = s.pdf(scene, &vertex, edge) {
-                        //                 v
-                        //             } else {
-                        //                 0.0
-                        //             }
-                        //         })
-                        //         .sum();
-                        //     v / total
-                        // } else {
-                        //     1.0
-                        // };
-                        // let weight = 1.0 / v.edge_out.len() as f32;
-                        let weight = 1.0;
+                    if !contrib.is_zero() {
+                        let weight = if let PDF::SolidAngle(v) = edge.borrow().pdf_direction {
+                            let total: f32 = samplings
+                                .iter()
+                                .map(|s| {
+                                    if let Some(v) = s.pdf(scene, &vertex, edge) {
+                                        v
+                                    } else {
+                                        0.0
+                                    }
+                                })
+                                .sum();
+                            v / total
+                        } else {
+                            1.0
+                        };
                         l_i += contrib * weight;
                     }
 

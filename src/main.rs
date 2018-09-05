@@ -591,11 +591,7 @@ fn main() {
                         .default_value("0.3"),
                 ),
         ).subcommand(
-        //     SubCommand::with_name("path-explicit")
-        //         .about("path tracing with explict light path construction")
-        //         .arg(&max_arg),
-        // ).subcommand(
-            SubCommand::with_name("path-explicit-naive")
+            SubCommand::with_name("path-explicit")
                 .about("path tracing with explict light path construction")
                 .arg(&max_arg),
         ).subcommand(
@@ -693,17 +689,7 @@ fn main() {
 
     ///////////////// Call the integrator for generating the bitmap
     let img = match matches.subcommand() {
-        // ("path-explicit", Some(m)) => {
-        //     let max_depth = match_infinity(m.value_of("max").unwrap());
-
-        //     classical_mc_integration(
-        //         &scene,
-        //         nb_samples,
-        //         nb_threads,
-        //         rustlight::integrators::path_explicit::IntegratorUniPath { max_depth },
-        //     )
-        // }
-        ("path-explicit-naive", Some(m)) => {
+        ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
 
             classical_mc_integration(
