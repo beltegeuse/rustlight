@@ -1,6 +1,5 @@
 use cgmath::*;
 use integrators::*;
-use scene::*;
 use structure::*;
 
 pub struct IntegratorPath {

@@ -1,14 +1,12 @@
-use cgmath::*;
+use math::{cosine_sample_hemisphere, Frame};
 use paths::vertex::*;
 use samplers::*;
 use scene::*;
 use std::cell::RefCell;
-use std::iter::Sum;
 use std::mem;
 use std::rc::Rc;
 use structure::*;
 use Scale;
-use math::{cosine_sample_hemisphere, Frame};
 
 pub trait SamplingStrategy<S: Sampler> {
     fn sample<'a>(
@@ -17,6 +15,7 @@ pub trait SamplingStrategy<S: Sampler> {
         scene: &'a Scene,
         throughput: Color,
         sampler: &mut S,
+        id_strategy: usize,
     ) -> Option<(Rc<VertexPtr<'a>>, Color)>;
 
     // All PDF have to be inside the same domain
@@ -28,12 +27,6 @@ pub trait SamplingStrategy<S: Sampler> {
     ) -> Option<f32>;
 }
 
-#[derive(Clone, PartialEq)]
-pub enum AvailableSamplingStrategy {
-    Directional,
-    Emitter,
-}
-
 pub struct DirectionalSamplingStrategy {}
 impl DirectionalSamplingStrategy {
     pub fn bounce<'a, S: Sampler>(
@@ -41,6 +34,7 @@ impl DirectionalSamplingStrategy {
         scene: &'a Scene,
         throughput: &mut Color,
         sampler: &mut S,
+        id_strategy: usize,
     ) -> (Option<Rc<EdgePtr<'a>>>, Option<Rc<VertexPtr<'a>>>) {
         match *vertex.borrow() {
             Vertex::Sensor(ref v) => {
@@ -52,7 +46,7 @@ impl DirectionalSamplingStrategy {
                     Color::one(),
                     1.0,
                     scene,
-                    AvailableSamplingStrategy::Directional,
+                    id_strategy,
                 );
                 return (Some(edge), new_vertex);
             }
@@ -86,20 +80,20 @@ impl DirectionalSamplingStrategy {
                         sampled_bsdf.weight,
                         rr_weight,
                         scene,
-                        AvailableSamplingStrategy::Directional,
+                        id_strategy,
                     );
                     return (Some(edge), new_vertex);
                 }
 
                 return (None, None);
-            },
+            }
             Vertex::Emitter(ref v) => {
                 // For now, just computing the outgoing direction
                 // Using cosine base weighting as we know that the light source
                 // can only be cosine based isotropic lighting
                 let d_out = cosine_sample_hemisphere(sampler.next2d());
                 let weight = v.mesh.emission;
-                
+
                 let frame = Frame::new(v.n);
                 let d_out_global = frame.to_world(d_out);
                 let ray = Ray::new(v.pos, d_out_global);
@@ -111,12 +105,11 @@ impl DirectionalSamplingStrategy {
                     weight,
                     1.0,
                     scene,
-                    AvailableSamplingStrategy::Directional,
+                    id_strategy,
                 );
 
                 return (Some(edge), new_vertex);
             }
-            _ => unimplemented!(),
         }
     }
 }
@@ -127,10 +120,16 @@ impl<S: Sampler> SamplingStrategy<S> for DirectionalSamplingStrategy {
         scene: &'a Scene,
         mut throughput: Color,
         sampler: &mut S,
+        id_strategy: usize,
     ) -> Option<(Rc<VertexPtr<'a>>, Color)> {
         // Generate the next edge and the next vertex
-        let (edge, new_vertex) =
-            DirectionalSamplingStrategy::bounce(&vertex, scene, &mut throughput, sampler);
+        let (edge, new_vertex) = DirectionalSamplingStrategy::bounce(
+            &vertex,
+            scene,
+            &mut throughput,
+            sampler,
+            id_strategy,
+        );
 
         // Update the edge if we sucesfull sample it
         if let Some(e) = edge {
@@ -144,7 +143,6 @@ impl<S: Sampler> SamplingStrategy<S> for DirectionalSamplingStrategy {
                 Vertex::Emitter(ref mut v) => {
                     v.edge_out = Some(e);
                 }
-                _ => unimplemented!(),
             }
         }
 
@@ -175,7 +173,7 @@ impl<S: Sampler> SamplingStrategy<S> for DirectionalSamplingStrategy {
                 }
                 unimplemented!();
             }
-            Vertex::Sensor(ref v) => return Some(1.0),
+            Vertex::Sensor(ref _v) => return Some(1.0),
             _ => return None,
         }
     }
@@ -187,10 +185,11 @@ impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
         &self,
         vertex: Rc<VertexPtr<'a>>,
         scene: &'a Scene,
-        mut throughput: Color,
+        mut _throughput: Color,
         sampler: &mut S,
+        id_strategy: usize,
     ) -> Option<(Rc<VertexPtr<'a>>, Color)> {
-        let (edge, next_vertex) = match *vertex.borrow() {
+        let (edge, _next_vertex) = match *vertex.borrow() {
             Vertex::Surface(ref v) => {
                 if v.its.mesh.bsdf.is_smooth() {
                     return None;
@@ -229,7 +228,7 @@ impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
                             weight,
                             1.0,
                             &next_vertex,
-                            AvailableSamplingStrategy::Emitter,
+                            id_strategy,
                         ),
                         next_vertex,
                     )
@@ -304,7 +303,7 @@ pub fn generate<'a, S: Sampler, T: Technique<'a, S>>(
     sampler: &mut S,
     technique: &mut T,
 ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
-    let mut root = technique.init(scene, sampler);
+    let root = technique.init(scene, sampler);
     let mut curr = root.clone();
     let mut next = vec![];
     while !curr.is_empty() {
@@ -312,11 +311,15 @@ pub fn generate<'a, S: Sampler, T: Technique<'a, S>>(
         next.clear();
         for (curr_vertex, throughput) in &curr {
             // For all the sampling techniques
-            for sampling in technique.strategies(&curr_vertex) {
+            for (id_sampling, sampling) in technique.strategies(&curr_vertex).iter().enumerate() {
                 // If we want to continue the tracing toward this direction
-                if let Some((new_vertex, new_throughput)) =
-                    sampling.sample(curr_vertex.clone(), scene, *throughput, sampler)
-                {
+                if let Some((new_vertex, new_throughput)) = sampling.sample(
+                    curr_vertex.clone(),
+                    scene,
+                    *throughput,
+                    sampler,
+                    id_sampling,
+                ) {
                     // This is the continue if we want to continue or not
                     // For example, we might want to not push the vertex if we have reach the depth limit
                     if technique.expand(&new_vertex) {

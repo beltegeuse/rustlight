@@ -1,14 +1,10 @@
-use bsdfs::*;
 use cgmath::*;
 use geometry::Mesh;
-use paths::path::AvailableSamplingStrategy;
-use samplers::*;
 use scene::*;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use structure::*;
-use Scale;
 
 #[derive(Clone)]
 pub struct Edge<'a> {
@@ -22,7 +18,7 @@ pub struct Edge<'a> {
     pub pdf_direction: PDF,
     pub weight: Color,
     pub rr_weight: f32,
-    pub sampling_strategy: AvailableSamplingStrategy,
+    pub id_sampling: usize,
 }
 
 impl<'a> Edge<'a> {
@@ -32,7 +28,7 @@ impl<'a> Edge<'a> {
         weight: Color,
         rr_weight: f32,
         next_vertex: &Rc<VertexPtr<'a>>,
-        sampling_strategy: AvailableSamplingStrategy,
+        id_sampling: usize,
     ) -> Rc<EdgePtr<'a>> {
         let mut d = next_vertex.borrow().position() - org_vertex.borrow().position();
         let dist = d.magnitude();
@@ -46,7 +42,7 @@ impl<'a> Edge<'a> {
             pdf_direction,
             weight,
             rr_weight,
-            sampling_strategy,
+            id_sampling,
         }));
 
         match *next_vertex.borrow_mut() {
@@ -64,7 +60,7 @@ impl<'a> Edge<'a> {
         weight: Color,
         rr_weight: f32,
         scene: &'a Scene,
-        sampling_strategy: AvailableSamplingStrategy,
+        id_sampling: usize,
     ) -> (Rc<EdgePtr<'a>>, Option<Rc<VertexPtr<'a>>>) {
         // TODO: When there will be volume, we need to sample a distance inside the volume
         let edge = Rc::new(RefCell::new(Edge {
@@ -75,7 +71,7 @@ impl<'a> Edge<'a> {
             pdf_direction,
             weight,
             rr_weight,
-            sampling_strategy,
+            id_sampling,
         }));
 
         let its = match scene.trace(&ray) {
@@ -166,8 +162,8 @@ impl<'a> Vertex<'a> {
     pub fn on_light_source(&self) -> bool {
         match *self {
             Vertex::Surface(ref v) => !v.its.mesh.emission.is_zero(),
-            Vertex::Sensor(ref v) => false,
-            Vertex::Emitter(ref v) => true,
+            Vertex::Sensor(ref _v) => false,
+            Vertex::Emitter(ref _v) => true,
         }
     }
 

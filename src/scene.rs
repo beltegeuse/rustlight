@@ -67,7 +67,7 @@ impl Scene {
         let v: serde_json::Value = serde_json::from_str(data)?;
 
         // Allocate embree
-        let mut device = embree_rs::Device::debug();
+        let device = embree_rs::Device::debug();
         let mut scene_embree = embree_rs::SceneConstruct::new(&device);
 
         // Read the object

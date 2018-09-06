@@ -2,7 +2,6 @@ use cgmath::Point2;
 use integrators::*;
 use paths::path::*;
 use paths::vertex::*;
-use scene::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use structure::*;

@@ -42,7 +42,7 @@ impl BitmapTrait for Color {
     fn get(&self, _channel: usize) -> Color {
         self.clone()
     }
-    fn index(name: &str) -> usize {
+    fn index(_name: &str) -> usize {
         0
     }
 }
@@ -294,7 +294,7 @@ fn classical_mc_integration<T: Integrator<Color> + Send + Sync>(
         None => rayon::ThreadPoolBuilder::new(),
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
-    .unwrap();
+        .unwrap();
     let img = pool.install(|| render(scene, &int, nb_samples));
     let elapsed = start.elapsed();
     info!(
@@ -322,8 +322,8 @@ fn integrate_image_plane<T: Integrator<Color>>(
             let y = (sampler.next() * scene.camera.size().y as f32) as u32;
             let c = integrator.compute((x, y), scene, &mut sampler);
             (c.r + c.g + c.b) / 3.0
-        }).sum::<f32>()
-        / (nb_samples as f32)
+        })
+        .sum::<f32>() / (nb_samples as f32)
 }
 
 struct MCMCState {
@@ -360,7 +360,7 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
         None => rayon::ThreadPoolBuilder::new(),
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
-    .unwrap();
+        .unwrap();
 
     ///////////// Define the closure
     let sample = |s: &mut rustlight::samplers::mcmc::IndependentSamplerReplay| {
@@ -537,7 +537,7 @@ fn main() {
         .takes_value(true)
         .short("n")
         .default_value("inf");
-    let iterations_arg = Arg::with_name("iterations")
+    let _iterations_arg = Arg::with_name("iterations")
         .takes_value(true)
         .short("r")
         .default_value("50");
@@ -551,35 +551,41 @@ fn main() {
                 .takes_value(true)
                 .index(1)
                 .help("JSON file description"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("nbthreads")
                 .takes_value(true)
                 .short("t")
                 .default_value("auto")
                 .help("number of thread for the computation"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("image_scale")
                 .takes_value(true)
                 .short("s")
                 .default_value("1.0")
                 .help("image scaling factor"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("output")
                 .takes_value(true)
                 .short("o")
                 .help("output image file"),
-        ).arg(Arg::with_name("debug").short("d").help("debug output"))
+        )
+        .arg(Arg::with_name("debug").short("d").help("debug output"))
         .arg(
             Arg::with_name("nbsamples")
                 .short("n")
                 .takes_value(true)
                 .help("integration technique"),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("path")
                 .about("path tracing")
                 .arg(&max_arg)
                 .arg(&min_arg),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("pssmlt")
                 .about("path tracing with MCMC sampling")
                 .arg(&max_arg)
@@ -590,29 +596,32 @@ fn main() {
                         .short("p")
                         .default_value("0.3"),
                 ),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("path-explicit")
                 .about("path tracing with explict light path construction")
                 .arg(&max_arg),
-        ).subcommand(
-        //     SubCommand::with_name("gd-path")
-        //         .about("gradient-domain path tracing")
-        //         .arg(&max_arg)
-        //         .arg(&min_arg)
-        //         .arg(&iterations_arg),
-        // ).subcommand(
-        //     SubCommand::with_name("gd-path-explicit")
-        //         .about("gradient-domain path tracing with explicit path generation")
-        //         .arg(&max_arg)
-        //         .arg(&iterations_arg),
-        // ).subcommand(
+        )
+        .subcommand(
+            //     SubCommand::with_name("gd-path")
+            //         .about("gradient-domain path tracing")
+            //         .arg(&max_arg)
+            //         .arg(&min_arg)
+            //         .arg(&iterations_arg),
+            // ).subcommand(
+            //     SubCommand::with_name("gd-path-explicit")
+            //         .about("gradient-domain path tracing with explicit path generation")
+            //         .arg(&max_arg)
+            //         .arg(&iterations_arg),
+            // ).subcommand(
             SubCommand::with_name("ao").about("ambiant occlusion").arg(
                 Arg::with_name("distance")
                     .takes_value(true)
                     .short("d")
                     .default_value("inf"),
             ),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("direct")
                 .about("direct lighting")
                 .arg(
@@ -620,13 +629,15 @@ fn main() {
                         .takes_value(true)
                         .short("b")
                         .default_value("1"),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("light")
                         .takes_value(true)
                         .short("l")
                         .default_value("1"),
                 ),
-        ).get_matches();
+        )
+        .get_matches();
 
     /////////////// Setup logging system
     if matches.is_present("debug") {
