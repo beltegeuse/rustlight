@@ -23,28 +23,13 @@ use rustlight::samplers::SamplerMCMC;
 use rustlight::structure::Color;
 use rustlight::tools::StepRangeInt;
 use rustlight::Scale;
+use std::collections::HashMap;
 use std::io::prelude::*;
-use std::ops::AddAssign;
 use std::sync::Mutex;
 use std::time::Instant;
 
-/// The different way to store the informations
-pub trait BitmapTrait: Default + AddAssign + Scale<f32> + Clone {
-    // Number of channel needed for the bitmap storage
-    fn size() -> usize;
-    fn get(&self, channel: usize) -> Color;
-    fn index(name: &str) -> usize;
-}
-impl BitmapTrait for Color {
-    fn size() -> usize {
-        1
-    }
-    fn get(&self, _channel: usize) -> Color {
-        self.clone()
-    }
-    fn index(_name: &str) -> usize {
-        0
-    }
+pub trait PixelInfo: Default {
+    fn accumulate(&mut self, v: Color, w: f32);
 }
 
 /// Image block
@@ -52,31 +37,27 @@ impl BitmapTrait for Color {
 pub struct Bitmap {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
-    pub pixels: Vec<Vec<Color>>,
-    pub variances: Vec<Vec<VarianceEstimator>>,
+    pub values: HashMap<String, Vec<PixelInfo>>,
 }
 
 impl Bitmap {
-    pub fn new(nb_channels: usize, pos: Point2<u32>, size: Vector2<u32>) -> Bitmap {
-        let mut pixels = vec![];
-        let mut variances = vec![];
-        for _ in 0..nb_channels {
-            pixels.push(vec![Color::default(); (size.x * size.y) as usize]);
-            variances.push(vec![
-                VarianceEstimator::default();
-                (size.x * size.y) as usize
-            ]);
-        }
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>) -> Bitmap {
         Bitmap {
             pos,
             size,
-            pixels,
-            variances,
+            values: HashMap::new(),
         }
     }
 
+    // Register the buffers
+    pub fn register<T: PixelInfo>(&mut self, name: String, default_info: T) {
+        self.values.insert(
+            name,
+            [vec![T::default(); (self.size.x * self.size.y) as usize]],
+        );
+    }
+
     pub fn accumulate_bitmap(&mut self, o: &Bitmap) {
-        assert!(o.pixels.len() == self.pixels.len());
         // This is special, it does not allowed to write twice the same pixels
         // This function is only when we
 
@@ -444,78 +425,6 @@ fn classical_mcmc_integration<T: Integrator<Color>>(
 
     img
 }
-
-// fn reconstruct(
-//     iterations: usize,
-//     img_size: Vector2<u32>,
-//     primal_image: &Bitmap,
-//     dx_image: &Bitmap,
-//     dy_image: &Bitmap,
-//     very_direct: &Bitmap,
-// ) -> Bitmap {
-//     info!("Reconstruction...");
-//     let start = Instant::now();
-//     // Reconstruction (image-space covariate, uniform reconstruction)
-//     let mut current: Box<Bitmap> = Box::new(Bitmap::new(1, Point2::new(0, 0), img_size.clone()));
-//     let mut next: Box<Bitmap> = Box::new(Bitmap::new(1, Point2::new(0, 0), img_size.clone()));
-//     // 1) Init
-//     for y in 0..img_size.y {
-//         for x in 0..img_size.x {
-//             let pos = Point2::new(x, y);
-//             current.accumulate(pos, *primal_image.get(pos, 0), 0);
-//         }
-//     }
-//     for _iter in 0..iterations {
-//         // FIXME: Do it multi-threaded
-//         next.reset(); // Reset all to black
-//         for y in 0..img_size.y {
-//             for x in 0..img_size.x {
-//                 let pos = Point2::new(x, y);
-//                 let mut c = current.get(pos, 0).clone();
-//                 let mut w = 1.0;
-//                 if x > 0 {
-//                     let pos_off = Point2::new(x - 1, y);
-//                     c += current.get(pos_off, 0).clone() + dx_image.get(pos_off, 0).clone();
-//                     w += 1.0;
-//                 }
-//                 if x < img_size.x - 1 {
-//                     let pos_off = Point2::new(x + 1, y);
-//                     c += current.get(pos_off, 0).clone() - dx_image.get(pos, 0).clone();
-//                     w += 1.0;
-//                 }
-//                 if y > 0 {
-//                     let pos_off = Point2::new(x, y - 1);
-//                     c += current.get(pos_off, 0).clone() + dy_image.get(pos_off, 0).clone();
-//                     w += 1.0;
-//                 }
-//                 if y < img_size.y - 1 {
-//                     let pos_off = Point2::new(x, y + 1);
-//                     c += current.get(pos_off, 0).clone() - dy_image.get(pos, 0).clone();
-//                     w += 1.0;
-//                 }
-//                 c.scale(1.0 / w);
-//                 next.accumulate(pos, c, 0);
-//             }
-//         }
-//         std::mem::swap(&mut current, &mut next);
-//     }
-//     let elapsed = start.elapsed();
-//     info!(
-//         "Elapsed: {} ms",
-//         (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-//     );
-
-//     // Export the reconstruction
-//     let mut image: Bitmap = Bitmap::new(1, Point2::new(0, 0), img_size.clone());
-//     for x in 0..img_size.x {
-//         for y in 0..img_size.y {
-//             let pos = Point2::new(x, y);
-//             let pix_value = next.get(pos, 0).clone() + very_direct.get(pos, 0).clone();
-//             image.accumulate(pos, pix_value, 0);
-//         }
-//     }
-//     image
-// }
 
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
     match input {
