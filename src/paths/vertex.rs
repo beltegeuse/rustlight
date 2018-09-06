@@ -1,13 +1,13 @@
 use bsdfs::*;
 use cgmath::*;
 use geometry::Mesh;
+use paths::path::AvailableSamplingStrategy;
 use samplers::*;
 use scene::*;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use structure::*;
-use paths::path::AvailableSamplingStrategy;
 use Scale;
 
 #[derive(Clone)]

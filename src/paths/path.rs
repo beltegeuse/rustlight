@@ -9,10 +9,6 @@ use std::rc::Rc;
 use structure::*;
 use Scale;
 
-pub struct Path<'a> {
-    pub root: Rc<VertexPtr<'a>>,
-}
-
 pub trait SamplingStrategy<S: Sampler> {
     fn sample<'a>(
         &self,
@@ -226,6 +222,7 @@ impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
 
         None // Finish the sampling here
     }
+
     fn pdf<'a>(
         &self,
         scene: &'a Scene,
@@ -274,108 +271,39 @@ impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
     }
 }
 
-impl<'a> Path<'a> {
-    pub fn from_sensor<S: Sampler>(
-        (ix, iy): (u32, u32),
-        scene: &'a Scene,
-        sampler: &mut S,
-        max_depth: Option<u32>,
-        samplings: &Vec<Box<SamplingStrategy<S>>>,
-    ) -> Option<Path<'a>> {
-        // Initialize the root not
-        let root = Rc::new(RefCell::new(Vertex::Sensor(SensorVertex {
-            uv: Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next()),
-            pos: scene.camera.param.pos.clone(),
-            edge: None,
-        })));
-
-        let mut curr = vec![(root.clone(), Color::one())];
-        let mut next = vec![];
-        let mut depth = 1;
-
-        while max_depth.map_or(true, |max| depth < max) {
-            if curr.is_empty() {
-                break;
-            }
-
-            next.clear();
-            for (c, t) in &curr {
-                for sampling in samplings {
-                    if let Some((v, c)) = sampling.sample(c.clone(), scene, *t, sampler) {
-                        next.push((v, c));
+pub fn generate<'a, S: Sampler, T: Technique<'a, S>>(
+    scene: &'a Scene,
+    sampler: &mut S,
+    technique: &mut T,
+) {
+    let mut curr = technique.init(scene, sampler);
+    let mut next = vec![];
+    while !curr.is_empty() {
+        // Do a wavefront processing of the different vertices
+        next.clear();
+        for (curr_vertex, throughput) in &curr {
+            // For all the sampling techniques
+            for sampling in technique.stratgies(&curr_vertex) {
+                // If we want to continue the tracing toward this direction
+                if let Some((new_vertex, new_throughput)) =
+                    sampling.sample(curr_vertex.clone(), scene, *throughput, sampler)
+                {
+                    // This is the continue if we want to continue or not
+                    // For example, we might want to not push the vertex if we have reach the depth limit
+                    if technique.expend(&new_vertex) {
+                        next.push((new_vertex, new_throughput));
                     }
                 }
             }
-            mem::swap(&mut curr, &mut next);
-            depth += 1;
         }
-
-        Some(Path { root })
+        // Flip-flap buffer
+        mem::swap(&mut curr, &mut next);
     }
+}
 
-    fn evaluate_vertex<S: Sampler>(
-        scene: &'a Scene,
-        vertex: &Rc<VertexPtr<'a>>,
-        samplings: &Vec<Box<SamplingStrategy<S>>>,
-    ) -> Color {
-        let mut l_i = Color::zero();
-        match *vertex.borrow() {
-            Vertex::Surface(ref v) => {
-                for (i, edge) in v.edge_out.iter().enumerate() {
-                    let contrib = edge.borrow().contribution();
-                    if !contrib.is_zero() {
-                        let weight = if let PDF::SolidAngle(v) = edge.borrow().pdf_direction {
-                            let total: f32 = samplings
-                                .iter()
-                                .map(|s| {
-                                    if let Some(v) = s.pdf(scene, &vertex, edge) {
-                                        v
-                                    } else {
-                                        0.0
-                                    }
-                                })
-                                .sum();
-                            v / total
-                        } else {
-                            1.0
-                        };
-                        l_i += contrib * weight;
-                    }
-
-                    let edge = edge.borrow();
-                    if let Some(ref vertex_next) = edge.vertices.1 {
-                        l_i += edge.weight
-                            * edge.rr_weight
-                            * Path::evaluate_vertex(scene, &vertex_next, samplings);
-                    }
-                }
-            }
-            Vertex::Sensor(ref v) => {
-                // Only one strategy where...
-                let edge = v.edge.as_ref().unwrap();
-
-                // Get the potential contribution
-                let contrib = edge.borrow().contribution();
-                if !contrib.is_zero() {
-                    l_i += contrib;
-                }
-
-                // Do the reccursive call
-                if let Some(ref vertex_next) = edge.borrow().vertices.1 {
-                    l_i += edge.borrow().weight
-                        * Path::evaluate_vertex(scene, &vertex_next, samplings);
-                }
-            }
-            _ => {}
-        };
-
-        return l_i;
-    }
-    pub fn evaluate<S: Sampler>(
-        &self,
-        scene: &'a Scene,
-        samplings: &Vec<Box<SamplingStrategy<S>>>,
-    ) -> Color {
-        return Path::evaluate_vertex(scene, &self.root, samplings);
-    }
+pub trait Technique<'a, S: Sampler> {
+    fn evaluate(&self, scene: &'a Scene) -> Color;
+    fn init(&self, scene: &'a Scene, sampler: &mut S) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
+    fn stratgies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy<S>>>;
+    fn expend(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> bool;
 }
