@@ -8,6 +8,7 @@ use std::mem;
 use std::rc::Rc;
 use structure::*;
 use Scale;
+use math::{cosine_sample_hemisphere, Frame};
 
 pub trait SamplingStrategy<S: Sampler> {
     fn sample<'a>(
@@ -91,6 +92,29 @@ impl DirectionalSamplingStrategy {
                 }
 
                 return (None, None);
+            },
+            Vertex::Emitter(ref v) => {
+                // For now, just computing the outgoing direction
+                // Using cosine base weighting as we know that the light source
+                // can only be cosine based isotropic lighting
+                let d_out = cosine_sample_hemisphere(sampler.next2d());
+                let weight = v.mesh.emission;
+                
+                let frame = Frame::new(v.n);
+                let d_out_global = frame.to_world(d_out);
+                let ray = Ray::new(v.pos, d_out_global);
+
+                let (edge, new_vertex) = Edge::from_ray(
+                    ray,
+                    &vertex,
+                    PDF::SolidAngle(d_out.z),
+                    weight,
+                    1.0,
+                    scene,
+                    AvailableSamplingStrategy::Directional,
+                );
+
+                return (Some(edge), new_vertex);
             }
             _ => unimplemented!(),
         }
@@ -112,10 +136,13 @@ impl<S: Sampler> SamplingStrategy<S> for DirectionalSamplingStrategy {
         if let Some(e) = edge {
             match *vertex.borrow_mut() {
                 Vertex::Sensor(ref mut v) => {
-                    v.edge = Some(e);
+                    v.edge_out = Some(e);
                 }
                 Vertex::Surface(ref mut v) => {
                     v.edge_out.push(e);
+                }
+                Vertex::Emitter(ref mut v) => {
+                    v.edge_out = Some(e);
                 }
                 _ => unimplemented!(),
             }
@@ -182,7 +209,8 @@ impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
                         pos: light_record.p,
                         n: light_record.n,
                         mesh: light_record.emitter,
-                        edge: None,
+                        edge_in: None,
+                        edge_out: None,
                     })));
 
                     // FIXME: Only work for diffuse light

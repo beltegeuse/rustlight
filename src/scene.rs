@@ -81,10 +81,12 @@ impl Scene {
 
         // Update meshes information
         //  - which are light?
+        info!("Emitters:");
         if let Some(emitters_json) = v.get("emitters") {
             for e in emitters_json.as_array().unwrap() {
                 let name: String = e["mesh"].as_str().unwrap().to_string();
                 let emission: Color = serde_json::from_value(e["emission"].clone())?;
+                info!(" - emission: {}", name);
                 // Get the set of matched meshes
                 let mut matched_meshes = meshes
                     .iter_mut()
@@ -100,9 +102,11 @@ impl Scene {
             }
         }
         // - BSDF
+        info!("BSDFS:");
         if let Some(bsdfs_json) = v.get("bsdfs") {
             for b in bsdfs_json.as_array().unwrap() {
                 let name: String = serde_json::from_value(b["mesh"].clone())?;
+                info!(" - replace bsdf: {}", name);
                 let new_bsdf = parse_bsdf(&b)?;
                 let mut matched_meshes = meshes
                     .iter_mut()
@@ -118,6 +122,7 @@ impl Scene {
             }
         }
 
+        info!("Build vectors and Discrete CDF");
         // Transform the scene mesh from Box to Arc
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 

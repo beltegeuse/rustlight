@@ -27,7 +27,8 @@ impl<'a, S: Sampler> Technique<'a, S> for TechniquePathTracing<S> {
                 self.img_pos.y as f32 + sampler.next(),
             ),
             pos: scene.camera.param.pos.clone(),
-            edge: None,
+            edge_in: None,
+            edge_out: None,
         })));
 
         return vec![(root, Color::one())];
@@ -76,7 +77,7 @@ impl<S: Sampler> TechniquePathTracing<S> {
             }
             Vertex::Sensor(ref v) => {
                 // Only one strategy where...
-                let edge = v.edge.as_ref().unwrap();
+                let edge = v.edge_out.as_ref().unwrap();
 
                 // Get the potential contribution
                 let contrib = edge.borrow().contribution();

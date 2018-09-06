@@ -50,7 +50,7 @@ impl<'a> Edge<'a> {
         }));
 
         match *next_vertex.borrow_mut() {
-            Vertex::Emitter(ref mut v) => v.edge = Some(Rc::downgrade(&edge)),
+            Vertex::Emitter(ref mut v) => v.edge_in = Some(Rc::downgrade(&edge)),
             _ => unimplemented!(),
         };
 
@@ -127,7 +127,8 @@ impl<'a> Edge<'a> {
 pub struct SensorVertex<'a> {
     pub uv: Point2<f32>,
     pub pos: Point3<f32>,
-    pub edge: Option<Rc<EdgePtr<'a>>>,
+    pub edge_in: Option<Weak<EdgePtr<'a>>>,
+    pub edge_out: Option<Rc<EdgePtr<'a>>>,
 }
 
 #[derive(Clone)]
@@ -143,7 +144,8 @@ pub struct EmitterVertex<'a> {
     pub pos: Point3<f32>,
     pub n: Vector3<f32>,
     pub mesh: &'a Arc<Mesh>,
-    pub edge: Option<Weak<EdgePtr<'a>>>,
+    pub edge_in: Option<Weak<EdgePtr<'a>>>,
+    pub edge_out: Option<Rc<EdgePtr<'a>>>,
 }
 
 #[derive(Clone)]
