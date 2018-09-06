@@ -275,22 +275,23 @@ pub fn generate<'a, S: Sampler, T: Technique<'a, S>>(
     scene: &'a Scene,
     sampler: &mut S,
     technique: &mut T,
-) {
-    let mut curr = technique.init(scene, sampler);
+) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
+    let mut root = technique.init(scene, sampler);
+    let mut curr = root.clone();
     let mut next = vec![];
     while !curr.is_empty() {
         // Do a wavefront processing of the different vertices
         next.clear();
         for (curr_vertex, throughput) in &curr {
             // For all the sampling techniques
-            for sampling in technique.stratgies(&curr_vertex) {
+            for sampling in technique.strategies(&curr_vertex) {
                 // If we want to continue the tracing toward this direction
                 if let Some((new_vertex, new_throughput)) =
                     sampling.sample(curr_vertex.clone(), scene, *throughput, sampler)
                 {
                     // This is the continue if we want to continue or not
                     // For example, we might want to not push the vertex if we have reach the depth limit
-                    if technique.expend(&new_vertex) {
+                    if technique.expand(&new_vertex) {
                         next.push((new_vertex, new_throughput));
                     }
                 }
@@ -299,11 +300,12 @@ pub fn generate<'a, S: Sampler, T: Technique<'a, S>>(
         // Flip-flap buffer
         mem::swap(&mut curr, &mut next);
     }
+
+    root
 }
 
 pub trait Technique<'a, S: Sampler> {
-    fn evaluate(&self, scene: &'a Scene) -> Color;
     fn init(&self, scene: &'a Scene, sampler: &mut S) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
-    fn stratgies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy<S>>>;
-    fn expend(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> bool;
+    fn strategies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy<S>>>;
+    fn expand(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> bool;
 }

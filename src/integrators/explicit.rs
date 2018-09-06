@@ -7,34 +7,42 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use structure::*;
 
+/// This structure store the rendering options
+/// That the user have given through the command line
 pub struct IntegratorPathTracing {
     pub max_depth: Option<u32>,
 }
-pub struct TechniquePathTracing<'a, S: Sampler> {
+/// This structure is responsible to the graph generation
+pub struct TechniquePathTracing<S: Sampler> {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<SamplingStrategy<S>>>,
-    pub root: Rc<RefCell<Vertex<'a>>>,
+    pub img_pos: Point2<u32>,
 }
-impl<'a, S: Sampler> Technique<'a, S> for TechniquePathTracing<'a, S> {
-    fn evaluate(&self, scene: &'a Scene) -> Color {
-        return self.evaluate_vertex(scene, &self.root);
-    }
-
+impl<'a, S: Sampler> Technique<'a, S> for TechniquePathTracing<S> {
     fn init(&self, scene: &'a Scene, sampler: &mut S) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
         // Only generate a path from the sensor
-        return vec![(self.root.clone(), Color::one())];
+        let root = Rc::new(RefCell::new(Vertex::Sensor(SensorVertex {
+            uv: Point2::new(
+                self.img_pos.x as f32 + sampler.next(),
+                self.img_pos.y as f32 + sampler.next(),
+            ),
+            pos: scene.camera.param.pos.clone(),
+            edge: None,
+        })));
+
+        return vec![(root, Color::one())];
     }
 
-    fn expend(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> bool {
+    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> bool {
         return true;
     }
 
-    fn stratgies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy<S>>> {
+    fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy<S>>> {
         &self.samplings
     }
 }
-impl<'a, S: Sampler> TechniquePathTracing<'a, S> {
-    fn evaluate_vertex(&self, scene: &'a Scene, vertex: &Rc<VertexPtr<'a>>) -> Color {
+impl<S: Sampler> TechniquePathTracing<S> {
+    fn evaluate<'a>(&self, scene: &'a Scene, vertex: &Rc<VertexPtr<'a>>) -> Color {
         let mut l_i = Color::zero();
         match *vertex.borrow() {
             Vertex::Surface(ref v) => {
@@ -43,7 +51,7 @@ impl<'a, S: Sampler> TechniquePathTracing<'a, S> {
                     if !contrib.is_zero() {
                         let weight = if let PDF::SolidAngle(v) = edge.borrow().pdf_direction {
                             let total: f32 = self
-                                .stratgies(vertex)
+                                .strategies(vertex)
                                 .iter()
                                 .map(|s| {
                                     if let Some(v) = s.pdf(scene, &vertex, edge) {
@@ -62,9 +70,7 @@ impl<'a, S: Sampler> TechniquePathTracing<'a, S> {
 
                     let edge = edge.borrow();
                     if let Some(ref vertex_next) = edge.vertices.1 {
-                        l_i += edge.weight
-                            * edge.rr_weight
-                            * self.evaluate_vertex(scene, &vertex_next);
+                        l_i += edge.weight * edge.rr_weight * self.evaluate(scene, &vertex_next);
                     }
                 }
             }
@@ -80,7 +86,7 @@ impl<'a, S: Sampler> TechniquePathTracing<'a, S> {
 
                 // Do the reccursive call
                 if let Some(ref vertex_next) = edge.borrow().vertices.1 {
-                    l_i += edge.borrow().weight * self.evaluate_vertex(scene, &vertex_next);
+                    l_i += edge.borrow().weight * self.evaluate(scene, &vertex_next);
                 }
             }
             _ => {}
@@ -90,40 +96,20 @@ impl<'a, S: Sampler> TechniquePathTracing<'a, S> {
 }
 
 impl Integrator<Color> for IntegratorPathTracing {
-    fn compute<'a, S: Sampler>(
-        &self,
-        (ix, iy): (u32, u32),
-        scene: &'a Scene,
-        sampler: &mut S,
-    ) -> Color {
-        self.compute_try((ix, iy), scene, sampler)
-    }
-}
-
-impl IntegratorPathTracing {
-    fn compute_try<'a, 'b: 'a, S: Sampler>(
-        &self,
-        (ix, iy): (u32, u32),
-        scene: &'a Scene,
-        sampler: &mut S,
-    ) -> Color {
+    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
         // Initialize the technique
-        let root = Rc::new(RefCell::new(Vertex::Sensor(SensorVertex {
-            uv: Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next()),
-            pos: scene.camera.param.pos.clone(),
-            edge: None,
-        })));
         let mut samplings: Vec<Box<SamplingStrategy<S>>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
         samplings.push(Box::new(LightSamplingStrategy {}));
         let mut technique = TechniquePathTracing {
             max_depth: self.max_depth.clone(),
             samplings,
-            root,
+            img_pos: Point2::new(ix, iy),
         };
         // Call the generator on this technique
-        generate(scene, sampler, &mut technique);
-        // And evaluate the sampling graph
-        technique.evaluate(scene)
+        // the generator give back the root nodes
+        let root = generate(scene, sampler, &mut technique);
+        // Evaluate the sampling graph
+        technique.evaluate(scene, &root[0].0)
     }
 }

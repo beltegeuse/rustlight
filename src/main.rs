@@ -696,7 +696,7 @@ fn main() {
                 &scene,
                 nb_samples,
                 nb_threads,
-                rustlight::integrators::path_explicit::IntegratorPathTracing { max_depth },
+                rustlight::integrators::explicit::IntegratorPathTracing { max_depth },
             )
         }
         ("path", Some(m)) => {

@@ -2,7 +2,7 @@ use samplers::*;
 use scene::*;
 
 pub trait Integrator<T>: Sync + Send {
-    fn compute<'a, S: Sampler>(&self, pix: (u32, u32), scene: &'a Scene, sampler: &mut S) -> T;
+    fn compute<S: Sampler>(&self, pix: (u32, u32), scene: &Scene, sampler: &mut S) -> T;
 }
 /// Power heuristic for path tracing or direct lighting
 pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
@@ -24,5 +24,5 @@ pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
 pub mod ao;
 pub mod direct;
 pub mod path;
-pub mod path_explicit;
+pub mod explicit;
 pub mod prelude;

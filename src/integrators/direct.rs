@@ -9,7 +9,7 @@ pub struct IntegratorDirect {
 }
 
 impl Integrator<Color> for IntegratorDirect {
-    fn compute<'a, S: Sampler>(&self, (ix, iy): (u32, u32), scene: &'a Scene, sampler: &mut S) -> Color {
+    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
