@@ -1,14 +1,19 @@
 use cgmath::*;
-use structure::*;
 use integrators::*;
 use math::*;
+use structure::*;
 
 pub struct IntegratorAO {
     pub max_distance: Option<f32>,
 }
 
-impl Integrator<Color> for IntegratorAO {
-    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
+impl Integrator for IntegratorAO {
+    fn compute(&self, scene: &Scene) -> Bitmap {
+        compute_mc(self, scene)
+    }
+}
+impl IntegratorMC for IntegratorAO {
+    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
 

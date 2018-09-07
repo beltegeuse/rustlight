@@ -12,13 +12,13 @@ pub struct IntegratorPathTracing {
     pub max_depth: Option<u32>,
 }
 /// This structure is responsible to the graph generation
-pub struct TechniquePathTracing<S: Sampler> {
+pub struct TechniquePathTracing {
     pub max_depth: Option<u32>,
-    pub samplings: Vec<Box<SamplingStrategy<S>>>,
+    pub samplings: Vec<Box<SamplingStrategy>>,
     pub img_pos: Point2<u32>,
 }
-impl<'a, S: Sampler> Technique<'a, S> for TechniquePathTracing<S> {
-    fn init(&self, scene: &'a Scene, sampler: &mut S) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
+impl<'a> Technique<'a> for TechniquePathTracing {
+    fn init(&self, scene: &'a Scene, sampler: &mut Sampler) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
         // Only generate a path from the sensor
         let root = Rc::new(RefCell::new(Vertex::Sensor(SensorVertex {
             uv: Point2::new(
@@ -37,11 +37,11 @@ impl<'a, S: Sampler> Technique<'a, S> for TechniquePathTracing<S> {
         return true;
     }
 
-    fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy<S>>> {
+    fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }
-impl<S: Sampler> TechniquePathTracing<S> {
+impl TechniquePathTracing {
     fn evaluate<'a>(&self, scene: &'a Scene, vertex: &Rc<VertexPtr<'a>>) -> Color {
         let mut l_i = Color::zero();
         match *vertex.borrow() {
@@ -95,10 +95,15 @@ impl<S: Sampler> TechniquePathTracing<S> {
     }
 }
 
-impl Integrator<Color> for IntegratorPathTracing {
-    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
+impl Integrator for IntegratorPathTracing {
+    fn compute(&self, scene: &Scene) -> Bitmap {
+        compute_mc(self, scene)
+    }
+}
+impl IntegratorMC for IntegratorPathTracing {
+    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         // Initialize the technique
-        let mut samplings: Vec<Box<SamplingStrategy<S>>> = Vec::new();
+        let mut samplings: Vec<Box<SamplingStrategy>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
         samplings.push(Box::new(LightSamplingStrategy {}));
         let mut technique = TechniquePathTracing {

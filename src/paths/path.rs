@@ -8,13 +8,13 @@ use std::rc::Rc;
 use structure::*;
 use Scale;
 
-pub trait SamplingStrategy<S: Sampler> {
+pub trait SamplingStrategy {
     fn sample<'a>(
         &self,
         vertex: Rc<VertexPtr<'a>>,
         scene: &'a Scene,
         throughput: Color,
-        sampler: &mut S,
+        sampler: &mut Sampler,
         id_strategy: usize,
     ) -> Option<(Rc<VertexPtr<'a>>, Color)>;
 
@@ -29,11 +29,11 @@ pub trait SamplingStrategy<S: Sampler> {
 
 pub struct DirectionalSamplingStrategy {}
 impl DirectionalSamplingStrategy {
-    pub fn bounce<'a, S: Sampler>(
+    pub fn bounce<'a>(
         vertex: &Rc<VertexPtr<'a>>,
         scene: &'a Scene,
         throughput: &mut Color,
-        sampler: &mut S,
+        sampler: &mut Sampler,
         id_strategy: usize,
     ) -> (Option<Rc<EdgePtr<'a>>>, Option<Rc<VertexPtr<'a>>>) {
         match *vertex.borrow() {
@@ -113,13 +113,13 @@ impl DirectionalSamplingStrategy {
         }
     }
 }
-impl<S: Sampler> SamplingStrategy<S> for DirectionalSamplingStrategy {
+impl SamplingStrategy for DirectionalSamplingStrategy {
     fn sample<'a>(
         &self,
         vertex: Rc<VertexPtr<'a>>,
         scene: &'a Scene,
         mut throughput: Color,
-        sampler: &mut S,
+        sampler: &mut Sampler,
         id_strategy: usize,
     ) -> Option<(Rc<VertexPtr<'a>>, Color)> {
         // Generate the next edge and the next vertex
@@ -180,13 +180,13 @@ impl<S: Sampler> SamplingStrategy<S> for DirectionalSamplingStrategy {
 }
 
 pub struct LightSamplingStrategy {}
-impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
+impl SamplingStrategy for LightSamplingStrategy {
     fn sample<'a>(
         &self,
         vertex: Rc<VertexPtr<'a>>,
         scene: &'a Scene,
         mut _throughput: Color,
-        sampler: &mut S,
+        sampler: &mut Sampler,
         id_strategy: usize,
     ) -> Option<(Rc<VertexPtr<'a>>, Color)> {
         let (edge, _next_vertex) = match *vertex.borrow() {
@@ -298,9 +298,9 @@ impl<S: Sampler> SamplingStrategy<S> for LightSamplingStrategy {
     }
 }
 
-pub fn generate<'a, S: Sampler, T: Technique<'a, S>>(
+pub fn generate<'a, T: Technique<'a>>(
     scene: &'a Scene,
-    sampler: &mut S,
+    sampler: &mut Sampler,
     technique: &mut T,
 ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
     let root = technique.init(scene, sampler);
@@ -335,8 +335,8 @@ pub fn generate<'a, S: Sampler, T: Technique<'a, S>>(
     root
 }
 
-pub trait Technique<'a, S: Sampler> {
-    fn init(&self, scene: &'a Scene, sampler: &mut S) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
-    fn strategies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy<S>>>;
+pub trait Technique<'a> {
+    fn init(&self, scene: &'a Scene, sampler: &mut Sampler) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
+    fn strategies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>>;
     fn expand(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> bool;
 }

@@ -7,8 +7,13 @@ pub struct IntegratorPath {
     pub min_depth: Option<u32>,
 }
 
-impl Integrator<Color> for IntegratorPath {
-    fn compute<S: Sampler>(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut S) -> Color {
+impl Integrator for IntegratorPath {
+    fn compute(&self, scene: &Scene) -> Bitmap {
+        compute_mc(self, scene)
+    }
+}
+impl IntegratorMC for IntegratorPath {
+    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
         // Generate the first ray
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let mut ray = scene.camera.generate(pix);

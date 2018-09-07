@@ -50,6 +50,7 @@ impl<'a> LightSamplingPDF<'a> {
 pub struct Scene {
     /// Main camera
     pub camera: Camera,
+    pub nb_samples: usize,
     // Geometry information
     pub meshes: Vec<Arc<geometry::Mesh>>,
     pub emitters: Vec<Arc<geometry::Mesh>>,
@@ -60,9 +61,12 @@ pub struct Scene {
 }
 
 impl Scene {
+    pub fn nb_samples(&self) -> usize {
+        self.nb_samples
+    }
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: &str, wk: &std::path::Path) -> Result<Scene, Box<Error>> {
+    pub fn new(data: &str, wk: &std::path::Path, nb_samples: usize) -> Result<Scene, Box<Error>> {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(data)?;
 
@@ -152,6 +156,7 @@ impl Scene {
             meshes,
             emitters,
             emitters_cdf,
+            nb_samples
         })
     }
 
