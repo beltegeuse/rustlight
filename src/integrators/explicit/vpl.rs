@@ -1,12 +1,10 @@
 use cgmath::{InnerSpace, Point2, Point3, Vector3};
-use geometry::Mesh;
 use integrators::*;
 use paths::path::*;
 use paths::vertex::*;
 use samplers;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 use structure::*;
 
 pub struct IntegratorVPL {
@@ -19,8 +17,7 @@ struct VPLSurface<'a> {
     its: Intersection<'a>,
     radiance: Color,
 }
-struct VPLEmitter<'a> {
-    mesh: &'a Arc<Mesh>,
+struct VPLEmitter {
     pos: Point3<f32>,
     n: Vector3<f32>,
     emitted_radiance: Color,
@@ -28,7 +25,7 @@ struct VPLEmitter<'a> {
 
 enum VPL<'a> {
     Surface(VPLSurface<'a>),
-    Emitter(VPLEmitter<'a>),
+    Emitter(VPLEmitter),
 }
 
 pub struct TechniqueVPL {
@@ -95,7 +92,6 @@ impl TechniqueVPL {
             Vertex::Emitter(ref v) => {
                 let flux = v.mesh.emission / self.pdf_vertex.as_ref().unwrap().value();
                 vpls.borrow_mut().push(Box::new(VPL::Emitter(VPLEmitter {
-                    mesh: v.mesh,
                     pos: v.pos,
                     n: v.n,
                     emitted_radiance: flux,
@@ -217,7 +213,7 @@ impl IntegratorVPL {
                         let dist = d.magnitude();
                         d /= dist;
 
-                        let emitted_radiance = vpl.mesh.emission * vpl.n.dot(-d).max(0.0);
+                        let emitted_radiance = vpl.emitted_radiance * vpl.n.dot(-d).max(0.0);
                         let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d));
                         l_i += emitted_radiance * bsdf_val / (dist * dist);
                     }
