@@ -129,6 +129,8 @@ pub trait Integrator: Sync + Send {
         let buffernames = vec!["primal".to_string()];
         Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
+    fn preprocess(&mut self, scene: &Scene) {
+    }
 }
 pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color;
