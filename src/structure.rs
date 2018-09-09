@@ -295,6 +295,13 @@ impl<'a> Intersection<'a> {
     pub fn cos_theta(&self) -> f32 {
         self.wi.z
     }
+
+    pub fn to_local(&self, d: &Vector3<f32>) -> Vector3<f32> {
+        self.frame.to_local(*d)
+    }
+    pub fn to_world(&self, d: &Vector3<f32>) -> Vector3<f32> {
+        self.frame.to_world(*d)
+    }
 }
 
 #[derive(Clone, Debug, Copy)]

@@ -115,7 +115,7 @@ impl TechniqueLightTracing {
 }
 
 impl Integrator for IntegratorLightTracing {
-    fn compute(&self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> Bitmap {
         // Number of samples that the system will trace
         let nb_threads = rayon::current_num_threads();
         let nb_jobs = nb_threads * 4;
@@ -135,28 +135,31 @@ impl Integrator for IntegratorLightTracing {
             &buffer_names,
         ));
 
-        samplers.par_iter_mut().for_each(|s| {
-            let mut my_img: Bitmap =
-                Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
-            (0..nb_samples).into_iter().for_each(|_| {
-                // The sampling strategies
-                let samplings: Vec<Box<SamplingStrategy>> =
-                    vec![Box::new(DirectionalSamplingStrategy {})];
-                // Do the sampling here
-                let mut technique = TechniqueLightTracing {
-                    max_depth: self.max_depth,
-                    samplings,
-                    pdf_vertex: None,
-                };
-                let root = generate(scene, s, &mut technique);
-                // Evaluate the path generated using camera splatting operation
-                technique.evaluate(scene, &root[0].0, &mut my_img, Color::one());
+        let pool = generate_pool(scene);
+        pool.install(|| {
+            samplers.par_iter_mut().for_each(|s| {
+                let mut my_img: Bitmap =
+                    Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
+                (0..nb_samples).into_iter().for_each(|_| {
+                    // The sampling strategies
+                    let samplings: Vec<Box<SamplingStrategy>> =
+                        vec![Box::new(DirectionalSamplingStrategy {})];
+                    // Do the sampling here
+                    let mut technique = TechniqueLightTracing {
+                        max_depth: self.max_depth,
+                        samplings,
+                        pdf_vertex: None,
+                    };
+                    let root = generate(scene, s, &mut technique);
+                    // Evaluate the path generated using camera splatting operation
+                    technique.evaluate(scene, &root[0].0, &mut my_img, Color::one());
+                });
+                my_img.scale(1.0 / (nb_samples as f32));
+                {
+                    img.lock().unwrap().accumulate_bitmap(&my_img);
+                    progress_bar.lock().unwrap().inc();
+                }
             });
-            my_img.scale(1.0 / (nb_samples as f32));
-            {
-                img.lock().unwrap().accumulate_bitmap(&my_img);
-                progress_bar.lock().unwrap().inc();
-            }
         });
 
         let mut img: Bitmap = img.into_inner().unwrap();

@@ -8,7 +8,7 @@ pub struct IntegratorDirect {
 }
 
 impl Integrator for IntegratorDirect {
-    fn compute(&self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> Bitmap {
         compute_mc(self, scene)
     }
 }

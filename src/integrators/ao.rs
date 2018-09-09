@@ -8,7 +8,7 @@ pub struct IntegratorAO {
 }
 
 impl Integrator for IntegratorAO {
-    fn compute(&self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> Bitmap {
         compute_mc(self, scene)
     }
 }

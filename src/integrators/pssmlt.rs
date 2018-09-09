@@ -1,7 +1,7 @@
 use cgmath::Point2;
 use integrators::*;
-use structure::*;
 use samplers;
+use structure::*;
 
 struct MCMCState {
     pub value: Color,
@@ -30,7 +30,7 @@ pub struct IntegratorPSSMLT {
     pub integrator: Box<IntegratorMC>,
 }
 impl Integrator for IntegratorPSSMLT {
-    fn compute(&self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> Bitmap {
         ///////////// Define the closure
         let sample = |s: &mut Sampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
@@ -61,45 +61,61 @@ impl Integrator for IntegratorPSSMLT {
         let start = Instant::now();
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
         let buffer_names = vec!["primal".to_string()];
-        let img = Mutex::new(Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names));
-        samplers.par_iter_mut().for_each(|s| {
-            // Initialize the sampler
-            s.large_step = true;
-            let mut current_state = sample(s as &mut Sampler);
-            while current_state.tf == 0.0 {
-                s.reject();
-                current_state = sample(s as &mut Sampler);
-            }
-            s.accept();
-
-            let mut my_img: Bitmap = Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
-            (0..nb_samples_per_chains).into_iter().for_each(|_| {
-                // Choose randomly between large and small perturbation
-                s.large_step = s.rand() < self.large_prob;
-                let mut proposed_state = sample(s);
-                let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
-                // Do waste reclycling
-                current_state.weight += 1.0 - accept_prob;
-                proposed_state.weight += accept_prob;
-                if accept_prob > s.rand() {
-                    my_img.accumulate(current_state.pix, current_state.color(), &buffer_names[0]);
-                    s.accept();
-                    current_state = proposed_state;
-                } else {
-                    my_img.accumulate(proposed_state.pix, proposed_state.color(), &buffer_names[0]);
+        let img = Mutex::new(Bitmap::new(
+            Point2::new(0, 0),
+            *scene.camera.size(),
+            &buffer_names,
+        ));
+        let pool = generate_pool(scene);
+        pool.install(|| {
+            samplers.par_iter_mut().for_each(|s| {
+                // Initialize the sampler
+                s.large_step = true;
+                let mut current_state = sample(s as &mut Sampler);
+                while current_state.tf == 0.0 {
                     s.reject();
+                    current_state = sample(s as &mut Sampler);
+                }
+                s.accept();
+
+                let mut my_img: Bitmap =
+                    Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
+                (0..nb_samples_per_chains).into_iter().for_each(|_| {
+                    // Choose randomly between large and small perturbation
+                    s.large_step = s.rand() < self.large_prob;
+                    let mut proposed_state = sample(s);
+                    let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
+                    // Do waste reclycling
+                    current_state.weight += 1.0 - accept_prob;
+                    proposed_state.weight += accept_prob;
+                    if accept_prob > s.rand() {
+                        my_img.accumulate(
+                            current_state.pix,
+                            current_state.color(),
+                            &buffer_names[0],
+                        );
+                        s.accept();
+                        current_state = proposed_state;
+                    } else {
+                        my_img.accumulate(
+                            proposed_state.pix,
+                            proposed_state.color(),
+                            &buffer_names[0],
+                        );
+                        s.reject();
+                    }
+                });
+                // Flush the last state
+                my_img.accumulate(current_state.pix, current_state.color(), &buffer_names[0]);
+
+                my_img.scale(1.0 / (nb_samples_per_chains as f32));
+                {
+                    img.lock().unwrap().accumulate_bitmap(&my_img);
+                    progress_bar.lock().unwrap().inc();
                 }
             });
-            // Flush the last state
-            my_img.accumulate(current_state.pix, current_state.color(), &buffer_names[0]);
-
-            my_img.scale(1.0 / (nb_samples_per_chains as f32));
-            {
-                img.lock().unwrap().accumulate_bitmap(&my_img);
-                progress_bar.lock().unwrap().inc();
-            }
         });
-    
+
         let mut img: Bitmap = img.into_inner().unwrap();
         let elapsed = start.elapsed();
         info!(

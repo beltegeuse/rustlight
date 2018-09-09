@@ -51,6 +51,7 @@ pub struct Scene {
     /// Main camera
     pub camera: Camera,
     pub nb_samples: usize,
+    pub nb_threads: Option<usize>,
     // Geometry information
     pub meshes: Vec<Arc<geometry::Mesh>>,
     pub emitters: Vec<Arc<geometry::Mesh>>,
@@ -66,7 +67,12 @@ impl Scene {
     }
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: &str, wk: &std::path::Path, nb_samples: usize) -> Result<Scene, Box<Error>> {
+    pub fn new(
+        data: &str,
+        wk: &std::path::Path,
+        nb_samples: usize,
+        nb_threads: Option<usize>,
+    ) -> Result<Scene, Box<Error>> {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(data)?;
 
@@ -100,7 +106,7 @@ impl Scene {
                     0 => panic!("Not found {} in the obj list", name),
                     1 => {
                         matched_meshes[0].emission = emission;
-                        info!("vertices: {:?}",matched_meshes[0].trimesh.vertices);
+                        info!("vertices: {:?}", matched_meshes[0].trimesh.vertices);
                     }
                     _ => panic!("Several {} in the obj list", name),
                 };
@@ -152,16 +158,16 @@ impl Scene {
                 let fov: f32 = serde_json::from_value(camera_json["fov"].clone())?;
                 let img: Vector2<u32> = serde_json::from_value(camera_json["img"].clone())?;
                 let m: Vec<f32> = serde_json::from_value(camera_json["matrix"].clone())?;
-                
-                let matrix = Matrix4::new(m[0],m[4],m[8],m[12],
-                                          m[1],m[5],m[9],m[13],
-                                          m[2],m[6],m[10],m[14],
-                                          m[3],m[7],m[11],m[15]);
+
+                let matrix = Matrix4::new(
+                    m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14],
+                    m[3], m[7], m[11], m[15],
+                );
                 info!("m: {:?}", matrix);
                 Some(Camera::new(img, fov, matrix))
             } else {
                 None
-            }    
+            }
         };
 
         // Define a default scene
@@ -173,6 +179,7 @@ impl Scene {
             emitters,
             emitters_cdf,
             nb_samples,
+            nb_threads,
         })
     }
 

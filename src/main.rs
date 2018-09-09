@@ -101,6 +101,23 @@ fn main() {
                 .arg(&max_arg),
         )
         .subcommand(
+            SubCommand::with_name("vpl")
+                .about("brute force virtual point light integrator")
+                .arg(&max_arg)
+                .arg(
+                    Arg::with_name("clamping")
+                        .takes_value(true)
+                        .short("b")
+                        .default_value("0.0"),
+                )
+                .arg(
+                    Arg::with_name("nb_vpl")
+                        .takes_value(true)
+                        .short("n")
+                        .default_value("128"),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("ao").about("ambiant occlusion").arg(
                 Arg::with_name("distance")
                     .takes_value(true)
@@ -173,8 +190,8 @@ fn main() {
     let wk = scene_path
         .parent()
         .expect("impossible to extract parent directory for OBJ loading");
-    let mut scene =
-        rustlight::scene::Scene::new(&data, wk, nb_samples).expect("error when loading the scene");
+    let mut scene = rustlight::scene::Scene::new(&data, wk, nb_samples, nb_threads)
+        .expect("error when loading the scene");
 
     ///////////////// Tweak the image size
     {
@@ -191,12 +208,27 @@ fn main() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let int = rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth };
-            rustlight::integrators::run_integrator(&scene, nb_threads, int)
+            rustlight::integrators::run_integrator(&scene, int)
         }
         ("light-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let int = rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth };
-            rustlight::integrators::run_integrator(&scene, nb_threads, int)
+            rustlight::integrators::run_integrator(&scene, int)
+        }
+        ("vpl", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
+            let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
+            let int = rustlight::integrators::explicit::vpl::IntegratorVPL {
+                nb_vpl,
+                max_depth,
+                clamping_factor: if clamping <= 0.0 {
+                    None
+                } else {
+                    Some(clamping)
+                },
+            };
+            rustlight::integrators::run_integrator(&scene, int)
         }
         ("path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
@@ -205,7 +237,7 @@ fn main() {
                 max_depth,
                 min_depth,
             };
-            rustlight::integrators::run_integrator(&scene, nb_threads, int)
+            rustlight::integrators::run_integrator(&scene, int)
         }
         ("pssmlt", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
@@ -219,19 +251,19 @@ fn main() {
                     min_depth,
                 }),
             };
-            rustlight::integrators::run_integrator(&scene, nb_threads, int)
+            rustlight::integrators::run_integrator(&scene, int)
         }
         ("ao", Some(m)) => {
             let dist = match_infinity(m.value_of("distance").unwrap());
             let int = rustlight::integrators::ao::IntegratorAO { max_distance: dist };
-            rustlight::integrators::run_integrator(&scene, nb_threads, int)
+            rustlight::integrators::run_integrator(&scene, int)
         }
         ("direct", Some(m)) => {
             let int = rustlight::integrators::direct::IntegratorDirect {
                 nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
                 nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
             };
-            rustlight::integrators::run_integrator(&scene, nb_threads, int)
+            rustlight::integrators::run_integrator(&scene, int)
         }
         _ => panic!("unknown integrator"),
     };

@@ -1,19 +1,18 @@
+use cgmath::{InnerSpace, Point2, Point3, Vector3};
 use geometry::Mesh;
-use cgmath::{Point2,Vector3,InnerSpace,Point3};
 use integrators::*;
 use paths::path::*;
 use paths::vertex::*;
 use samplers;
 use std::cell::RefCell;
 use std::rc::Rc;
-use structure::*;
 use std::sync::Arc;
+use structure::*;
 
-pub struct IntegratorVPL<'a> {
+pub struct IntegratorVPL {
     pub nb_vpl: usize,
     pub max_depth: Option<u32>,
     pub clamping_factor: Option<f32>,
-    pub vpls: Vec<Box<VPL<'a>>>,
 }
 
 struct VPLSurface<'a> {
@@ -71,13 +70,13 @@ impl TechniqueVPL {
         &self,
         scene: &'a Scene,
         vertex: &Rc<VertexPtr<'a>>,
-        vpls: &mut Vec<Box<VPL<'a>>>,
+        vpls: &RefCell<Vec<Box<VPL<'a>>>>,
         flux: Color,
     ) {
         match *vertex.borrow() {
             Vertex::Surface(ref v) => {
-                vpls.push(Box::new(VPL::Surface(VPLSurface {
-                    its: v.its,
+                vpls.borrow_mut().push(Box::new(VPL::Surface(VPLSurface {
+                    its: v.its.clone(),
                     radiance: flux,
                 })));
 
@@ -87,7 +86,7 @@ impl TechniqueVPL {
                         self.convert_vpl(
                             scene,
                             vertex_next,
-                            &mut vpls,
+                            vpls,
                             flux * edge.weight * edge.rr_weight,
                         );
                     }
@@ -95,7 +94,7 @@ impl TechniqueVPL {
             }
             Vertex::Emitter(ref v) => {
                 let flux = v.mesh.emission / self.pdf_vertex.as_ref().unwrap().value();
-                vpls.push(Box::new(VPL::Emitter(VPLEmitter {
+                vpls.borrow_mut().push(Box::new(VPL::Emitter(VPLEmitter {
                     mesh: v.mesh,
                     pos: v.pos,
                     n: v.n,
@@ -105,7 +104,7 @@ impl TechniqueVPL {
                 if let Some(ref edge) = v.edge_out {
                     let edge = edge.borrow();
                     if let Some(ref next_vertex) = edge.vertices.1 {
-                        self.convert_vpl(scene, next_vertex, &mut vpls, edge.weight * flux);
+                        self.convert_vpl(scene, next_vertex, vpls, edge.weight * flux);
                     }
                 }
             }
@@ -114,11 +113,14 @@ impl TechniqueVPL {
     }
 }
 
-impl<'a, 'b: 'a> Integrator for IntegratorVPL<'b> {
-    fn preprocess(&mut self, scene: &Scene) {
+impl Integrator for IntegratorVPL {
+    fn compute(&mut self, scene: &Scene) -> Bitmap {
         info!("Generating the VPL...");
-        let sampler = samplers::independent::IndependentSampler::default();
-        while self.vpls.len() < self.nb_vpl as usize {
+        let buffernames = vec!["primal".to_string()];
+        let mut sampler = samplers::independent::IndependentSampler::default();
+        let mut nb_path_shot = 0;
+        let vpls = RefCell::new(vec![]);
+        while vpls.borrow().len() < self.nb_vpl as usize {
             let samplings: Vec<Box<SamplingStrategy>> =
                 vec![Box::new(DirectionalSamplingStrategy {})];
             let mut technique = TechniqueVPL {
@@ -126,39 +128,118 @@ impl<'a, 'b: 'a> Integrator for IntegratorVPL<'b> {
                 samplings,
                 pdf_vertex: None,
             };
-            let root = generate::<'b>(scene, &mut sampler, &mut technique);
-            technique.convert_vpl(scene, &root[0].0, &mut self.vpls, Color::one());
-        }
-    }
 
-    fn compute(&self, scene: &Scene) -> Bitmap {
-        compute_mc(self, scene)
+            let root = generate(scene, &mut sampler, &mut technique);
+            technique.convert_vpl(scene, &root[0].0, &vpls, Color::one());
+            nb_path_shot += 1;
+        }
+        let vpls = vpls.into_inner();
+
+        // Generate the image block to get VPL efficiently
+        let mut image_blocks: Vec<Bitmap> = Vec::new();
+        for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
+            for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
+                let mut block = Bitmap::new(
+                    Point2 {
+                        x: ix as u32,
+                        y: iy as u32,
+                    },
+                    Vector2 {
+                        x: cmp::min(16, scene.camera.size().x - ix as u32),
+                        y: cmp::min(16, scene.camera.size().y - iy as u32),
+                    },
+                    &buffernames,
+                );
+                image_blocks.push(block);
+            }
+        }
+
+        // Render the image blocks VPL integration
+        info!("Gathering VPL...");
+        let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
+        let pool = generate_pool(scene);
+        pool.install(|| {
+            image_blocks.par_iter_mut().for_each(|im_block| {
+                let mut sampler = independent::IndependentSampler::default();
+                for ix in 0..im_block.size.x {
+                    for iy in 0..im_block.size.y {
+                        for _ in 0..scene.nb_samples() {
+                            let c = self.compute_vpl_contrib(
+                                (ix + im_block.pos.x, iy + im_block.pos.y),
+                                scene,
+                                &mut sampler,
+                                &vpls,
+                            );
+                            im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
+                        }
+                    }
+                }
+                im_block.scale(1.0 / (scene.nb_samples() as f32));
+                {
+                    progress_bar.lock().unwrap().inc();
+                }
+            });
+        });
+
+        // Fill the image
+        let mut image = Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
+        for im_block in &image_blocks {
+            image.accumulate_bitmap(im_block);
+        }
+        image.scale(1.0 / nb_path_shot as f32);
+        image
     }
 }
 
-impl<'a> IntegratorMC for IntegratorVPL<'a> {
-    fn compute_pixel(&self, (ix,iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
+impl IntegratorVPL {
+    fn compute_vpl_contrib<'a>(
+        &self,
+        (ix, iy): (u32, u32),
+        scene: &'a Scene,
+        sampler: &mut Sampler,
+        vpls: &Vec<Box<VPL<'a>>>,
+    ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
-        let mut ray = scene.camera.generate(pix);
+        let ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
-        let mut throughput = Color::one();
 
         // Check if we have a intersection with the primary ray
-        let mut its = match scene.trace(&ray) {
+        let its = match scene.trace(&ray) {
             Some(x) => x,
             None => return l_i,
         };
 
-        for vpl in &self.vpls {
+        for vpl in vpls {
             match **vpl {
                 VPL::Emitter(ref vpl) => {
-                    
-                },
+                    if scene.visible(&vpl.pos, &its.p) {
+                        let mut d = vpl.pos - its.p;
+                        let dist = d.magnitude();
+                        d /= dist;
+
+                        let emitted_radiance = vpl.mesh.emission * vpl.n.dot(-d).max(0.0);
+                        let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d));
+                        l_i += emitted_radiance * bsdf_val / (dist * dist);
+                    }
+                }
                 VPL::Surface(ref vpl) => {
+                    if scene.visible(&vpl.its.p, &its.p) {
+                        let mut d = vpl.its.p - its.p;
+                        let dist = d.magnitude();
+                        d /= dist;
+
+                        let emitted_radiance = vpl.its.mesh.bsdf.eval(
+                            &vpl.its.uv,
+                            &vpl.its.wi,
+                            &vpl.its.to_local(&-d),
+                        );
+                        let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d));
+                        l_i += emitted_radiance * bsdf_val * vpl.radiance / (dist * dist);
+                    }
                 }
             }
         }
 
-        return l_i;
+        l_i
     }
 }

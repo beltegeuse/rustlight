@@ -8,7 +8,7 @@ pub struct IntegratorPath {
 }
 
 impl Integrator for IntegratorPath {
-    fn compute(&self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> Bitmap {
         compute_mc(self, scene)
     }
 }

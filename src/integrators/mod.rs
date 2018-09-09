@@ -125,11 +125,9 @@ impl Scale<f32> for Bitmap {
 
 /////////////// Integrators code
 pub trait Integrator: Sync + Send {
-    fn compute(&self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> Bitmap {
         let buffernames = vec!["primal".to_string()];
         Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
-    }
-    fn preprocess(&mut self, scene: &Scene) {
     }
 }
 pub trait IntegratorMC: Sync + Send {
@@ -162,25 +160,28 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitma
 
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
-    image_blocks.par_iter_mut().for_each(|im_block| {
-        let mut sampler = independent::IndependentSampler::default();
-        for ix in 0..im_block.size.x {
-            for iy in 0..im_block.size.y {
-                for _ in 0..scene.nb_samples() {
-                    let c = int.compute_pixel(
-                        (ix + im_block.pos.x, iy + im_block.pos.y),
-                        scene,
-                        &mut sampler,
-                    );
-                    im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
+    let pool = generate_pool(scene);
+    pool.install(|| {
+        image_blocks.par_iter_mut().for_each(|im_block| {
+            let mut sampler = independent::IndependentSampler::default();
+            for ix in 0..im_block.size.x {
+                for iy in 0..im_block.size.y {
+                    for _ in 0..scene.nb_samples() {
+                        let c = int.compute_pixel(
+                            (ix + im_block.pos.x, iy + im_block.pos.y),
+                            scene,
+                            &mut sampler,
+                        );
+                        im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
+                    }
                 }
             }
-        }
-        im_block.scale(1.0 / (scene.nb_samples() as f32));
+            im_block.scale(1.0 / (scene.nb_samples() as f32));
 
-        {
-            progress_bar.lock().unwrap().inc();
-        }
+            {
+                progress_bar.lock().unwrap().inc();
+            }
+        });
     });
 
     // Fill the image
@@ -191,20 +192,19 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitma
     image
 }
 
-pub fn run_integrator<T: Integrator + Send + Sync>(
-    scene: &Scene,
-    nb_threads: Option<usize>,
-    int: T,
-) -> Bitmap {
-    ////////////// Do the rendering
-    info!("Rendering...");
-    let start = Instant::now();
-    let pool = match nb_threads {
+pub fn generate_pool(scene: &Scene) -> rayon::ThreadPool {
+    match scene.nb_threads {
         None => rayon::ThreadPoolBuilder::new(),
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
-        .unwrap();
-    let img = pool.install(|| int.compute(scene));
+        .unwrap()
+}
+
+pub fn run_integrator<T: Integrator + Send + Sync>(scene: &Scene, mut int: T) -> Bitmap {
+    ////////////// Do the rendering
+    info!("Rendering...");
+    let start = Instant::now();
+    let img = int.compute(scene);
     let elapsed = start.elapsed();
     info!(
         "Elapsed: {} ms",
