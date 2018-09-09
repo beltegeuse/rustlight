@@ -336,7 +336,7 @@ pub fn generate<'a, T: Technique<'a>>(
 }
 
 pub trait Technique<'a> {
-    fn init(&self, scene: &'a Scene, sampler: &mut Sampler) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
+    fn init(&mut self, scene: &'a Scene, sampler: &mut Sampler) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
     fn strategies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>>;
     fn expand(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> bool;
 }

@@ -18,7 +18,11 @@ pub struct TechniquePathTracing {
     pub img_pos: Point2<u32>,
 }
 impl<'a> Technique<'a> for TechniquePathTracing {
-    fn init(&self, scene: &'a Scene, sampler: &mut Sampler) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
+    fn init(
+        &mut self,
+        scene: &'a Scene,
+        sampler: &mut Sampler,
+    ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
         // Only generate a path from the sensor
         let root = Rc::new(RefCell::new(Vertex::Sensor(SensorVertex {
             uv: Point2::new(

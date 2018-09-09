@@ -96,17 +96,11 @@ fn main() {
                 .arg(&max_arg),
         )
         .subcommand(
-            //     SubCommand::with_name("gd-path")
-            //         .about("gradient-domain path tracing")
-            //         .arg(&max_arg)
-            //         .arg(&min_arg)
-            //         .arg(&iterations_arg),
-            // ).subcommand(
-            //     SubCommand::with_name("gd-path-explicit")
-            //         .about("gradient-domain path tracing with explicit path generation")
-            //         .arg(&max_arg)
-            //         .arg(&iterations_arg),
-            // ).subcommand(
+            SubCommand::with_name("light-explicit")
+                .about("light tracing with explict light path construction")
+                .arg(&max_arg),
+        )
+        .subcommand(
             SubCommand::with_name("ao").about("ambiant occlusion").arg(
                 Arg::with_name("distance")
                     .takes_value(true)
@@ -179,7 +173,8 @@ fn main() {
     let wk = scene_path
         .parent()
         .expect("impossible to extract parent directory for OBJ loading");
-    let mut scene = rustlight::scene::Scene::new(&data, wk, nb_samples).expect("error when loading the scene");
+    let mut scene =
+        rustlight::scene::Scene::new(&data, wk, nb_samples).expect("error when loading the scene");
 
     ///////////////// Tweak the image size
     {
@@ -195,7 +190,12 @@ fn main() {
     let img = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            let int = rustlight::integrators::explicit::IntegratorPathTracing { max_depth };
+            let int = rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth };
+            rustlight::integrators::run_integrator(&scene, nb_threads, int)
+        }
+        ("light-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let int = rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth };
             rustlight::integrators::run_integrator(&scene, nb_threads, int)
         }
         ("path", Some(m)) => {

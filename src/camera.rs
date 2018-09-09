@@ -98,7 +98,10 @@ impl Camera {
         if screen_pos.x < 0.0 || screen_pos.x > 1.0 || screen_pos.y < 0.0 || screen_pos.y > 1.0 {
             return None;
         }
-        let screen_pos = Point2::new(screen_pos.x * self.param.img.x as f32, screen_pos.y * self.param.img.y as f32);
+        let screen_pos = Point2::new(
+            screen_pos.x * self.param.img.x as f32,
+            screen_pos.y * self.param.img.y as f32,
+        );
 
         let mut local_d = ref_p.to_vec();
         let inv_dist = 1.0 / local_d.magnitude();
@@ -119,7 +122,8 @@ impl Camera {
         }
         let inv_cos_theta = 1.0 / cos_theta;
         let p = Point2::new(d.x * inv_cos_theta, d.y * inv_cos_theta);
-        if p.x < 0.0 || p.x > self.param.img.x as f32 || p.y < 0.0 || p.x > self.param.img.y as f32 {
+        if p.x < 0.0 || p.x > self.param.img.x as f32 || p.y < 0.0 || p.x > self.param.img.y as f32
+        {
             return 0.0;
         }
 

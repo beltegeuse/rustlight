@@ -10,7 +10,7 @@
             "name": "Launch Program",
             "target": "${workspaceRoot}/target/debug/rustlight",
             "cwd": "${workspaceRoot}",
-            "arguments": "-n 16 -o debug.pfm ./data/scenes/cbox/cbox.json path-explicit-naive",
+            "arguments": "-n 16 -o debug.pfm ./data/cbox_test.json light-explicit",
         }
     ]
 }

@@ -156,7 +156,7 @@ impl Scene {
             meshes,
             emitters,
             emitters_cdf,
-            nb_samples
+            nb_samples,
         })
     }
 
@@ -229,5 +229,15 @@ impl Scene {
     pub fn random_select_emitter(&self, v: f32) -> (f32, &Arc<geometry::Mesh>) {
         let id_light = self.emitters_cdf.sample(v);
         (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
+    }
+    pub fn random_sample_emitter_position(
+        &self,
+        v1: f32,
+        v2: f32,
+        uv: Point2<f32>,
+    ) -> (&Arc<geometry::Mesh>, PDF, geometry::SampledPosition) {
+        let (pdf_sel, emitter) = self.random_select_emitter(v1);
+        let sampled_pos = emitter.sample(v2, uv);
+        (emitter, PDF::Area(pdf_sel * sampled_pos.pdf), sampled_pos)
     }
 }
