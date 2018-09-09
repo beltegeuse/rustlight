@@ -29,7 +29,7 @@ impl<'a> Technique<'a> for TechniquePathTracing {
                 self.img_pos.x as f32 + sampler.next(),
                 self.img_pos.y as f32 + sampler.next(),
             ),
-            pos: scene.camera.param.pos.clone(),
+            pos: scene.camera.position(),
             edge_in: None,
             edge_out: None,
         })));

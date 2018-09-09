@@ -13,7 +13,7 @@ pub fn save_pfm(imgout_path_str: &str, img: &Bitmap, name: &String) {
     file.write(header.as_bytes()).unwrap();
     for y in 0..img.size.y {
         for x in 0..img.size.x {
-            let p = img.get(Point2::new(img.size.x - x - 1, img.size.y - y - 1), name);
+            let p = img.get(Point2::new(x, img.size.y - y - 1), name);
             file.write_f32::<LittleEndian>(p.r.abs()).unwrap();
             file.write_f32::<LittleEndian>(p.g.abs()).unwrap();
             file.write_f32::<LittleEndian>(p.b.abs()).unwrap();
@@ -26,7 +26,7 @@ pub fn save_png(imgout_path_str: &str, img: &Bitmap, name: &String) {
     let mut image_ldr = DynamicImage::new_rgb8(img.size.x, img.size.y);
     for x in 0..img.size.x {
         for y in 0..img.size.y {
-            let p = Point2::new(img.size.x - x - 1, y);
+            let p = Point2::new(x, y);
             image_ldr.put_pixel(x, y, img.get(p, name).to_rgba())
         }
     }

@@ -1,5 +1,5 @@
 use bsdfs::*;
-use camera::{Camera, CameraParam};
+use camera::Camera;
 use cgmath::*;
 use embree_rs;
 use geometry;
@@ -100,6 +100,7 @@ impl Scene {
                     0 => panic!("Not found {} in the obj list", name),
                     1 => {
                         matched_meshes[0].emission = emission;
+                        info!("vertices: {:?}",matched_meshes[0].trimesh.vertices);
                     }
                     _ => panic!("Several {} in the obj list", name),
                 };
@@ -146,11 +147,26 @@ impl Scene {
         };
 
         // Read the camera config
-        let camera_param: CameraParam = serde_json::from_value(v["camera"].clone()).unwrap();
+        let camera = {
+            if let Some(camera_json) = v.get("camera") {
+                let fov: f32 = serde_json::from_value(camera_json["fov"].clone())?;
+                let img: Vector2<u32> = serde_json::from_value(camera_json["img"].clone())?;
+                let m: Vec<f32> = serde_json::from_value(camera_json["matrix"].clone())?;
+                
+                let matrix = Matrix4::new(m[0],m[4],m[8],m[12],
+                                          m[1],m[5],m[9],m[13],
+                                          m[2],m[6],m[10],m[14],
+                                          m[3],m[7],m[11],m[15]);
+                info!("m: {:?}", matrix);
+                Some(Camera::new(img, fov, matrix))
+            } else {
+                None
+            }    
+        };
 
         // Define a default scene
         Ok(Scene {
-            camera: Camera::new(camera_param),
+            camera: camera.unwrap(),
             embree_device: device,
             embree_scene: scene_embree,
             meshes,

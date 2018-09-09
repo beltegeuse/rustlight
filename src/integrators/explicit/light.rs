@@ -57,43 +57,53 @@ impl TechniqueLightTracing {
         match *vertex.borrow() {
             Vertex::Surface(ref v) => {
                 // Chech the visibility from the point to the sensor
-                let pos_sensor = scene.camera.param.pos;
+                let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.its.p).normalize();
-                // Splat the contribution
-                if let Some((importance, uv)) = scene.camera.sample_direct(&v.its.p) {
-                    let bsdf_value = v.its.mesh.bsdf.eval(
-                        &v.its.uv,
-                        &v.its.wi,
-                        &v.its.frame.to_local(d),
-                    );
-                    bitmap.accumulate(
-                        Point2::new(uv.x as u32, uv.y as u32),
-                        flux,
-                        &"primal".to_string(),
-                    ); // * importance * bsdf_value
+                if scene.visible(&v.its.p, &pos_sensor) {
+                    // Splat the contribution
+                    if let Some((importance, uv)) = scene.camera.sample_direct(&v.its.p) {
+                        let wo_local = v.its.frame.to_local(d);
+                        let wi_global = v.its.frame.to_world(v.its.wi);
+                        let bsdf_value = v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &wo_local);
+                        let correction = (v.its.wi.z * d.dot(v.its.n_g))
+                            / (wo_local.z * wi_global.dot(v.its.n_g));
+                        bitmap.accumulate_safe(
+                            Point2::new(uv.x as i32, uv.y as i32),
+                            flux * importance * bsdf_value * correction,
+                            &"primal".to_string(),
+                        );
+                    }
                 }
 
                 for edge in &v.edge_out {
-                    let contrib = edge.borrow().contribution();
-                    if !contrib.is_zero() {
-                        let edge = edge.borrow();
-                        if let Some(ref vertex_next) = edge.vertices.1 {
-                            self.evaluate(
-                                scene,
-                                vertex_next,
-                                bitmap,
-                                flux * edge.weight * edge.rr_weight,
-                            );
-                        }
+                    let edge = edge.borrow();
+                    if let Some(ref vertex_next) = edge.vertices.1 {
+                        self.evaluate(
+                            scene,
+                            vertex_next,
+                            bitmap,
+                            flux * edge.weight * edge.rr_weight,
+                        );
                     }
                 }
             }
             Vertex::Emitter(ref v) => {
-                let flux = Color::one(); //v.mesh.emission / self.pdf_vertex.as_ref().unwrap().value();
+                let flux = v.mesh.emission / self.pdf_vertex.as_ref().unwrap().value();
+                let pos_sensor = scene.camera.position();
+                let d = (pos_sensor - v.pos).normalize();
+                if scene.visible(&v.pos, &pos_sensor) {
+                    if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
+                        bitmap.accumulate_safe(
+                            Point2::new(uv.x as i32, uv.y as i32),
+                            flux * importance,
+                            &"primal".to_string(),
+                        );
+                    }
+                }
                 if let Some(ref edge) = v.edge_out {
                     let edge = edge.borrow();
                     if let Some(ref next_vertex) = edge.vertices.1 {
-                        self.evaluate(scene, next_vertex, bitmap, flux);
+                        self.evaluate(scene, next_vertex, bitmap, edge.weight * flux);
                     }
                 }
             }
@@ -112,11 +122,9 @@ impl Integrator for IntegratorLightTracing {
             samplers.push(samplers::independent::IndependentSampler::default());
         }
         let nb_samples = (scene.nb_samples()
-            * ((scene.camera.size().x * scene.camera.size().y) as usize)
-            / nb_jobs) as usize;
+            * ((scene.camera.size().x * scene.camera.size().y) as usize))
+            / nb_jobs as usize;
 
-        info!("Rendering...");
-        let start = Instant::now();
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
         let buffer_names = vec!["primal".to_string()];
         let img = Mutex::new(Bitmap::new(
@@ -150,13 +158,8 @@ impl Integrator for IntegratorLightTracing {
         });
 
         let mut img: Bitmap = img.into_inner().unwrap();
-        let elapsed = start.elapsed();
-        info!(
-            "Elapsed: {} ms",
-            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-        );
-
         img.scale(1.0 / nb_jobs as f32);
+        img.scale((scene.camera.img.x * scene.camera.img.y) as f32 / scene.nb_samples() as f32);
         img
     }
 }

@@ -68,7 +68,7 @@ impl Bitmap {
                     let p = Point2::new(o.pos.x + x, o.pos.y + y);
                     let index = (p.y * self.size.y + p.x) as usize;
                     let index_other = (y * o.size.y + x) as usize;
-                    pixels[index] = other_pixels[index_other];
+                    pixels[index] += other_pixels[index_other];
                 }
             }
         }
