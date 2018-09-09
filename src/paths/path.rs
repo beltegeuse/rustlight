@@ -2,6 +2,7 @@ use math::{cosine_sample_hemisphere, Frame};
 use paths::vertex::*;
 use samplers::*;
 use scene::*;
+use std;
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
@@ -92,16 +93,19 @@ impl DirectionalSamplingStrategy {
                 // Using cosine base weighting as we know that the light source
                 // can only be cosine based isotropic lighting
                 let d_out = cosine_sample_hemisphere(sampler.next2d());
-                let weight = v.mesh.emission;
+                if d_out.z == 0.0 {
+                    return (None, None); // Failed to sample the outgoing direction
+                }
 
                 let frame = Frame::new(v.n);
                 let d_out_global = frame.to_world(d_out);
                 let ray = Ray::new(v.pos, d_out_global);
+                let weight = v.mesh.emission * std::f32::consts::FRAC_1_PI;
 
                 let (edge, new_vertex) = Edge::from_ray(
                     ray,
                     &vertex,
-                    PDF::SolidAngle(d_out.z),
+                    PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
                     weight,
                     1.0,
                     scene,
@@ -336,7 +340,11 @@ pub fn generate<'a, T: Technique<'a>>(
 }
 
 pub trait Technique<'a> {
-    fn init(&mut self, scene: &'a Scene, sampler: &mut Sampler) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
+    fn init(
+        &mut self,
+        scene: &'a Scene,
+        sampler: &mut Sampler,
+    ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
     fn strategies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>>;
     fn expand(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> bool;
 }

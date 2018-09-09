@@ -94,7 +94,7 @@ impl Camera {
         if importance == 0.0 {
             None
         } else {
-            Some((Color::value(importance), screen_pos))
+            Some((Color::value(importance) * inv_dist * inv_dist, screen_pos))
         }
     }
 
@@ -115,7 +115,7 @@ impl Camera {
         }
 
         let size = (self.image_rect_max.x - self.image_rect_min.x)*(self.image_rect_max.y - self.image_rect_min.y);
-        return (1.0 / size as f32) * inv_cos_theta * inv_cos_theta;
+        return (1.0 / size as f32) * inv_cos_theta * inv_cos_theta * inv_cos_theta;
     }
 
     pub fn position(&self) -> Point3<f32> {

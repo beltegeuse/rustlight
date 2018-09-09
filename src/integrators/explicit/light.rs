@@ -59,14 +59,16 @@ impl TechniqueLightTracing {
                 // Chech the visibility from the point to the sensor
                 let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.its.p).normalize();
-                if scene.visible(&v.its.p, &pos_sensor) {
+                if !v.its.mesh.bsdf.is_smooth() && scene.visible(&v.its.p, &pos_sensor) {
                     // Splat the contribution
                     if let Some((importance, uv)) = scene.camera.sample_direct(&v.its.p) {
+                        // Compute BSDF for the splatting
                         let wo_local = v.its.frame.to_local(d);
                         let wi_global = v.its.frame.to_world(v.its.wi);
                         let bsdf_value = v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &wo_local);
                         let correction = (v.its.wi.z * d.dot(v.its.n_g))
                             / (wo_local.z * wi_global.dot(v.its.n_g));
+                        // Accumulate the results
                         bitmap.accumulate_safe(
                             Point2::new(uv.x as i32, uv.y as i32),
                             flux * importance * bsdf_value * correction,
@@ -95,7 +97,7 @@ impl TechniqueLightTracing {
                     if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
                         bitmap.accumulate_safe(
                             Point2::new(uv.x as i32, uv.y as i32),
-                            flux * importance,
+                            flux * importance * d.dot(v.n),
                             &"primal".to_string(),
                         );
                     }
@@ -159,7 +161,7 @@ impl Integrator for IntegratorLightTracing {
 
         let mut img: Bitmap = img.into_inner().unwrap();
         img.scale(1.0 / nb_jobs as f32);
-        img.scale((scene.camera.img.x * scene.camera.img.y) as f32 / scene.nb_samples() as f32);
+        img.scale((scene.camera.img.x * scene.camera.img.y) as f32);
         img
     }
 }
