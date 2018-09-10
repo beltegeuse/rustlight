@@ -18,13 +18,13 @@ use Scale;
 pub struct Bitmap {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
-    pub values: HashMap<String, Vec<Color>>,
+    pub values: HashMap<&'static str, Vec<Color>>,
 }
 unsafe impl Send for Bitmap {}
 
 impl Bitmap {
     /// Create a new Bitmap
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<String>) -> Bitmap {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<&'static str>) -> Bitmap {
         let mut bitmap = Bitmap {
             pos,
             size,
@@ -49,9 +49,9 @@ impl Bitmap {
     }
 
     /// Register a name for a particular buffer
-    pub fn register(&mut self, name: &String) {
+    pub fn register(&mut self, name: &'static str) {
         self.values.insert(
-            name.to_string(),
+            name,
             vec![Color::default(); (self.size.x * self.size.y) as usize],
         );
     }
@@ -59,7 +59,7 @@ impl Bitmap {
     pub fn accumulate_bitmap(&mut self, o: &Bitmap) {
         // This is special, it does not allowed to write twice the same pixels
         // This function is only when we
-
+        info!("{:?}/{:?} <- {:?}/{:?}", self.size, self.pos, o.size, o.pos);
         for keys in o.values.keys() {
             let mut pixels = self.values.get_mut(keys).unwrap();
             let other_pixels = &o.values[keys];
@@ -74,14 +74,14 @@ impl Bitmap {
         }
     }
 
-    pub fn accumulate(&mut self, p: Point2<u32>, f: Color, name: &String) {
+    pub fn accumulate(&mut self, p: Point2<u32>, f: Color, name: &str) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         let index = (p.y * self.size.y + p.x) as usize;
         self.values.get_mut(name).unwrap()[index] += f;
     }
 
-    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: Color, name: &String) {
+    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: Color, name: &str) {
         if p.x >= 0 && p.y >= 0 && p.x < (self.size.x as i32) && p.y < (self.size.y as i32) {
             self.accumulate(
                 Point2 {
@@ -94,7 +94,7 @@ impl Bitmap {
         }
     }
 
-    pub fn get(&self, p: Point2<u32>, name: &String) -> &Color {
+    pub fn get(&self, p: Point2<u32>, name: &str) -> &Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         &self.values[name][(p.y * self.size.y + p.x) as usize]
@@ -106,7 +106,7 @@ impl Bitmap {
         }
     }
 
-    pub fn average_pixel(&self, name: &String) -> Color {
+    pub fn average_pixel(&self, name: &str) -> Color {
         let mut s = Color::default();
         self.values[name].iter().for_each(|x| s += x.clone());
         s.scale(1.0 / self.values[name].len() as f32);
@@ -126,7 +126,7 @@ impl Scale<f32> for Bitmap {
 /////////////// Integrators code
 pub trait Integrator: Sync + Send {
     fn compute(&mut self, scene: &Scene) -> Bitmap {
-        let buffernames = vec!["primal".to_string()];
+        let buffernames = vec!["primal"];
         Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
@@ -137,20 +137,20 @@ pub trait IntegratorMC: Sync + Send {
 pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitmap {
     // Here we can to the classical parallelisation
     assert_ne!(scene.nb_samples(), 0);
-    let buffernames = vec!["primal".to_string()];
+    let buffernames = vec!["primal"];
 
     // Create rendering blocks
     let mut image_blocks: Vec<Bitmap> = Vec::new();
-    for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
-        for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
+    for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 10) {
+        for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 10) {
             let mut block = Bitmap::new(
                 Point2 {
                     x: ix as u32,
                     y: iy as u32,
                 },
                 Vector2 {
-                    x: cmp::min(16, scene.camera.size().x - ix as u32),
-                    y: cmp::min(16, scene.camera.size().y - iy as u32),
+                    x: cmp::min(10, scene.camera.size().x - ix as u32),
+                    y: cmp::min(10, scene.camera.size().y - iy as u32),
                 },
                 &buffernames,
             );
@@ -232,9 +232,10 @@ pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
 }
 
 pub mod ao;
+pub mod avg;
 pub mod direct;
 pub mod explicit;
+pub mod gradient;
 pub mod path;
 pub mod prelude;
 pub mod pssmlt;
-pub mod avg;

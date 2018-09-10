@@ -112,7 +112,7 @@ impl TechniqueVPL {
 impl Integrator for IntegratorVPL {
     fn compute(&mut self, scene: &Scene) -> Bitmap {
         info!("Generating the VPL...");
-        let buffernames = vec!["primal".to_string()];
+        let buffernames = vec!["primal"];
         let mut sampler = samplers::independent::IndependentSampler::default();
         let mut nb_path_shot = 0;
         let vpls = RefCell::new(vec![]);

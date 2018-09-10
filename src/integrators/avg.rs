@@ -36,13 +36,22 @@ impl Integrator for IntegratorAverage {
             }
 
             // Save the bitmap for the current iteration
-            let imgout_path_str = base_output_img_path.clone() + "_" + &iteration.to_string() + "." + output_ext;
+            let imgout_path_str =
+                base_output_img_path.clone() + "_" + &iteration.to_string() + "." + output_ext;
             match output_ext {
                 "pfm" => {
-                    tools::save_pfm(imgout_path_str.as_str(), bitmap.as_ref().unwrap(), &"primal".to_string());
+                    tools::save_pfm(
+                        imgout_path_str.as_str(),
+                        bitmap.as_ref().unwrap(),
+                        &"primal".to_string(),
+                    );
                 }
                 "png" => {
-                    tools::save_png(imgout_path_str.as_str(), bitmap.as_ref().unwrap(), &"primal".to_string());
+                    tools::save_png(
+                        imgout_path_str.as_str(),
+                        bitmap.as_ref().unwrap(),
+                        &"primal".to_string(),
+                    );
                 }
                 _ => panic!("Unknow output file extension"),
             }
@@ -63,7 +72,7 @@ impl Integrator for IntegratorAverage {
         }
 
         if bitmap.is_none() {
-            let buffernames = vec!["primal".to_string()];
+            let buffernames = vec!["primal"];
             bitmap = Some(Bitmap::new(
                 Point2::new(0, 0),
                 *scene.camera.size(),

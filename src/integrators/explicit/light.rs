@@ -128,7 +128,7 @@ impl Integrator for IntegratorLightTracing {
             / nb_jobs as usize;
 
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
-        let buffer_names = vec!["primal".to_string()];
+        let buffer_names = vec!["primal"];
         let img = Mutex::new(Bitmap::new(
             Point2::new(0, 0),
             *scene.camera.size(),
