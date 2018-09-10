@@ -200,7 +200,7 @@ pub fn generate_pool(scene: &Scene) -> rayon::ThreadPool {
         .unwrap()
 }
 
-pub fn run_integrator<T: Integrator + Send + Sync>(scene: &Scene, mut int: T) -> Bitmap {
+pub fn run_integrator(scene: &Scene, int: &mut Integrator) -> Bitmap {
     ////////////// Do the rendering
     info!("Rendering...");
     let start = Instant::now();
@@ -237,3 +237,4 @@ pub mod explicit;
 pub mod path;
 pub mod prelude;
 pub mod pssmlt;
+pub mod avg;

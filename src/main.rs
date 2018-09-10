@@ -46,6 +46,13 @@ fn main() {
                 .help("JSON file description"),
         )
         .arg(
+            Arg::with_name("average")
+                .short("a")
+                .takes_value(true)
+                .default_value("inf")
+                .help("average several pass of the integrator with a time limit"),
+        )
+        .arg(
             Arg::with_name("nbthreads")
                 .takes_value(true)
                 .short("t")
@@ -190,8 +197,13 @@ fn main() {
     let wk = scene_path
         .parent()
         .expect("impossible to extract parent directory for OBJ loading");
-    let mut scene = rustlight::scene::Scene::new(&data, wk, nb_samples, nb_threads)
-        .expect("error when loading the scene");
+    let mut scene = rustlight::scene::Scene::new(
+        &data,
+        wk,
+        nb_samples,
+        nb_threads,
+        imgout_path_str.to_string(),
+    ).expect("error when loading the scene");
 
     ///////////////// Tweak the image size
     {
@@ -203,23 +215,21 @@ fn main() {
         }
     }
 
-    ///////////////// Call the integrator for generating the bitmap
-    let img = match matches.subcommand() {
+    ///////////////// Create the main integrator
+    let mut int: Box<rustlight::integrators::Integrator> = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            let int = rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth };
-            rustlight::integrators::run_integrator(&scene, int)
+            Box::new(rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth })
         }
         ("light-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            let int = rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth };
-            rustlight::integrators::run_integrator(&scene, int)
+            Box::new(rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth })
         }
         ("vpl", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
             let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
-            let int = rustlight::integrators::explicit::vpl::IntegratorVPL {
+            Box::new(rustlight::integrators::explicit::vpl::IntegratorVPL {
                 nb_vpl,
                 max_depth,
                 clamping_factor: if clamping <= 0.0 {
@@ -227,46 +237,48 @@ fn main() {
                 } else {
                     Some(clamping)
                 },
-            };
-            rustlight::integrators::run_integrator(&scene, int)
+            })
         }
         ("path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
-            let int = rustlight::integrators::path::IntegratorPath {
+            Box::new(rustlight::integrators::path::IntegratorPath {
                 max_depth,
                 min_depth,
-            };
-            rustlight::integrators::run_integrator(&scene, int)
+            })
         }
         ("pssmlt", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
             assert!(large_prob > 0.0 && large_prob <= 1.0);
-            let int = rustlight::integrators::pssmlt::IntegratorPSSMLT {
+            Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
                 large_prob,
                 integrator: Box::new(rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 }),
-            };
-            rustlight::integrators::run_integrator(&scene, int)
+            })
         }
         ("ao", Some(m)) => {
             let dist = match_infinity(m.value_of("distance").unwrap());
-            let int = rustlight::integrators::ao::IntegratorAO { max_distance: dist };
-            rustlight::integrators::run_integrator(&scene, int)
+            Box::new(rustlight::integrators::ao::IntegratorAO { max_distance: dist })
         }
-        ("direct", Some(m)) => {
-            let int = rustlight::integrators::direct::IntegratorDirect {
-                nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
-                nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
-            };
-            rustlight::integrators::run_integrator(&scene, int)
-        }
+        ("direct", Some(m)) => Box::new(rustlight::integrators::direct::IntegratorDirect {
+            nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
+            nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
+        }),
         _ => panic!("unknown integrator"),
     };
+    if matches.is_present("average") {
+        let time_out = match_infinity(matches.value_of("average").unwrap());
+        int = Box::new(rustlight::integrators::avg::IntegratorAverage {
+            time_out,
+            output_csv: false,
+            integrator: int,
+        })
+    }
+    let img = rustlight::integrators::run_integrator(&scene, int.as_mut());
 
     // Save the image (HDR and LDF)
     // -- LDR

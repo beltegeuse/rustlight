@@ -52,6 +52,7 @@ pub struct Scene {
     pub camera: Camera,
     pub nb_samples: usize,
     pub nb_threads: Option<usize>,
+    pub output_img_path: String,
     // Geometry information
     pub meshes: Vec<Arc<geometry::Mesh>>,
     pub emitters: Vec<Arc<geometry::Mesh>>,
@@ -72,6 +73,7 @@ impl Scene {
         wk: &std::path::Path,
         nb_samples: usize,
         nb_threads: Option<usize>,
+        output_img_path: String,
     ) -> Result<Scene, Box<Error>> {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(data)?;
@@ -180,6 +182,7 @@ impl Scene {
             emitters_cdf,
             nb_samples,
             nb_threads,
+            output_img_path,
         })
     }
 
