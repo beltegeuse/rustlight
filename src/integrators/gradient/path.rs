@@ -1,8 +1,7 @@
 use cgmath::*;
 use integrators::gradient::*;
-use integrators::path::*;
 use integrators::*;
-use scene::*;
+use rayon::prelude::*;
 use std;
 use structure::*;
 
@@ -94,33 +93,39 @@ impl Integrator for IntegratorGradientPath {
         // Compare to path tracing, make the block a bit bigger
         // so that we can store all the path contribution
         struct BlockInfo {
-            pub pos: Point2<u32>,
-            pub size: Vector2<u32>,
-        }
-        let mut image_blocks: Vec<(BlockInfo, Bitmap)> = Vec::new();
+            pub x_pos_off: u32,
+            pub y_pos_off: u32,
+            pub x_size_off: u32,
+            pub y_size_off: u32,
+        };
+        let mut image_blocks = Vec::new();
         for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
             for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
                 let pos_off = Point2 {
                     x: cmp::max(0, ix as i32 - 1) as u32,
                     y: cmp::max(0, iy as i32 - 1) as u32,
                 };
+                let desired_size = Vector2 {
+                    x: 16 + if ix == 0 { 1 } else { 2 },
+                    y: 16 + if iy == 0 { 1 } else { 2 },
+                };
+                let max_size = Vector2 {
+                    x: (scene.camera.size().x - pos_off.x) as u32,
+                    y: (scene.camera.size().y - pos_off.y) as u32,
+                };
                 let mut block = Bitmap::new(
                     pos_off,
                     Vector2 {
-                        x: cmp::min(16 + 2, (scene.camera.size().x - 1 - pos_off.x) as u32),
-                        y: cmp::min(16 + 2, (scene.camera.size().y - 1 - pos_off.y) as u32),
+                        x: cmp::min(desired_size.x, max_size.x),
+                        y: cmp::min(desired_size.y, max_size.y),
                     },
                     &buffernames,
                 );
-                let mut info = BlockInfo {
-                    pos: Point2 {
-                        x: ix as u32,
-                        y: iy as u32,
-                    },
-                    size: Vector2 {
-                        x: cmp::min(16, scene.camera.size().x - ix as u32),
-                        y: cmp::min(16, scene.camera.size().y - iy as u32),
-                    },
+                let info = BlockInfo {
+                    x_pos_off: if ix == 0 { 0 } else { 1 },
+                    y_pos_off: if iy == 0 { 0 } else { 1 },
+                    x_size_off: if desired_size.x <= max_size.x { 1 } else { 0 },
+                    y_size_off: if desired_size.y <= max_size.y { 1 } else { 0 },
                 };
                 image_blocks.push((info, block));
             }
@@ -131,11 +136,11 @@ impl Integrator for IntegratorGradientPath {
         pool.install(|| {
             image_blocks.par_iter_mut().for_each(|(info, im_block)| {
                 let mut sampler = independent::IndependentSampler::default();
-                for ix in 0..info.size.x - 2 {
-                    for iy in 0..info.size.y - 2 {
+                for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
+                    for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
                         for _ in 0..scene.nb_samples() {
                             let c = self.compute_pixel(
-                                (ix + info.pos.x, iy + info.pos.y),
+                                (ix + im_block.pos.x, iy + im_block.pos.y),
                                 scene,
                                 &mut sampler,
                             );
@@ -173,6 +178,7 @@ impl Integrator for IntegratorGradientPath {
                     }
                 }
                 im_block.scale(1.0 / (scene.nb_samples() as f32));
+                im_block.scale_buffer(0.25, "primal"); // 4 strategies as reuse primal
                 {
                     progress_bar.lock().unwrap().inc();
                 }
@@ -184,20 +190,21 @@ impl Integrator for IntegratorGradientPath {
         for (_, im_block) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
-        let image = self.reconstruct(&image);
+        let image = self.reconstruct(scene, &image);
         image
     }
 }
 
 impl IntegratorGradientPath {
-    fn reconstruct(&self, est: &Bitmap) -> Bitmap {
+    fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap {
         info!("Reconstruction...");
         let start = Instant::now();
         // Reconstruction (image-space covariate, uniform reconstruction)
         let img_size = est.size;
         let buffernames = vec!["recons"];
         let mut current = Bitmap::new(Point2::new(0, 0), img_size.clone(), &buffernames);
-        let mut next = Bitmap::new(Point2::new(0, 0), img_size.clone(), &buffernames);
+        let mut image_blocks = generate_img_blocks(scene, &buffernames);
+
         // 1) Init
         for y in 0..img_size.y {
             for x in 0..img_size.x {
@@ -205,47 +212,55 @@ impl IntegratorGradientPath {
                 current.accumulate(pos, *est.get(pos, "primal"), "recons");
             }
         }
+
+        // 2) Iterations
         for _iter in 0..self.iterations {
-            // FIXME: Do it multi-threaded
-            next.reset(); // Reset all to black
-            for y in 0..img_size.y {
-                for x in 0..img_size.x {
-                    let pos = Point2::new(x, y);
-                    let mut c = current.get(pos, "recons").clone();
-                    let mut w = 1.0;
-                    if x > 0 {
-                        let pos_off = Point2::new(x - 1, y);
-                        c += current.get(pos_off, "recons").clone()
-                            + est.get(pos_off, "gradient_x").clone();
-                        w += 1.0;
+            image_blocks.par_iter_mut().for_each(|im_block| {
+                im_block.reset();
+                for local_y in 0..im_block.size.y {
+                    for local_x in 0..im_block.size.x {
+                        let (x, y) = (local_x + im_block.pos.x, local_y + im_block.pos.y);
+                        let pos = Point2::new(x, y);
+                        let mut c = current.get(pos, "recons").clone();
+                        let mut w = 1.0;
+                        if x > 0 {
+                            let pos_off = Point2::new(x - 1, y);
+                            c += current.get(pos_off, "recons").clone()
+                                + est.get(pos_off, "gradient_x").clone();
+                            w += 1.0;
+                        }
+                        if x < img_size.x - 1 {
+                            let pos_off = Point2::new(x + 1, y);
+                            c += current.get(pos_off, "recons").clone()
+                                - est.get(pos, "gradient_x").clone();
+                            w += 1.0;
+                        }
+                        if y > 0 {
+                            let pos_off = Point2::new(x, y - 1);
+                            c += current.get(pos_off, "recons").clone()
+                                + est.get(pos_off, "gradient_y").clone();
+                            w += 1.0;
+                        }
+                        if y < img_size.y - 1 {
+                            let pos_off = Point2::new(x, y + 1);
+                            c += current.get(pos_off, "recons").clone()
+                                - est.get(pos, "gradient_y").clone();
+                            w += 1.0;
+                        }
+                        c.scale(1.0 / w);
+                        im_block.accumulate(Point2::new(local_x, local_y), c, "recons");
                     }
-                    if x < img_size.x - 1 {
-                        let pos_off = Point2::new(x + 1, y);
-                        c += current.get(pos_off, "recons").clone()
-                            - est.get(pos, "gradient_x").clone();
-                        w += 1.0;
-                    }
-                    if y > 0 {
-                        let pos_off = Point2::new(x, y - 1);
-                        c += current.get(pos_off, "recons").clone()
-                            + est.get(pos_off, "gradient_y").clone();
-                        w += 1.0;
-                    }
-                    if y < img_size.y - 1 {
-                        let pos_off = Point2::new(x, y + 1);
-                        c += current.get(pos_off, "recons").clone()
-                            - est.get(pos, "gradient_y").clone();
-                        w += 1.0;
-                    }
-                    c.scale(1.0 / w);
-                    next.accumulate(pos, c, "recons");
                 }
+            });
+            // Collect the data
+            current.reset();
+            for im_block in &image_blocks {
+                current.accumulate_bitmap(im_block);
             }
-            std::mem::swap(&mut current, &mut next);
         }
         let elapsed = start.elapsed();
         info!(
-            "Elapsed: {} ms",
+            "Reconstruction Elapsed: {} ms",
             (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
         );
 
@@ -255,7 +270,7 @@ impl IntegratorGradientPath {
             for y in 0..img_size.y {
                 let pos = Point2::new(x, y);
                 let pix_value =
-                    next.get(pos, "recons").clone() + est.get(pos, "very_direct").clone();
+                    current.get(pos, "recons").clone() + est.get(pos, "very_direct").clone();
                 image.accumulate(pos, pix_value, "primal");
             }
         }

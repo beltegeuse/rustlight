@@ -132,23 +132,7 @@ impl Integrator for IntegratorVPL {
         let vpls = vpls.into_inner();
 
         // Generate the image block to get VPL efficiently
-        let mut image_blocks: Vec<Bitmap> = Vec::new();
-        for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
-            for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
-                let mut block = Bitmap::new(
-                    Point2 {
-                        x: ix as u32,
-                        y: iy as u32,
-                    },
-                    Vector2 {
-                        x: cmp::min(16, scene.camera.size().x - ix as u32),
-                        y: cmp::min(16, scene.camera.size().y - iy as u32),
-                    },
-                    &buffernames,
-                );
-                image_blocks.push(block);
-            }
-        }
+        let mut image_blocks = generate_img_blocks(scene, &buffernames);
 
         // Render the image blocks VPL integration
         info!("Gathering VPL...");

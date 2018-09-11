@@ -59,15 +59,14 @@ impl Bitmap {
     pub fn accumulate_bitmap(&mut self, o: &Bitmap) {
         // This is special, it does not allowed to write twice the same pixels
         // This function is only when we
-        info!("{:?}/{:?} <- {:?}/{:?}", self.size, self.pos, o.size, o.pos);
         for keys in o.values.keys() {
             let mut pixels = self.values.get_mut(keys).unwrap();
             let other_pixels = &o.values[keys];
             for y in 0..o.size.y {
                 for x in 0..o.size.x {
                     let p = Point2::new(o.pos.x + x, o.pos.y + y);
-                    let index = (p.y * self.size.y + p.x) as usize;
-                    let index_other = (y * o.size.y + x) as usize;
+                    let index = (p.y * self.size.x + p.x) as usize;
+                    let index_other = (y * o.size.x + x) as usize;
                     pixels[index] += other_pixels[index_other];
                 }
             }
@@ -77,7 +76,7 @@ impl Bitmap {
     pub fn accumulate(&mut self, p: Point2<u32>, f: Color, name: &str) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        let index = (p.y * self.size.y + p.x) as usize;
+        let index = (p.y * self.size.x + p.x) as usize;
         self.values.get_mut(name).unwrap()[index] += f;
     }
 
@@ -97,7 +96,7 @@ impl Bitmap {
     pub fn get(&self, p: Point2<u32>, name: &str) -> &Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
-        &self.values[name][(p.y * self.size.y + p.x) as usize]
+        &self.values[name][(p.y * self.size.x + p.x) as usize]
     }
 
     pub fn reset(&mut self) {
@@ -111,6 +110,10 @@ impl Bitmap {
         self.values[name].iter().for_each(|x| s += x.clone());
         s.scale(1.0 / self.values[name].len() as f32);
         s
+    }
+
+    pub fn scale_buffer(&mut self, f: f32, name: &'static str) {
+         self.values.get_mut(name).unwrap().iter_mut().for_each(|x| x.scale(f));
     }
 }
 
@@ -134,29 +137,34 @@ pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color;
 }
 
-pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitmap {
-    // Here we can to the classical parallelisation
-    assert_ne!(scene.nb_samples(), 0);
-    let buffernames = vec!["primal"];
-
-    // Create rendering blocks
+pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<&'static str>) -> Vec<Bitmap> {
     let mut image_blocks: Vec<Bitmap> = Vec::new();
-    for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 10) {
-        for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 10) {
+    for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
+        for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
             let mut block = Bitmap::new(
                 Point2 {
                     x: ix as u32,
                     y: iy as u32,
                 },
                 Vector2 {
-                    x: cmp::min(10, scene.camera.size().x - ix as u32),
-                    y: cmp::min(10, scene.camera.size().y - iy as u32),
+                    x: cmp::min(16, scene.camera.size().x - ix as u32),
+                    y: cmp::min(16, scene.camera.size().y - iy as u32),
                 },
-                &buffernames,
+                buffernames,
             );
             image_blocks.push(block);
         }
     }
+    image_blocks
+}
+
+pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitmap {
+    // Here we can to the classical parallelisation
+    assert_ne!(scene.nb_samples(), 0);
+    let buffernames = vec!["primal"];
+
+    // Create rendering blocks
+   let mut image_blocks = generate_img_blocks(scene, &buffernames);
 
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
@@ -164,8 +172,8 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitma
     pool.install(|| {
         image_blocks.par_iter_mut().for_each(|im_block| {
             let mut sampler = independent::IndependentSampler::default();
-            for ix in 0..im_block.size.x {
-                for iy in 0..im_block.size.y {
+            for iy in 0..im_block.size.y {
+                for ix in 0..im_block.size.x {
                     for _ in 0..scene.nb_samples() {
                         let c = int.compute_pixel(
                             (ix + im_block.pos.x, iy + im_block.pos.y),
