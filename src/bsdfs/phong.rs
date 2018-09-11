@@ -1,7 +1,7 @@
-use std;
-use cgmath::Vector3;
-use math::Frame;
 use bsdfs::*;
+use cgmath::{InnerSpace, Vector3};
+use math::Frame;
+use std;
 
 #[derive(Deserialize)]
 pub struct BSDFPhong {
@@ -69,10 +69,14 @@ impl BSDF for BSDFPhong {
             if alpha > 0.0 {
                 self.specular.color(uv)
                     * (alpha.powf(self.exponent) * (self.exponent + 2.0)
-                    / (2.0 * std::f32::consts::PI))
+                        / (2.0 * std::f32::consts::PI))
             } else {
                 Color::zero()
             }
         }
+    }
+
+    fn is_smooth(&self) -> bool {
+        return false;
     }
 }

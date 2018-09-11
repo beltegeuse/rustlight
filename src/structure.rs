@@ -295,4 +295,39 @@ impl<'a> Intersection<'a> {
     pub fn cos_theta(&self) -> f32 {
         self.wi.z
     }
+
+    pub fn to_local(&self, d: &Vector3<f32>) -> Vector3<f32> {
+        self.frame.to_local(*d)
+    }
+    pub fn to_world(&self, d: &Vector3<f32>) -> Vector3<f32> {
+        self.frame.to_world(*d)
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct VarianceEstimator {
+    pub mean: f32,
+    pub mean_sqr: f32,
+    pub sample_count: u32,
+}
+impl VarianceEstimator {
+    fn add(&mut self, v: f32) {
+        self.sample_count += 1;
+        let delta = v - self.mean;
+        self.mean += delta / self.sample_count as f32;
+        self.mean_sqr += delta * (v - self.mean);
+    }
+
+    fn variance(&self) -> f32 {
+        self.mean_sqr / (self.sample_count - 1) as f32
+    }
+}
+impl Default for VarianceEstimator {
+    fn default() -> Self {
+        Self {
+            mean: 0.0,
+            mean_sqr: 0.0,
+            sample_count: 0,
+        }
+    }
 }

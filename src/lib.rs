@@ -1,6 +1,8 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
+// For getting low machine information
+extern crate byteorder;
 // For the vector op
 extern crate cgmath;
 // For fast intersection
@@ -14,13 +16,15 @@ extern crate log;
 extern crate rand;
 // For easy parallelism
 extern crate rayon;
-extern crate serde;
 // For serialization support
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
+// For print a progress bar
+extern crate pbr;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;

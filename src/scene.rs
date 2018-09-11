@@ -1,5 +1,5 @@
 use bsdfs::*;
-use camera::{Camera, CameraParam};
+use camera::Camera;
 use cgmath::*;
 use embree_rs;
 use geometry;
@@ -12,7 +12,7 @@ use structure::*;
 
 /// Light sample representation
 pub struct LightSampling<'a> {
-    pub emitter: &'a geometry::Mesh,
+    pub emitter: &'a Arc<geometry::Mesh>,
     pub pdf: PDF,
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
@@ -50,6 +50,9 @@ impl<'a> LightSamplingPDF<'a> {
 pub struct Scene {
     /// Main camera
     pub camera: Camera,
+    pub nb_samples: usize,
+    pub nb_threads: Option<usize>,
+    pub output_img_path: String,
     // Geometry information
     pub meshes: Vec<Arc<geometry::Mesh>>,
     pub emitters: Vec<Arc<geometry::Mesh>>,
@@ -60,14 +63,23 @@ pub struct Scene {
 }
 
 impl Scene {
+    pub fn nb_samples(&self) -> usize {
+        self.nb_samples
+    }
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(data: &str, wk: &std::path::Path) -> Result<Scene, Box<Error>> {
+    pub fn new(
+        data: &str,
+        wk: &std::path::Path,
+        nb_samples: usize,
+        nb_threads: Option<usize>,
+        output_img_path: String,
+    ) -> Result<Scene, Box<Error>> {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(data)?;
 
         // Allocate embree
-        let mut device = embree_rs::Device::debug();
+        let device = embree_rs::Device::debug();
         let mut scene_embree = embree_rs::SceneConstruct::new(&device);
 
         // Read the object
@@ -81,10 +93,12 @@ impl Scene {
 
         // Update meshes information
         //  - which are light?
+        info!("Emitters:");
         if let Some(emitters_json) = v.get("emitters") {
             for e in emitters_json.as_array().unwrap() {
                 let name: String = e["mesh"].as_str().unwrap().to_string();
                 let emission: Color = serde_json::from_value(e["emission"].clone())?;
+                info!(" - emission: {}", name);
                 // Get the set of matched meshes
                 let mut matched_meshes = meshes
                     .iter_mut()
@@ -94,15 +108,18 @@ impl Scene {
                     0 => panic!("Not found {} in the obj list", name),
                     1 => {
                         matched_meshes[0].emission = emission;
+                        info!("vertices: {:?}", matched_meshes[0].trimesh.vertices);
                     }
                     _ => panic!("Several {} in the obj list", name),
                 };
             }
         }
         // - BSDF
+        info!("BSDFS:");
         if let Some(bsdfs_json) = v.get("bsdfs") {
             for b in bsdfs_json.as_array().unwrap() {
                 let name: String = serde_json::from_value(b["mesh"].clone())?;
+                info!(" - replace bsdf: {}", name);
                 let new_bsdf = parse_bsdf(&b)?;
                 let mut matched_meshes = meshes
                     .iter_mut()
@@ -118,6 +135,7 @@ impl Scene {
             }
         }
 
+        info!("Build vectors and Discrete CDF");
         // Transform the scene mesh from Box to Arc
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
@@ -137,16 +155,34 @@ impl Scene {
         };
 
         // Read the camera config
-        let camera_param: CameraParam = serde_json::from_value(v["camera"].clone()).unwrap();
+        let camera = {
+            if let Some(camera_json) = v.get("camera") {
+                let fov: f32 = serde_json::from_value(camera_json["fov"].clone())?;
+                let img: Vector2<u32> = serde_json::from_value(camera_json["img"].clone())?;
+                let m: Vec<f32> = serde_json::from_value(camera_json["matrix"].clone())?;
+
+                let matrix = Matrix4::new(
+                    m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14],
+                    m[3], m[7], m[11], m[15],
+                );
+                info!("m: {:?}", matrix);
+                Some(Camera::new(img, fov, matrix))
+            } else {
+                None
+            }
+        };
 
         // Define a default scene
         Ok(Scene {
-            camera: Camera::new(camera_param),
+            camera: camera.unwrap(),
             embree_device: device,
             embree_scene: scene_embree,
             meshes,
             emitters,
             emitters_cdf,
+            nb_samples,
+            nb_threads,
+            output_img_path,
         })
     }
 
@@ -216,8 +252,18 @@ impl Scene {
             weight: emission,
         }
     }
-    pub fn random_select_emitter(&self, v: f32) -> (f32, &geometry::Mesh) {
+    pub fn random_select_emitter(&self, v: f32) -> (f32, &Arc<geometry::Mesh>) {
         let id_light = self.emitters_cdf.sample(v);
         (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
+    }
+    pub fn random_sample_emitter_position(
+        &self,
+        v1: f32,
+        v2: f32,
+        uv: Point2<f32>,
+    ) -> (&Arc<geometry::Mesh>, PDF, geometry::SampledPosition) {
+        let (pdf_sel, emitter) = self.random_select_emitter(v1);
+        let sampled_pos = emitter.sample(v2, uv);
+        (emitter, PDF::Area(pdf_sel * sampled_pos.pdf), sampled_pos)
     }
 }

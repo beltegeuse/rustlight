@@ -1,9 +1,13 @@
 use cgmath::*;
-use integrators::gradient_domain::*;
-use integrators::path::*;
+use integrators::gradient::*;
 use integrators::*;
-use scene::*;
 use structure::*;
+
+pub struct IntegratorGradientPath {
+    pub max_depth: Option<u32>,
+    pub min_depth: Option<u32>,
+    pub iterations: usize,
+}
 
 struct RayStateData<'a> {
     pub pdf: f64,
@@ -80,12 +84,126 @@ impl<'a> RayState<'a> {
     }
 }
 
-impl Integrator<ColorGradient> for IntegratorPath {
-    fn compute<S: Sampler>(
+impl Integrator for IntegratorGradientPath {}
+impl IntegratorGradient for IntegratorGradientPath {
+    fn iterations(&self) -> usize {
+        self.iterations
+    }
+
+    fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {
+        let buffernames = vec!["primal", "very_direct", "gradient_x", "gradient_y"];
+
+        // Compare to path tracing, make the block a bit bigger
+        // so that we can store all the path contribution
+        struct BlockInfo {
+            pub x_pos_off: u32,
+            pub y_pos_off: u32,
+            pub x_size_off: u32,
+            pub y_size_off: u32,
+        };
+        let mut image_blocks = Vec::new();
+        for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
+            for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
+                let pos_off = Point2 {
+                    x: cmp::max(0, ix as i32 - 1) as u32,
+                    y: cmp::max(0, iy as i32 - 1) as u32,
+                };
+                let desired_size = Vector2 {
+                    x: 16 + if ix == 0 { 1 } else { 2 },
+                    y: 16 + if iy == 0 { 1 } else { 2 },
+                };
+                let max_size = Vector2 {
+                    x: (scene.camera.size().x - pos_off.x) as u32,
+                    y: (scene.camera.size().y - pos_off.y) as u32,
+                };
+                let mut block = Bitmap::new(
+                    pos_off,
+                    Vector2 {
+                        x: cmp::min(desired_size.x, max_size.x),
+                        y: cmp::min(desired_size.y, max_size.y),
+                    },
+                    &buffernames,
+                );
+                let info = BlockInfo {
+                    x_pos_off: if ix == 0 { 0 } else { 1 },
+                    y_pos_off: if iy == 0 { 0 } else { 1 },
+                    x_size_off: if desired_size.x <= max_size.x { 1 } else { 0 },
+                    y_size_off: if desired_size.y <= max_size.y { 1 } else { 0 },
+                };
+                image_blocks.push((info, block));
+            }
+        }
+
+        let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
+        let pool = generate_pool(scene);
+        pool.install(|| {
+            image_blocks.par_iter_mut().for_each(|(info, im_block)| {
+                let mut sampler = independent::IndependentSampler::default();
+                for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
+                    for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
+                        for _ in 0..scene.nb_samples() {
+                            let c = self.compute_pixel(
+                                (ix + im_block.pos.x, iy + im_block.pos.y),
+                                scene,
+                                &mut sampler,
+                            );
+                            // Accumulate the values inside the buffer
+                            let pos = Point2::new(ix, iy);
+                            im_block.accumulate(pos, c.main, "primal");
+                            im_block.accumulate(pos, c.very_direct, "very_direct");
+                            for i in 0..4 {
+                                // primal reuse
+                                let off = GRADIENT_ORDER[i];
+                                let pos_off = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
+                                im_block.accumulate_safe(pos_off, c.radiances[i], "primal");
+                                // gradient
+                                match GRADIENT_DIRECTION[i] {
+                                    GradientDirection::X(v) => match v {
+                                        1 => im_block.accumulate(pos, c.gradients[i], "gradient_x"),
+                                        -1 => im_block.accumulate_safe(
+                                            pos_off,
+                                            c.gradients[i] * -1.0,
+                                            "gradient_x",
+                                        ),
+                                        _ => panic!("wrong displacement X"), // FIXME: Fix the enum
+                                    },
+                                    GradientDirection::Y(v) => match v {
+                                        1 => im_block.accumulate(pos, c.gradients[i], "gradient_y"),
+                                        -1 => im_block.accumulate_safe(
+                                            pos_off,
+                                            c.gradients[i] * -1.0,
+                                            "gradient_y",
+                                        ),
+                                        _ => panic!("wrong displacement Y"),
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
+                im_block.scale(1.0 / (scene.nb_samples() as f32));
+                im_block.scale_buffer(0.25, "primal"); // 4 strategies as reuse primal
+                {
+                    progress_bar.lock().unwrap().inc();
+                }
+            });
+        });
+
+        // Fill the image & do the reconstruct
+        let mut image = Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
+        for (_, im_block) in &image_blocks {
+            image.accumulate_bitmap(im_block);
+        }
+        image
+    }
+}
+
+impl IntegratorGradientPath {
+    fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
         scene: &Scene,
-        sampler: &mut S,
+        sampler: &mut Sampler,
     ) -> ColorGradient {
         let mut l_i = ColorGradient::default();
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
@@ -274,8 +392,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                             assert!(weight.is_finite());
                             assert!(weight >= 0.0);
                             assert!(weight <= 1.0);
-                            l_i.main += main_contrib; // * weight;
-                                                      //l_i.radiances[i] += shift_contrib * weight;
+                            l_i.main += main_contrib * weight;
+                            l_i.radiances[i] += shift_contrib * weight;
                             l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
                         }
                     }
@@ -463,8 +581,8 @@ impl Integrator<ColorGradient> for IntegratorPath {
                         assert!(weight.is_finite());
                         assert!(weight >= 0.0);
                         assert!(weight <= 1.0);
-                        l_i.main += main_contrib; // * weight;
-                                                  //l_i.radiances[i] += shift_contrib * weight;
+                        l_i.main += main_contrib * weight;
+                        l_i.radiances[i] += shift_contrib * weight;
                         l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
                     }
                     // Return the new state

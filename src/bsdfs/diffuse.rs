@@ -1,5 +1,4 @@
 use bsdfs::*;
-use cgmath::*;
 use math::cosine_sample_hemisphere;
 use std;
 
@@ -47,5 +46,9 @@ impl BSDF for BSDFDiffuse {
         } else {
             Color::zero()
         }
+    }
+
+    fn is_smooth(&self) -> bool {
+        return false;
     }
 }
