@@ -113,7 +113,11 @@ impl Bitmap {
     }
 
     pub fn scale_buffer(&mut self, f: f32, name: &'static str) {
-         self.values.get_mut(name).unwrap().iter_mut().for_each(|x| x.scale(f));
+        self.values
+            .get_mut(name)
+            .unwrap()
+            .iter_mut()
+            .for_each(|x| x.scale(f));
     }
 }
 
@@ -133,6 +137,7 @@ pub trait Integrator {
         Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
+
 pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color;
 }
@@ -164,7 +169,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitma
     let buffernames = vec!["primal"];
 
     // Create rendering blocks
-   let mut image_blocks = generate_img_blocks(scene, &buffernames);
+    let mut image_blocks = generate_img_blocks(scene, &buffernames);
 
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
@@ -206,20 +211,6 @@ pub fn generate_pool(scene: &Scene) -> rayon::ThreadPool {
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
         .unwrap()
-}
-
-pub fn run_integrator(scene: &Scene, int: &mut Integrator) -> Bitmap {
-    ////////////// Do the rendering
-    info!("Rendering...");
-    let start = Instant::now();
-    let img = int.compute(scene);
-    let elapsed = start.elapsed();
-    info!(
-        "Elapsed: {} ms",
-        (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-    );
-
-    return img;
 }
 
 /// Power heuristic for path tracing or direct lighting

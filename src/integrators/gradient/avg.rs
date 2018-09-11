@@ -1,5 +1,4 @@
 use integrators::gradient::*;
-use integrators::*;
 use std;
 use tools;
 
@@ -36,11 +35,10 @@ impl Integrator for IntegratorGradientAverage {
             }
 
             // Do the reconstruction
-            let recons_img = gradient_reconstruct(
-                scene,
-                bitmap.as_ref().unwrap(),
-                self.integrator.iterations(),
-            );
+            let recons_img = self
+                .integrator
+                .reconstruct()
+                .reconstruct(scene, bitmap.as_ref().unwrap());
 
             // Save the bitmap for the current iteration
             let imgout_path_str =

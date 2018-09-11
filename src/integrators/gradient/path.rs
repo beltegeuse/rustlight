@@ -6,7 +6,7 @@ use structure::*;
 pub struct IntegratorGradientPath {
     pub max_depth: Option<u32>,
     pub min_depth: Option<u32>,
-    pub iterations: usize,
+    pub recons: Box<PoissonReconstruction + Sync>,
 }
 
 struct RayStateData<'a> {
@@ -86,8 +86,8 @@ impl<'a> RayState<'a> {
 
 impl Integrator for IntegratorGradientPath {}
 impl IntegratorGradient for IntegratorGradientPath {
-    fn iterations(&self) -> usize {
-        self.iterations
+    fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync> {
+        &self.recons
     }
 
     fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {

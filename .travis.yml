@@ -9,7 +9,24 @@ matrix:
 before_install:
   - sudo apt-get install -y libtbb-dev
   # get embree
-  - sudo apt-get install -y alien dpkg-dev debhelper build-essential wget openexr
+  - sudo apt-get install -y alien dpkg-dev debhelper build-essential wget
+  - if [ ! -d "$HOME/openexr/lib" ]; then
+    wget http://download.savannah.nongnu.org/releases/openexr/ilmbase-2.2.0.tar.gz -O /tmp/ilmbase.tgz;
+    tar -xvzf /tmp/ilmbase.tgz -C $HOME;
+    pushd $HOME/ilmbase-2.2.0;
+    ./configure --prefix=$HOME/openexr;
+    make && make install;
+    popd;
+    wget http://download.savannah.nongnu.org/releases/openexr/openexr-2.2.0.tar.gz -O /tmp/openexr.tgz;
+    tar -xvzf /tmp/openexr.tgz -C $HOME;
+    pushd $HOME/openexr-2.2.0;
+    ./configure --prefix=$HOME/openexr --with-pkg-config=no
+    LDFLAGS="-Wl,-rpath -Wl,$HOME/openexr/lib";
+    make && make install;
+    popd;
+  else
+    echo 'Using cached OpenEXR';
+  fi
   - wget https://github.com/embree/embree/releases/download/v3.2.0/embree-3.2.0.x86_64.rpm.tar.gz -O /tmp/embree.tar.gz
   - cd /tmp
   - tar -xvf embree.tar.gz
@@ -19,8 +36,7 @@ before_install:
   - sudo dpkg -i embree3-lib_3.2.0-2_amd64.deb
   - sudo dpkg -i embree3-devel_3.2.0-2_all.deb
   - cd - # Go back to the working directory
-  - RUSTUP_DIST_SERVER=https://dev-static.rust-lang.org rustup install stable
 
 script:
-  - cargo build --verbose --all
-  - cargo test --verbose --all
+  - OPENEXR_DIR="$HOME/openexr" cargo build --verbose --all
+  - OPENEXR_DIR="$HOME/openexr" cargo test --verbose --all
