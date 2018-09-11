@@ -150,6 +150,7 @@ impl IntegratorGradient for IntegratorGradientPath {
                             // Accumulate the values inside the buffer
                             let pos = Point2::new(ix, iy);
                             im_block.accumulate(pos, c.main, "primal");
+                            im_block.accumulate(pos, c.very_direct, "very_direct");
                             for i in 0..4 {
                                 // primal reuse
                                 let off = GRADIENT_ORDER[i];
