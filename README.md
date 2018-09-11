@@ -14,34 +14,38 @@ NOTE: Need Rust 1.25 at least to support ```repr(align(X))``` routine for embree
 
 ```
 $ cargo run --release -- -h
-rustlight 0.0.4
+rustlight 0.1.0
 Adrien Gruson <adrien.gruson@gmail.com>
 A Rusty Light Transport simulation program
 
 USAGE:
-    rustlight [OPTIONS] <scene> [SUBCOMMAND]
+    rustlight [FLAGS] [OPTIONS] <scene> [SUBCOMMAND]
 
 FLAGS:
+    -d               debug output
     -h, --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
-    -n <nbsamples>        integration technique
-    -t <nbthreads>        number of thread for the computation [default: auto]
-    -o <output>           output image file
+    -a <average>            average several pass of the integrator with a time limit ('inf' is possible)
+    -s <image_scale>        image scaling factor [default: 1.0]
+    -n <nbsamples>          integration technique
+    -t <nbthreads>          number of thread for the computation [default: auto]
+    -o <output>             output image file
 
 ARGS:
     <scene>    JSON file description
 
 SUBCOMMANDS:
-    ao               ambiant occlusion
-    direct           direct lighting
-    gd-path          gradient-domain path tracing
-    help             Prints this message or the help of the given subcommand(s)
-    path             path tracing
-    path-explicit    path tracing with explict light path construction
-    pssmlt           path tracing with MCMC sampling
-
+    ao                ambiant occlusion
+    direct            direct lighting
+    gradient-path     gradient path tracing
+    help              Prints this message or the help of the given subcommand(s)
+    light-explicit    light tracing with explict light path construction
+    path              path tracing
+    path-explicit     path tracing with explict light path construction
+    pssmlt            path tracing with MCMC sampling
+    vpl               brute force virtual point light integrator
 ```
 
 For example, to use path tracing using 128 spp:
@@ -52,11 +56,24 @@ $ cargo run --release -- -n 128 -o path.pfm ./data/cbox.json path
 ## Features
 
 For now, these are the following features implemented:
-- Integrators: ambiant occlusion, direct, path-tracing, gradient-domain path tracing, PSSMLT
-- Explicit path building (generate a sensor path and evaluate it later)
-- Filtering: image-domain control variate reconstruction (uniform weights)
-- Materials: diffuse, phong lobe, specular
-- Emitters: multiple surface lights support
+- Integrators: 
+    * ambiant occlusion
+    * direct with MIS
+    * path-tracing with NEE
+    * gradient-path tracing
+    * PSSMLT
+- Explicit Integrators: Uses a graph to represent the light transport
+    * path-tracing with NEE (*2 slower~ than non-explicit one)
+    * light-tracing
+    * VPL
+- Filtering: 
+    * image-domain control variate reconstruction (uniform weights)
+- Materials: 
+    * diffuse
+    * phong lobe
+    * specular
+- Emitters: 
+    * multiple surface lights support
 
 ## Rendering
 
@@ -75,7 +92,7 @@ Other rendering features:
 
 - Materials: glass, microfacet with Beckert distribution.
 - Emitters: Environmental and point lights
-- Tools: Blender exporter script (based on cycle)
+- Scene format: PBRT
 
 ## Inspirations
 

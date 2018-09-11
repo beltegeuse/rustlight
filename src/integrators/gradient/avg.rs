@@ -1,7 +1,7 @@
+use integrators::gradient::*;
 use integrators::*;
 use std;
 use tools;
-use integrators::gradient::*;
 
 pub struct IntegratorGradientAverage {
     pub time_out: Option<usize>, //< Time out in seconds
@@ -36,7 +36,11 @@ impl Integrator for IntegratorGradientAverage {
             }
 
             // Do the reconstruction
-            let recons_img = gradient_reconstruct(scene, bitmap.as_ref().unwrap(), self.integrator.iterations());
+            let recons_img = gradient_reconstruct(
+                scene,
+                bitmap.as_ref().unwrap(),
+                self.integrator.iterations(),
+            );
 
             // Save the bitmap for the current iteration
             let imgout_path_str =

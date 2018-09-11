@@ -1,5 +1,5 @@
 use cgmath::Point2;
-use integrators::{generate_img_blocks, Bitmap, Integrator, generate_pool};
+use integrators::{generate_img_blocks, generate_pool, Bitmap, Integrator};
 use rayon::prelude::*;
 use scene::Scene;
 use std::time::Instant;
@@ -74,50 +74,52 @@ fn gradient_reconstruct(scene: &Scene, est: &Bitmap, iterations: usize) -> Bitma
 
     let pool = generate_pool(scene);
     // 2) Iterations
-    pool.install(|| {for _iter in 0..iterations {
-        image_blocks.par_iter_mut().for_each(|im_block| {
-            im_block.reset();
-            for local_y in 0..im_block.size.y {
-                for local_x in 0..im_block.size.x {
-                    let (x, y) = (local_x + im_block.pos.x, local_y + im_block.pos.y);
-                    let pos = Point2::new(x, y);
-                    let mut c = current.get(pos, "recons").clone();
-                    let mut w = 1.0;
-                    if x > 0 {
-                        let pos_off = Point2::new(x - 1, y);
-                        c += current.get(pos_off, "recons").clone()
-                            + est.get(pos_off, "gradient_x").clone();
-                        w += 1.0;
+    pool.install(|| {
+        for _iter in 0..iterations {
+            image_blocks.par_iter_mut().for_each(|im_block| {
+                im_block.reset();
+                for local_y in 0..im_block.size.y {
+                    for local_x in 0..im_block.size.x {
+                        let (x, y) = (local_x + im_block.pos.x, local_y + im_block.pos.y);
+                        let pos = Point2::new(x, y);
+                        let mut c = current.get(pos, "recons").clone();
+                        let mut w = 1.0;
+                        if x > 0 {
+                            let pos_off = Point2::new(x - 1, y);
+                            c += current.get(pos_off, "recons").clone()
+                                + est.get(pos_off, "gradient_x").clone();
+                            w += 1.0;
+                        }
+                        if x < img_size.x - 1 {
+                            let pos_off = Point2::new(x + 1, y);
+                            c += current.get(pos_off, "recons").clone()
+                                - est.get(pos, "gradient_x").clone();
+                            w += 1.0;
+                        }
+                        if y > 0 {
+                            let pos_off = Point2::new(x, y - 1);
+                            c += current.get(pos_off, "recons").clone()
+                                + est.get(pos_off, "gradient_y").clone();
+                            w += 1.0;
+                        }
+                        if y < img_size.y - 1 {
+                            let pos_off = Point2::new(x, y + 1);
+                            c += current.get(pos_off, "recons").clone()
+                                - est.get(pos, "gradient_y").clone();
+                            w += 1.0;
+                        }
+                        c.scale(1.0 / w);
+                        im_block.accumulate(Point2::new(local_x, local_y), c, "recons");
                     }
-                    if x < img_size.x - 1 {
-                        let pos_off = Point2::new(x + 1, y);
-                        c += current.get(pos_off, "recons").clone()
-                            - est.get(pos, "gradient_x").clone();
-                        w += 1.0;
-                    }
-                    if y > 0 {
-                        let pos_off = Point2::new(x, y - 1);
-                        c += current.get(pos_off, "recons").clone()
-                            + est.get(pos_off, "gradient_y").clone();
-                        w += 1.0;
-                    }
-                    if y < img_size.y - 1 {
-                        let pos_off = Point2::new(x, y + 1);
-                        c += current.get(pos_off, "recons").clone()
-                            - est.get(pos, "gradient_y").clone();
-                        w += 1.0;
-                    }
-                    c.scale(1.0 / w);
-                    im_block.accumulate(Point2::new(local_x, local_y), c, "recons");
                 }
+            });
+            // Collect the data
+            current.reset();
+            for im_block in &image_blocks {
+                current.accumulate_bitmap(im_block);
             }
-        });
-        // Collect the data
-        current.reset();
-        for im_block in &image_blocks {
-            current.accumulate_bitmap(im_block);
         }
-    }});
+    });
     let elapsed = start.elapsed();
     info!(
         "Reconstruction Elapsed: {} ms",
@@ -137,5 +139,5 @@ fn gradient_reconstruct(scene: &Scene, est: &Bitmap, iterations: usize) -> Bitma
     image
 }
 
-pub mod path;
 pub mod avg;
+pub mod path;

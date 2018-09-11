@@ -56,7 +56,7 @@ fn main() {
         .default_value("50");
     let matches =
         App::new("rustlight")
-            .version("0.0.5")
+            .version("0.1.0")
             .author("Adrien Gruson <adrien.gruson@gmail.com>")
             .about("A Rusty Light Transport simulation program")
             .arg(
