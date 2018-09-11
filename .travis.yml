@@ -9,7 +9,7 @@ matrix:
 before_install:
   - sudo apt-get install -y libtbb-dev
   # get embree
-  - sudo apt-get install -y alien dpkg-dev debhelper build-essential wget openexr-dev
+  - sudo apt-get install -y alien dpkg-dev debhelper build-essential wget openexr
   - wget https://github.com/embree/embree/releases/download/v3.2.0/embree-3.2.0.x86_64.rpm.tar.gz -O /tmp/embree.tar.gz
   - cd /tmp
   - tar -xvf embree.tar.gz
