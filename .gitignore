@@ -8,6 +8,7 @@
 /test.png
 /*.png
 /*.pfm
+/*.exr
 /data/*.blend*
 /data/*.bak
 /data/*

@@ -7,8 +7,10 @@ extern crate byteorder;
 extern crate cgmath;
 // For fast intersection
 extern crate embree_rs;
-// For the image (LDR) export
+// For the image (LDR) export and loading
 extern crate image;
+// For the image (HDR) export and loading
+extern crate openexr;
 // For logging propose
 #[macro_use]
 extern crate log;
