@@ -127,7 +127,7 @@ impl Scale<f32> for Bitmap {
 }
 
 /////////////// Integrators code
-pub trait Integrator: Sync + Send {
+pub trait Integrator {
     fn compute(&mut self, scene: &Scene) -> Bitmap {
         let buffernames = vec!["primal"];
         Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)

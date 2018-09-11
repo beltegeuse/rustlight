@@ -8,6 +8,8 @@ extern crate rayon;
 extern crate rustlight;
 
 use clap::{App, Arg, SubCommand};
+use rustlight::integrators::gradient::IntegratorGradient;
+use rustlight::integrators::Integrator;
 use std::io::Read;
 
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
@@ -17,6 +19,24 @@ fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
             Ok(x) => Some(x),
             Err(_e) => panic!("wrong input for inf type parameter"),
         },
+    }
+}
+
+enum IntegratorType {
+    Primal(Box<Integrator>),
+    Gradient(Box<IntegratorGradient>),
+}
+impl IntegratorType {
+    fn integrator(self) -> Box<Integrator> {
+        match self {
+            IntegratorType::Primal(v) => v,
+            IntegratorType::Gradient(v) => unsafe {
+                Box::from_raw(std::mem::transmute::<
+                    *mut IntegratorGradient,
+                    *mut Integrator,
+                >(Box::into_raw(v)))
+            },
+        }
     }
 }
 
@@ -168,10 +188,6 @@ fn main() {
     }
     /////////////// Check output extension
     let imgout_path_str = matches.value_of("output").unwrap_or("test.pfm");
-    let output_ext = match std::path::Path::new(imgout_path_str).extension() {
-        None => panic!("No file extension provided"),
-        Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
-    };
 
     //////////////// Load the rendering configuration
     let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), usize);
@@ -220,91 +236,104 @@ fn main() {
     }
 
     ///////////////// Create the main integrator
-    let mut int: Box<rustlight::integrators::Integrator> = match matches.subcommand() {
+    let int = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            Box::new(rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth })
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth },
+            ))
         }
         ("light-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            Box::new(rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth })
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth },
+            ))
         }
         ("gradient-path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            Box::new(
+            IntegratorType::Gradient(Box::new(
                 rustlight::integrators::gradient::path::IntegratorGradientPath {
                     max_depth,
                     min_depth,
                     iterations,
                 },
-            )
+            ))
         }
         ("vpl", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
             let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
-            Box::new(rustlight::integrators::explicit::vpl::IntegratorVPL {
-                nb_vpl,
-                max_depth,
-                clamping_factor: if clamping <= 0.0 {
-                    None
-                } else {
-                    Some(clamping)
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::vpl::IntegratorVPL {
+                    nb_vpl,
+                    max_depth,
+                    clamping_factor: if clamping <= 0.0 {
+                        None
+                    } else {
+                        Some(clamping)
+                    },
                 },
-            })
+            ))
         }
         ("path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
-            Box::new(rustlight::integrators::path::IntegratorPath {
+            IntegratorType::Primal(Box::new(rustlight::integrators::path::IntegratorPath {
                 max_depth,
                 min_depth,
-            })
+            }))
         }
         ("pssmlt", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
             assert!(large_prob > 0.0 && large_prob <= 1.0);
-            Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
+            IntegratorType::Primal(Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
                 large_prob,
                 integrator: Box::new(rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
                 }),
-            })
+            }))
         }
         ("ao", Some(m)) => {
             let dist = match_infinity(m.value_of("distance").unwrap());
-            Box::new(rustlight::integrators::ao::IntegratorAO { max_distance: dist })
+            IntegratorType::Primal(Box::new(rustlight::integrators::ao::IntegratorAO {
+                max_distance: dist,
+            }))
         }
-        ("direct", Some(m)) => Box::new(rustlight::integrators::direct::IntegratorDirect {
-            nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
-            nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
-        }),
+        ("direct", Some(m)) => {
+            IntegratorType::Primal(Box::new(rustlight::integrators::direct::IntegratorDirect {
+                nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
+                nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
+            }))
+        }
         _ => panic!("unknown integrator"),
     };
-    if matches.is_present("average") {
+    let mut int = if matches.is_present("average") {
         let time_out = match_infinity(matches.value_of("average").unwrap());
-        int = Box::new(rustlight::integrators::avg::IntegratorAverage {
-            time_out,
-            output_csv: false,
-            integrator: int,
-        })
-    }
+        let int: Box<Integrator> = match int {
+            IntegratorType::Gradient(v) => Box::new(
+                rustlight::integrators::gradient::avg::IntegratorGradientAverage {
+                    time_out,
+                    output_csv: false,
+                    integrator: v,
+                },
+            ),
+            IntegratorType::Primal(v) => Box::new(rustlight::integrators::avg::IntegratorAverage {
+                time_out,
+                output_csv: false,
+                integrator: v,
+            }),
+        };
+        int
+    } else {
+        int.integrator()
+    };
     let img = rustlight::integrators::run_integrator(&scene, int.as_mut());
 
-    // Save the image (HDR and LDF)
-    // -- LDR
-    match output_ext {
-        "pfm" => {
-            rustlight::tools::save_pfm(imgout_path_str, &img, &"primal".to_string());
-        }
-        "png" => {
-            rustlight::tools::save_png(imgout_path_str, &img, &"primal".to_string());
-        }
-        _ => panic!("Unknow output file extension"),
-    }
+    // Save the image
+    rustlight::tools::save(imgout_path_str, &img, "primal");
 }

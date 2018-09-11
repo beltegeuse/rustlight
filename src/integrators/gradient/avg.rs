@@ -1,14 +1,15 @@
 use integrators::*;
 use std;
 use tools;
+use integrators::gradient::*;
 
-pub struct IntegratorAverage {
+pub struct IntegratorGradientAverage {
     pub time_out: Option<usize>, //< Time out in seconds
     pub output_csv: bool,
-    pub integrator: Box<Integrator>,
+    pub integrator: Box<IntegratorGradient>,
 }
 
-impl Integrator for IntegratorAverage {
+impl Integrator for IntegratorGradientAverage {
     fn compute(&mut self, scene: &Scene) -> Bitmap {
         // Get the output file type
         let output_ext = match std::path::Path::new(&scene.output_img_path).extension() {
@@ -25,7 +26,7 @@ impl Integrator for IntegratorAverage {
         let start = Instant::now();
 
         loop {
-            let new_bitmap = self.integrator.compute(scene);
+            let new_bitmap = self.integrator.compute_gradients(scene);
             if iteration == 1 {
                 bitmap = Some(new_bitmap);
             } else {
@@ -34,10 +35,13 @@ impl Integrator for IntegratorAverage {
                 bitmap.as_mut().unwrap().scale(1.0 / (iteration + 1) as f32);
             }
 
+            // Do the reconstruction
+            let recons_img = gradient_reconstruct(scene, bitmap.as_ref().unwrap(), self.integrator.iterations());
+
             // Save the bitmap for the current iteration
             let imgout_path_str =
                 base_output_img_path.clone() + "_" + &iteration.to_string() + "." + output_ext;
-            tools::save(imgout_path_str.as_str(), bitmap.as_ref().unwrap(), "primal");
+            tools::save(imgout_path_str.as_str(), &recons_img, "primal");
 
             // Check the time elapsed when we started the rendering...
             let elapsed = start.elapsed();
