@@ -4,12 +4,13 @@ use rayon;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use samplers::*;
 use scene::*;
+use std;
 use std::cmp;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
 use structure::Color;
-use tools::StepRangeInt;
+use tools::{save, StepRangeInt};
 use Scale;
 
 //////////////// Helpers
@@ -48,6 +49,19 @@ impl Bitmap {
         bitmap
     }
 
+    pub fn dump_all(&self, name: String) {
+        let output_ext = match std::path::Path::new(&name).extension() {
+            None => panic!("No file extension provided"),
+            Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
+        };
+        let mut trunc_name = name.clone();
+        trunc_name.truncate(name.len() - output_ext.len() - 1);
+        for key in self.values.keys() {
+            let new_name = format!("{}_{}.{}", trunc_name, key, output_ext);
+            save(new_name.as_str(), self, key.clone());
+        }
+    }
+
     /// Register a name for a particular buffer
     pub fn register(&mut self, name: String) {
         self.values.insert(
@@ -56,7 +70,12 @@ impl Bitmap {
         );
     }
 
-    pub fn register_mean_variance(&mut self, base_name: &String, o: &Bitmap, buffers: &Vec<String>) {
+    pub fn register_mean_variance(
+        &mut self,
+        base_name: &String,
+        o: &Bitmap,
+        buffers: &Vec<String>,
+    ) {
         // Create buffers
         let mean_name = format!("{}_mean", base_name);
         let variance_name = format!("{}_variance", base_name);
@@ -68,20 +87,20 @@ impl Bitmap {
                 // Compute mean
                 let mut mean = Color::zero();
                 for buffer in buffers {
-                    mean += o.get(Point2::new(x,y), buffer);
+                    mean += o.get(Point2::new(x, y), buffer);
                 }
-                mean.scale( 1.0 / buffers.len() as f32);
-                
+                mean.scale(1.0 / buffers.len() as f32);
+
                 // Compute variance
                 let mut variance = Color::zero();
                 for buffer in buffers {
-                    variance += (o.get(Point2::new(x,y), buffer) - &mean).abs();
+                    variance += (o.get(Point2::new(x, y), buffer) - &mean).abs();
                 }
-                variance.scale( 1.0 / buffers.len() as f32); // TODO: Check variance formula
+                variance.scale(1.0 / buffers.len() as f32); // TODO: Check variance formula
 
                 // Save the values
-                self.accumulate(Point2::new(x,y), mean, &mean_name);
-                self.accumulate(Point2::new(x,y), variance, &variance_name);
+                self.accumulate(Point2::new(x, y), mean, &mean_name);
+                self.accumulate(Point2::new(x, y), variance, &variance_name);
             }
         }
     }
@@ -103,7 +122,7 @@ impl Bitmap {
         // This is special, it does not allowed to write twice the same pixels
         // This function is only when we
         for keys in o.values.keys() {
-           self.accumulate_bitmap_buffer(o, keys, keys);
+            self.accumulate_bitmap_buffer(o, keys, keys);
         }
     }
 

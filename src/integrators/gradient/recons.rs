@@ -1,6 +1,6 @@
 use integrators::gradient::*;
-use Scale;
 use rayon::prelude::*;
+use Scale;
 
 pub struct WeightedPoissonReconstruction {
     pub iterations: usize,
@@ -11,15 +11,22 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
     }
 
     fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap {
+        let inv_or_1 = |v| if v == 0.0 { 1.0 } else { 1.0 / v };
+
         // Reconstruction (image-space covariate, uniform reconstruction)
         let img_size = est.size;
+        let nb_buffers = self.need_variance_estimates().unwrap();
 
         // Average the different buffers
         let mut averaged_variance = Bitmap::new(Point2::new(0, 0), img_size.clone(), &Vec::new());
-        for buffer in vec![String::from("primal"), String::from("gradient_x"), String::from("gradient_y")] {
+        for buffer in vec![
+            String::from("primal"),
+            String::from("gradient_x"),
+            String::from("gradient_y"),
+        ] {
             let mut buffernames = Vec::new();
-            for i in 0..2 {
-                buffernames.push(format!("{}_{}",buffer,i));
+            for i in 0..nb_buffers {
+                buffernames.push(format!("{}_{}", buffer, i));
             }
             averaged_variance.register_mean_variance(&buffer, est, &buffernames);
         }
@@ -41,7 +48,7 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
         let mut current = Bitmap::new(Point2::new(0, 0), img_size.clone(), &buffernames);
         current.accumulate_bitmap_buffer(&averaged_variance, &primal_name, &recons_name);
 
-        // Generate the buffer names 
+        // Generate the buffer names
         let mut image_blocks = generate_img_blocks(scene, &buffernames);
         let pool = generate_pool(scene);
         pool.install(|| {
@@ -52,38 +59,69 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                         for local_x in 0..im_block.size.x {
                             let (x, y) = (local_x + im_block.pos.x, local_y + im_block.pos.y);
                             let pos = Point2::new(x, y);
-                            let var_pos = averaged_variance.get(pos, &primal_variance_name).channel_max();
-                            let coeff_var_red = 1.0 / (0.01 + 1.0 + 4.0 * 0.5_f32.powf(iter as f32));
-                            let mut c = current.get(pos, &recons_name).clone() * var_pos * coeff_var_red;
-                            let mut w = var_pos * coeff_var_red;
+
+                            // Compute variance inside the current pixel
+                            let coeff_var_red =
+                                1.0 / (0.01 + 1.0 + 4.0 * 0.5_f32.powf(iter as f32));
+                            let var_pos = averaged_variance
+                                .get(pos, &primal_variance_name)
+                                .channel_max()
+                                * coeff_var_red;
+                            let curr_weight = inv_or_1(var_pos);
+                            let mut c = current.get(pos, &recons_name).clone() * curr_weight;
+                            let mut w = curr_weight;
 
                             if x > 0 {
                                 let pos_off = Point2::new(x - 1, y);
-                                let variance = var_pos + averaged_variance.get(pos_off, &gradient_x_variance_name).channel_max();
+                                let curr_weight = inv_or_1(
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos_off, &gradient_x_variance_name)
+                                            .channel_max(),
+                                );
                                 c += (current.get(pos_off, &recons_name).clone()
-                                    + averaged_variance.get(pos_off, &gradient_x_name).clone()) * variance * coeff_var_red;
-                                w += variance * coeff_var_red;
+                                    + averaged_variance.get(pos_off, &gradient_x_name).clone())
+                                    * curr_weight;
+                                w += curr_weight;
                             }
                             if x < img_size.x - 1 {
                                 let pos_off = Point2::new(x + 1, y);
-                                let variance = var_pos + averaged_variance.get(pos, &gradient_x_variance_name).channel_max();
+                                let curr_weight = inv_or_1(
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos, &gradient_x_variance_name)
+                                            .channel_max(),
+                                );
                                 c += (current.get(pos_off, &recons_name).clone()
-                                    - averaged_variance.get(pos, &gradient_x_name).clone())*variance * coeff_var_red;
-                                w += variance * coeff_var_red;
+                                    - averaged_variance.get(pos, &gradient_x_name).clone())
+                                    * curr_weight;
+                                w += curr_weight;
                             }
                             if y > 0 {
                                 let pos_off = Point2::new(x, y - 1);
-                                let variance = var_pos + averaged_variance.get(pos_off, &gradient_y_variance_name).channel_max();
+                                let curr_weight = inv_or_1(
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos_off, &gradient_y_variance_name)
+                                            .channel_max(),
+                                );
                                 c += (current.get(pos_off, &recons_name).clone()
-                                    + averaged_variance.get(pos_off, &gradient_y_name).clone()) * variance * coeff_var_red;
-                                w += variance * coeff_var_red;
+                                    + averaged_variance.get(pos_off, &gradient_y_name).clone())
+                                    * curr_weight;
+                                w += curr_weight;
                             }
                             if y < img_size.y - 1 {
                                 let pos_off = Point2::new(x, y + 1);
-                                let variance = var_pos + averaged_variance.get(pos, &gradient_y_variance_name).channel_max();
+                                let curr_weight = inv_or_1(
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos, &gradient_y_variance_name)
+                                            .channel_max(),
+                                );
                                 c += (current.get(pos_off, &recons_name).clone()
-                                    - averaged_variance.get(pos, &gradient_y_name).clone()) * variance * coeff_var_red;
-                                w += variance * coeff_var_red;
+                                    - averaged_variance.get(pos, &gradient_y_name).clone())
+                                    * curr_weight;
+                                w += curr_weight;
                             }
                             c.scale(1.0 / w);
                             im_block.accumulate(Point2::new(local_x, local_y), c, &recons_name);

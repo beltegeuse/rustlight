@@ -119,10 +119,12 @@ fn main() {
                     .arg(&max_arg)
                     .arg(&min_arg)
                     .arg(&iterations_arg)
-                    .arg(Arg::with_name("reconstruction_type")
+                    .arg(
+                        Arg::with_name("reconstruction_type")
                             .takes_value(true)
                             .short("t")
-                            .default_value("uniform")),
+                            .default_value("uniform"),
+                    ),
             )
             .subcommand(
                 SubCommand::with_name("pssmlt")
@@ -268,15 +270,19 @@ fn main() {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            let recons: Box<rustlight::integrators::gradient::PoissonReconstruction + Sync> = match m.value_of("reconstruction_type").unwrap() {
-                "uniform" =>  Box::new(
-                        rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
-                            iterations,
-                        }),
-                "weighted" =>  Box::new(
-                        rustlight::integrators::gradient::recons::WeightedPoissonReconstruction {
-                            iterations,
-                        }),
+            let recons: Box<
+                rustlight::integrators::gradient::PoissonReconstruction + Sync,
+            > = match m.value_of("reconstruction_type").unwrap() {
+                "uniform" => Box::new(
+                    rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
+                        iterations,
+                    },
+                ),
+                "weighted" => Box::new(
+                    rustlight::integrators::gradient::recons::WeightedPoissonReconstruction {
+                        iterations,
+                    },
+                ),
                 _ => panic!("Impossible to found a reconstruction_type"),
             };
 

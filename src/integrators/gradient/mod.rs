@@ -74,6 +74,6 @@ pub trait PoissonReconstruction {
     fn need_variance_estimates(&self) -> Option<usize>;
 }
 
-pub mod recons;
 pub mod avg;
 pub mod path;
+pub mod recons;
