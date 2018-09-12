@@ -91,25 +91,32 @@ impl IntegratorGradient for IntegratorGradientPath {
     }
 
     fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {
-        let buffernames = if self.recons.need_variance_estimates() {
+        // The buffers names are always:
+        // ["very_direct", ("primal", "gradient_x", "gradient_y")+]
+        let (nb_buffers, buffernames) = if let Some(number_buffers) = self.recons.need_variance_estimates() {
             let mut buffernames = Vec::new();
-            let number_buffers = 2;
             buffernames.reserve((3 * number_buffers) + 1);
             buffernames.push(String::from("very_direct"));
             for i in 0..number_buffers {
-                buffernames.push("primal_".to_string() + &i.to_string());
-                // buffernames.push(("gradient_x_"+i.to_string()).to_owned());
-                //buffernames.push(("gradient_y_"+i.to_string()).to_owned());
+                buffernames.push(format!("primal_{}", i));
+                buffernames.push(format!("gradient_x_{}", i));
+                buffernames.push(format!("gradient_y_{}", i));
             }
-            buffernames
+            (number_buffers, buffernames)
         } else {
-            vec![
-                String::from("primal"),
+            (1, vec![
                 String::from("very_direct"),
+                String::from("primal"),
                 String::from("gradient_x"),
                 String::from("gradient_y"),
-            ]
+            ])
         };
+
+        let id_very_direct = 0;
+        let id_primal = 1;
+        let id_gradient_x = 2;
+        let id_gradient_y = 3;
+        
 
         // Compare to path tracing, make the block a bit bigger
         // so that we can store all the path contribution
@@ -159,7 +166,7 @@ impl IntegratorGradient for IntegratorGradientPath {
                 let mut sampler = independent::IndependentSampler::default();
                 for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
                     for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
-                        for _ in 0..scene.nb_samples() {
+                        for n in 0..scene.nb_samples() {
                             let c = self.compute_pixel(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
                                 scene,
@@ -167,8 +174,9 @@ impl IntegratorGradient for IntegratorGradientPath {
                             );
                             // Accumulate the values inside the buffer
                             let pos = Point2::new(ix, iy);
-                            im_block.accumulate(pos, c.main, &"primal".to_owned());
-                            im_block.accumulate(pos, c.very_direct, &"very_direct".to_owned());
+                            let offset_buffers = (n % nb_buffers) * 3; // 3 buffers are in multiple version
+                            im_block.accumulate(pos, c.main, &buffernames[id_primal+offset_buffers]);
+                            im_block.accumulate(pos, c.very_direct, &buffernames[id_very_direct].to_owned());
                             for i in 0..4 {
                                 // primal reuse
                                 let off = GRADIENT_ORDER[i];
@@ -176,7 +184,7 @@ impl IntegratorGradient for IntegratorGradientPath {
                                 im_block.accumulate_safe(
                                     pos_off,
                                     c.radiances[i],
-                                    &"primal".to_owned(),
+                                    &buffernames[id_primal+offset_buffers],
                                 );
                                 // gradient
                                 match GRADIENT_DIRECTION[i] {
@@ -184,12 +192,12 @@ impl IntegratorGradient for IntegratorGradientPath {
                                         1 => im_block.accumulate(
                                             pos,
                                             c.gradients[i],
-                                            &"gradient_x".to_owned(),
+                                            &buffernames[id_gradient_x+offset_buffers],
                                         ),
                                         -1 => im_block.accumulate_safe(
                                             pos_off,
                                             c.gradients[i] * -1.0,
-                                            &"gradient_x".to_owned(),
+                                           &buffernames[id_gradient_x+offset_buffers],
                                         ),
                                         _ => panic!("wrong displacement X"), // FIXME: Fix the enum
                                     },
@@ -197,12 +205,12 @@ impl IntegratorGradient for IntegratorGradientPath {
                                         1 => im_block.accumulate(
                                             pos,
                                             c.gradients[i],
-                                            &"gradient_y".to_owned(),
+                                            &buffernames[id_gradient_y+offset_buffers],
                                         ),
                                         -1 => im_block.accumulate_safe(
                                             pos_off,
                                             c.gradients[i] * -1.0,
-                                            &"gradient_y".to_owned(),
+                                            &buffernames[id_gradient_y+offset_buffers],
                                         ),
                                         _ => panic!("wrong displacement Y"),
                                     },
@@ -212,7 +220,15 @@ impl IntegratorGradient for IntegratorGradientPath {
                     }
                 }
                 im_block.scale(1.0 / (scene.nb_samples() as f32));
-                im_block.scale_buffer(0.25, &"primal".to_string()); // 4 strategies as reuse primal
+                // Renormalize correctly the buffer informations
+                for i in 0..nb_buffers {
+                    let offset_buffers = i * 3; // 3 buffer that have multiple entries 
+                    // 4 strategies as reuse primal
+                    im_block.scale_buffer(0.25 * nb_buffers as f32, &buffernames[id_primal+offset_buffers]);
+                    im_block.scale_buffer(nb_buffers as f32, &buffernames[id_gradient_x+offset_buffers]);
+                    im_block.scale_buffer(nb_buffers as f32, &buffernames[id_gradient_y+offset_buffers]);
+                }
+            
                 {
                     progress_bar.lock().unwrap().inc();
                 }

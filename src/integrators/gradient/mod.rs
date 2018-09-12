@@ -73,7 +73,7 @@ pub trait IntegratorGradient: Integrator {
 
 pub trait PoissonReconstruction {
     fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap;
-    fn need_variance_estimates(&self) -> bool;
+    fn need_variance_estimates(&self) -> Option<usize>;
 }
 
 pub mod recons;
