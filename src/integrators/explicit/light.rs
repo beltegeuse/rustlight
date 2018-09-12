@@ -72,7 +72,7 @@ impl TechniqueLightTracing {
                         bitmap.accumulate_safe(
                             Point2::new(uv.x as i32, uv.y as i32),
                             flux * importance * bsdf_value * correction,
-                            &"primal".to_string(),
+                            &"primal".to_owned(),
                         );
                     }
                 }
@@ -98,7 +98,7 @@ impl TechniqueLightTracing {
                         bitmap.accumulate_safe(
                             Point2::new(uv.x as i32, uv.y as i32),
                             flux * importance * d.dot(v.n),
-                            &"primal".to_string(),
+                            &"primal".to_owned(),
                         );
                     }
                 }
@@ -128,7 +128,7 @@ impl Integrator for IntegratorLightTracing {
             / nb_jobs as usize;
 
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
-        let buffer_names = vec!["primal"];
+        let buffer_names = vec![String::from("primal")];
         let img = Mutex::new(Bitmap::new(
             Point2::new(0, 0),
             *scene.camera.size(),

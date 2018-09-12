@@ -18,13 +18,13 @@ use Scale;
 pub struct Bitmap {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
-    pub values: HashMap<&'static str, Vec<Color>>,
+    pub values: HashMap<String, Vec<Color>>,
 }
 unsafe impl Send for Bitmap {}
 
 impl Bitmap {
     /// Create a new Bitmap
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<&'static str>) -> Bitmap {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<String>) -> Bitmap {
         let mut bitmap = Bitmap {
             pos,
             size,
@@ -32,7 +32,7 @@ impl Bitmap {
         };
 
         for s in names {
-            bitmap.register(&s);
+            bitmap.register(s.clone());
         }
         bitmap
     }
@@ -43,13 +43,13 @@ impl Bitmap {
             values: HashMap::new(),
         };
         for key in other.values.keys() {
-            bitmap.register(key);
+            bitmap.register(key.clone());
         }
         bitmap
     }
 
     /// Register a name for a particular buffer
-    pub fn register(&mut self, name: &'static str) {
+    pub fn register(&mut self, name: String) {
         self.values.insert(
             name,
             vec![Color::default(); (self.size.x * self.size.y) as usize],
@@ -73,14 +73,14 @@ impl Bitmap {
         }
     }
 
-    pub fn accumulate(&mut self, p: Point2<u32>, f: Color, name: &str) {
+    pub fn accumulate(&mut self, p: Point2<u32>, f: Color, name: &String) {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         let index = (p.y * self.size.x + p.x) as usize;
         self.values.get_mut(name).unwrap()[index] += f;
     }
 
-    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: Color, name: &str) {
+    pub fn accumulate_safe(&mut self, p: Point2<i32>, f: Color, name: &String) {
         if p.x >= 0 && p.y >= 0 && p.x < (self.size.x as i32) && p.y < (self.size.y as i32) {
             self.accumulate(
                 Point2 {
@@ -93,7 +93,7 @@ impl Bitmap {
         }
     }
 
-    pub fn get(&self, p: Point2<u32>, name: &str) -> &Color {
+    pub fn get(&self, p: Point2<u32>, name: &String) -> &Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         &self.values[name][(p.y * self.size.x + p.x) as usize]
@@ -105,14 +105,14 @@ impl Bitmap {
         }
     }
 
-    pub fn average_pixel(&self, name: &str) -> Color {
+    pub fn average_pixel(&self, name: &String) -> Color {
         let mut s = Color::default();
         self.values[name].iter().for_each(|x| s += x.clone());
         s.scale(1.0 / self.values[name].len() as f32);
         s
     }
 
-    pub fn scale_buffer(&mut self, f: f32, name: &'static str) {
+    pub fn scale_buffer(&mut self, f: f32, name: &String) {
         self.values
             .get_mut(name)
             .unwrap()
@@ -133,7 +133,7 @@ impl Scale<f32> for Bitmap {
 /////////////// Integrators code
 pub trait Integrator {
     fn compute(&mut self, scene: &Scene) -> Bitmap {
-        let buffernames = vec!["primal"];
+        let buffernames = vec!["primal".to_string()];
         Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
@@ -142,7 +142,7 @@ pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color;
 }
 
-pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<&'static str>) -> Vec<Bitmap> {
+pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<Bitmap> {
     let mut image_blocks: Vec<Bitmap> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
@@ -166,7 +166,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<&'static str>) -> Ve
 pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitmap {
     // Here we can to the classical parallelisation
     assert_ne!(scene.nb_samples(), 0);
-    let buffernames = vec!["primal"];
+    let buffernames = vec!["primal".to_string()];
 
     // Create rendering blocks
     let mut image_blocks = generate_img_blocks(scene, &buffernames);

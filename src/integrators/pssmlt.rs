@@ -60,7 +60,7 @@ impl Integrator for IntegratorPSSMLT {
         info!("Rendering...");
         let start = Instant::now();
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
-        let buffer_names = vec!["primal"];
+        let buffer_names = vec!["primal".to_string()];
         let img = Mutex::new(Bitmap::new(
             Point2::new(0, 0),
             *scene.camera.size(),

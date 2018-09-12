@@ -91,7 +91,25 @@ impl IntegratorGradient for IntegratorGradientPath {
     }
 
     fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {
-        let buffernames = vec!["primal", "very_direct", "gradient_x", "gradient_y"];
+        let buffernames = if self.recons.need_variance_estimates() {
+            let mut buffernames = Vec::new();
+            let number_buffers = 2;
+            buffernames.reserve((3 * number_buffers) + 1);
+            buffernames.push(String::from("very_direct"));
+            for i in 0..number_buffers {
+                buffernames.push("primal_".to_string() + &i.to_string());
+                // buffernames.push(("gradient_x_"+i.to_string()).to_owned());
+                //buffernames.push(("gradient_y_"+i.to_string()).to_owned());
+            }
+            buffernames
+        } else {
+            vec![
+                String::from("primal"),
+                String::from("very_direct"),
+                String::from("gradient_x"),
+                String::from("gradient_y"),
+            ]
+        };
 
         // Compare to path tracing, make the block a bit bigger
         // so that we can store all the path contribution
@@ -149,30 +167,42 @@ impl IntegratorGradient for IntegratorGradientPath {
                             );
                             // Accumulate the values inside the buffer
                             let pos = Point2::new(ix, iy);
-                            im_block.accumulate(pos, c.main, "primal");
-                            im_block.accumulate(pos, c.very_direct, "very_direct");
+                            im_block.accumulate(pos, c.main, &"primal".to_owned());
+                            im_block.accumulate(pos, c.very_direct, &"very_direct".to_owned());
                             for i in 0..4 {
                                 // primal reuse
                                 let off = GRADIENT_ORDER[i];
                                 let pos_off = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
-                                im_block.accumulate_safe(pos_off, c.radiances[i], "primal");
+                                im_block.accumulate_safe(
+                                    pos_off,
+                                    c.radiances[i],
+                                    &"primal".to_owned(),
+                                );
                                 // gradient
                                 match GRADIENT_DIRECTION[i] {
                                     GradientDirection::X(v) => match v {
-                                        1 => im_block.accumulate(pos, c.gradients[i], "gradient_x"),
+                                        1 => im_block.accumulate(
+                                            pos,
+                                            c.gradients[i],
+                                            &"gradient_x".to_owned(),
+                                        ),
                                         -1 => im_block.accumulate_safe(
                                             pos_off,
                                             c.gradients[i] * -1.0,
-                                            "gradient_x",
+                                            &"gradient_x".to_owned(),
                                         ),
                                         _ => panic!("wrong displacement X"), // FIXME: Fix the enum
                                     },
                                     GradientDirection::Y(v) => match v {
-                                        1 => im_block.accumulate(pos, c.gradients[i], "gradient_y"),
+                                        1 => im_block.accumulate(
+                                            pos,
+                                            c.gradients[i],
+                                            &"gradient_y".to_owned(),
+                                        ),
                                         -1 => im_block.accumulate_safe(
                                             pos_off,
                                             c.gradients[i] * -1.0,
-                                            "gradient_y",
+                                            &"gradient_y".to_owned(),
                                         ),
                                         _ => panic!("wrong displacement Y"),
                                     },
@@ -182,7 +212,7 @@ impl IntegratorGradient for IntegratorGradientPath {
                     }
                 }
                 im_block.scale(1.0 / (scene.nb_samples() as f32));
-                im_block.scale_buffer(0.25, "primal"); // 4 strategies as reuse primal
+                im_block.scale_buffer(0.25, &"primal".to_string()); // 4 strategies as reuse primal
                 {
                     progress_bar.lock().unwrap().inc();
                 }

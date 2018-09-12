@@ -35,20 +35,22 @@ impl Integrator for IntegratorGradientAverage {
             }
 
             // Do the reconstruction
+            let start_recons = Instant::now();
             let recons_img = self
                 .integrator
                 .reconstruct()
                 .reconstruct(scene, bitmap.as_ref().unwrap());
-
+            let elapsed_recons = start_recons.elapsed();
+            info!("Reconstruction time: {:?}", elapsed_recons);
             // Save the bitmap for the current iteration
             let imgout_path_str =
                 base_output_img_path.clone() + "_" + &iteration.to_string() + "." + output_ext;
-            tools::save(imgout_path_str.as_str(), &recons_img, "primal");
+            tools::save(imgout_path_str.as_str(), &recons_img, "primal".to_string());
 
             // Check the time elapsed when we started the rendering...
             let elapsed = start.elapsed();
             match self.time_out {
-                None => info!("Total time (no timeout): {:?}", elapsed),
+                None => info!("Total time (no timeout): {:?} secs", elapsed.as_secs()),
                 Some(t) => info!("Total time: {:?} / {:?} secs", elapsed.as_secs(), t),
             }
             if self
@@ -62,7 +64,7 @@ impl Integrator for IntegratorGradientAverage {
         }
 
         if bitmap.is_none() {
-            let buffernames = vec!["primal"];
+            let buffernames = vec![String::from("primal")];
             bitmap = Some(Bitmap::new(
                 Point2::new(0, 0),
                 *scene.camera.size(),

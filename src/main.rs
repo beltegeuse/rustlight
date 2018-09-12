@@ -269,7 +269,7 @@ fn main() {
                     max_depth,
                     min_depth,
                     recons: Box::new(
-                        rustlight::integrators::gradient::UniformPoissonReconstruction {
+                        rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
                             iterations,
                         },
                     ),
@@ -352,5 +352,5 @@ fn main() {
     let img = int.compute(&scene);
 
     // Save the image
-    rustlight::tools::save(imgout_path_str, &img, "primal");
+    rustlight::tools::save(imgout_path_str, &img, "primal".to_string());
 }
