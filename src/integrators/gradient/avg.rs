@@ -1,6 +1,7 @@
 use integrators::gradient::*;
 use std;
 use tools;
+use Scale;
 
 pub struct IntegratorGradientAverage {
     pub time_out: Option<usize>, //< Time out in seconds

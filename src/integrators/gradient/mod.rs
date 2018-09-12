@@ -1,10 +1,8 @@
 use cgmath::Point2;
 use integrators::{generate_img_blocks, generate_pool, Bitmap, Integrator};
-use rayon::prelude::*;
 use scene::Scene;
 use std::time::Instant;
 use structure::Color;
-use Scale;
 
 #[derive(Clone, Debug, Copy)]
 pub struct ColorGradient {

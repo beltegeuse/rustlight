@@ -52,6 +52,9 @@ impl Color {
     pub fn value(v: f32) -> Color {
         Color::new(v, v, v)
     }
+    pub fn abs(&self) -> Color {
+        Color::new(self.r.abs(), self.g.abs(), self.b.abs())
+    }
 
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
@@ -157,6 +160,17 @@ impl Mul<Color> for f32 {
             r: other.r * self,
             g: other.g * self,
             b: other.b * self,
+        }
+    }
+}
+
+impl<'a,'b> Sub<&'a Color> for &'b Color {
+    type Output = Color;
+    fn sub(self, other: &'a Color) -> Color {
+        Color {
+            r: other.r - self.r,
+            g: other.g - self.g,
+            b: other.b - self.b,
         }
     }
 }

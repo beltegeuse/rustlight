@@ -56,20 +56,54 @@ impl Bitmap {
         );
     }
 
+    pub fn register_mean_variance(&mut self, base_name: &String, o: &Bitmap, buffers: &Vec<String>) {
+        // Create buffers
+        let mean_name = format!("{}_mean", base_name);
+        let variance_name = format!("{}_variance", base_name);
+        self.register(mean_name.clone());
+        self.register(variance_name.clone());
+        info!("average and variance: {:?}", buffers);
+        for y in 0..o.size.y {
+            for x in 0..o.size.x {
+                // Compute mean
+                let mut mean = Color::zero();
+                for buffer in buffers {
+                    mean += o.get(Point2::new(x,y), buffer);
+                }
+                mean.scale( 1.0 / buffers.len() as f32);
+                
+                // Compute variance
+                let mut variance = Color::zero();
+                for buffer in buffers {
+                    variance += (o.get(Point2::new(x,y), buffer) - &mean).abs();
+                }
+                variance.scale( 1.0 / buffers.len() as f32); // TODO: Check variance formula
+
+                // Save the values
+                self.accumulate(Point2::new(x,y), mean, &mean_name);
+                self.accumulate(Point2::new(x,y), variance, &variance_name);
+            }
+        }
+    }
+
+    pub fn accumulate_bitmap_buffer(&mut self, o: &Bitmap, name_org: &String, name_dest: &String) {
+        let pixels = self.values.get_mut(name_dest).unwrap();
+        let other_pixels = &o.values[name_org];
+        for y in 0..o.size.y {
+            for x in 0..o.size.x {
+                let p = Point2::new(o.pos.x + x, o.pos.y + y);
+                let index = (p.y * self.size.x + p.x) as usize;
+                let index_other = (y * o.size.x + x) as usize;
+                pixels[index] += other_pixels[index_other];
+            }
+        }
+    }
+
     pub fn accumulate_bitmap(&mut self, o: &Bitmap) {
         // This is special, it does not allowed to write twice the same pixels
         // This function is only when we
         for keys in o.values.keys() {
-            let mut pixels = self.values.get_mut(keys).unwrap();
-            let other_pixels = &o.values[keys];
-            for y in 0..o.size.y {
-                for x in 0..o.size.x {
-                    let p = Point2::new(o.pos.x + x, o.pos.y + y);
-                    let index = (p.y * self.size.x + p.x) as usize;
-                    let index_other = (y * o.size.x + x) as usize;
-                    pixels[index] += other_pixels[index_other];
-                }
-            }
+           self.accumulate_bitmap_buffer(o, keys, keys);
         }
     }
 
