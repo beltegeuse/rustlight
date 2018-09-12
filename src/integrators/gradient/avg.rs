@@ -63,14 +63,17 @@ impl Integrator for IntegratorGradientAverage {
             iteration += 1;
         }
 
-        if bitmap.is_none() {
+        let bitmap = if bitmap.is_none() {
             let buffernames = vec![String::from("primal")];
-            bitmap = Some(Bitmap::new(
-                Point2::new(0, 0),
-                *scene.camera.size(),
-                &buffernames,
-            ));
-        }
-        return bitmap.unwrap();
+            Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
+        } else {
+            info!("Do the final reconstruction");
+            let recons_img = self
+                .integrator
+                .reconstruct()
+                .reconstruct(scene, bitmap.as_ref().unwrap());
+            recons_img
+        };
+        return bitmap;
     }
 }
