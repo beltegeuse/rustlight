@@ -1,6 +1,7 @@
 use integrators::gradient::*;
 use std;
 use tools;
+use Scale;
 
 pub struct IntegratorGradientAverage {
     pub time_out: Option<usize>, //< Time out in seconds
@@ -35,20 +36,21 @@ impl Integrator for IntegratorGradientAverage {
             }
 
             // Do the reconstruction
+            let start_recons = Instant::now();
             let recons_img = self
                 .integrator
                 .reconstruct()
                 .reconstruct(scene, bitmap.as_ref().unwrap());
-
+            let elapsed_recons = start_recons.elapsed();
+            info!("Reconstruction time: {:?}", elapsed_recons);
             // Save the bitmap for the current iteration
-            let imgout_path_str =
-                base_output_img_path.clone() + "_" + &iteration.to_string() + "." + output_ext;
-            tools::save(imgout_path_str.as_str(), &recons_img, "primal");
+            let imgout_path_str = format!("{}_{}.{}", base_output_img_path, iteration, output_ext);
+            tools::save(imgout_path_str.as_str(), &recons_img, "primal".to_string());
 
             // Check the time elapsed when we started the rendering...
             let elapsed = start.elapsed();
             match self.time_out {
-                None => info!("Total time (no timeout): {:?}", elapsed),
+                None => info!("Total time (no timeout): {:?} secs", elapsed.as_secs()),
                 Some(t) => info!("Total time: {:?} / {:?} secs", elapsed.as_secs(), t),
             }
             if self
@@ -61,14 +63,17 @@ impl Integrator for IntegratorGradientAverage {
             iteration += 1;
         }
 
-        if bitmap.is_none() {
-            let buffernames = vec!["primal"];
-            bitmap = Some(Bitmap::new(
-                Point2::new(0, 0),
-                *scene.camera.size(),
-                &buffernames,
-            ));
-        }
-        return bitmap.unwrap();
+        let bitmap = if bitmap.is_none() {
+            let buffernames = vec![String::from("primal")];
+            Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
+        } else {
+            info!("Do the final reconstruction");
+            let recons_img = self
+                .integrator
+                .reconstruct()
+                .reconstruct(scene, bitmap.as_ref().unwrap());
+            recons_img
+        };
+        return bitmap;
     }
 }
