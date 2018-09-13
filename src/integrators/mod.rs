@@ -146,6 +146,11 @@ impl Bitmap {
         }
     }
 
+    pub fn rename(&mut self, current_name: &String, new_name: &String) {
+        let data = self.values.remove(current_name).unwrap();
+        self.values.insert(new_name.clone(), data);
+    }
+
     pub fn get(&self, p: Point2<u32>, name: &String) -> &Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);

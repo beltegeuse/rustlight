@@ -1,13 +1,111 @@
+use cgmath::Vector2;
 use integrators::gradient::*;
 use rayon::prelude::*;
 use Scale;
 
+pub struct BaggingPoissonReconstruction {
+    pub iterations: usize,
+    pub nb_buffers: usize,
+}
+impl PoissonReconstruction for BaggingPoissonReconstruction {
+    fn need_variance_estimates(&self) -> Option<usize> {
+        Some(self.nb_buffers)
+    }
+
+    fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap {
+        let img_size = est.size;
+
+        // Generate several reconstruction and average it
+        // For now, the number of reconstruction is equal to the number of buffers -1
+        if self.nb_buffers < 2 {
+            panic!("Impossible to do bagging with less than two buffers");
+        }
+
+        let mut image_recons =Bitmap::new(
+            Point2::new(0, 0),
+            img_size.clone(),
+            &Vec::new());
+        let mut buffernames = Vec::new();
+        for n_recons in 0..self.nb_buffers {
+            // Construct the buffer id
+            // by excluding one bucket
+            let mut buffer_id = Vec::new();
+            for i in 0..self.nb_buffers {
+                if i == n_recons {
+                    continue;
+                }
+                buffer_id.push(i);
+            }
+
+            // Do the reconstruction
+            let weighted_recons = WeightedPoissonReconstruction::new(self.iterations).restrict_buffers(buffer_id);
+            info!("Reconstruction {} / {}", n_recons+1, self.nb_buffers);
+            let image_res = weighted_recons.reconstruct(scene, est);
+            let image_name = format!("primal_{}",n_recons);
+            image_recons.register(image_name.clone());
+            image_recons.accumulate_bitmap_buffer(&image_res, &"primal".to_string(), &image_name);
+            buffernames.push(image_name);
+        }
+
+        // Average the different results
+        let mut image_avg = Bitmap::new(
+            Point2::new(0, 0),
+            img_size.clone(),
+            &Vec::new());
+        image_avg.register_mean_variance(&"primal".to_string(), &image_recons, &buffernames);
+        //image_avg.dump_all(scene.output_img_path.clone());
+        image_avg.rename(&"primal_mean".to_string(), &"primal".to_string());
+        image_avg
+    }
+}
+
 pub struct WeightedPoissonReconstruction {
     pub iterations: usize,
+    buffers_id: Option<Vec<usize>>, //< Only to select few buffers for the rendering
 }
+impl WeightedPoissonReconstruction {
+    pub fn new(iterations: usize) -> WeightedPoissonReconstruction {
+        WeightedPoissonReconstruction {
+            iterations,
+            buffers_id: None,
+        }
+    }
+
+    pub fn restrict_buffers(mut self, buffer_id: Vec<usize>) -> WeightedPoissonReconstruction {
+        self.buffers_id = Some(buffer_id);
+        self
+    }
+
+    fn generate_average_variance_bitmap(&self, est: &Bitmap, img_size: &Vector2<u32>) -> Bitmap {
+        let mut averaged_variance = Bitmap::new(Point2::new(0, 0), img_size.clone(), &Vec::new());
+        let buffernames = vec![
+            String::from("primal"),
+            String::from("gradient_x"),
+            String::from("gradient_y"),
+        ];
+        for buffer in buffernames {
+            let mut selected_names = match self.buffers_id.as_ref() {
+                None => {
+                    let nb_buffers = self.need_variance_estimates().unwrap();
+                    (0..nb_buffers)
+                        .into_iter()
+                        .map(|i| format!("{}_{}", buffer, i))
+                        .collect()
+                }
+                Some(ref v) => v.iter().map(|i| format!("{}_{}", buffer, i)).collect(),
+            };
+            averaged_variance.register_mean_variance(&buffer, est, &selected_names);
+        }
+        averaged_variance
+    }
+}
+
 impl PoissonReconstruction for WeightedPoissonReconstruction {
     fn need_variance_estimates(&self) -> Option<usize> {
-        Some(2)
+        match self.buffers_id.as_ref() {
+            None => Some(2),
+            Some(ref v) => Some(v.len()),
+        }
     }
 
     fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap {
@@ -15,21 +113,9 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
 
         // Reconstruction (image-space covariate, uniform reconstruction)
         let img_size = est.size;
-        let nb_buffers = self.need_variance_estimates().unwrap();
 
         // Average the different buffers
-        let mut averaged_variance = Bitmap::new(Point2::new(0, 0), img_size.clone(), &Vec::new());
-        for buffer in vec![
-            String::from("primal"),
-            String::from("gradient_x"),
-            String::from("gradient_y"),
-        ] {
-            let mut buffernames = Vec::new();
-            for i in 0..nb_buffers {
-                buffernames.push(format!("{}_{}", buffer, i));
-            }
-            averaged_variance.register_mean_variance(&buffer, est, &buffernames);
-        }
+        let averaged_variance = self.generate_average_variance_bitmap(est, &img_size);
 
         // Define names of buffers so we do not need to reallocate them
         let primal_name = String::from("primal_mean");
@@ -143,14 +229,8 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
             img_size.clone(),
             &vec![real_primal_name.clone()],
         );
-        for x in 0..img_size.x {
-            for y in 0..img_size.y {
-                let pos = Point2::new(x, y);
-                let pix_value = current.get(pos, &recons_name).clone()
-                    + est.get(pos, &very_direct_name).clone();
-                image.accumulate(pos, pix_value, &real_primal_name);
-            }
-        }
+        image.accumulate_bitmap_buffer(&current, &recons_name, &real_primal_name);
+        image.accumulate_bitmap_buffer(&est, &very_direct_name, &real_primal_name);
         image
     }
 }
