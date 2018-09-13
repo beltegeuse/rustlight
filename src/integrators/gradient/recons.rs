@@ -52,8 +52,21 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
             Point2::new(0, 0),
             img_size.clone(),
             &Vec::new());
+        // Using the median or min or max
+        // let real_primal_name = "primal".to_string();
+        // image_avg.register(real_primal_name.clone());
+        // for x in 0..img_size.x {
+        //     for y in 0..img_size.y {
+        //         let pos = Point2::new(x,y);
+        //         let mut v: Vec<&Color> = buffernames.iter().map(|n| image_recons.get(pos, n)).collect();
+        //         v.sort_by(|a, b| b.luminance().partial_cmp(&a.luminance()).unwrap());
+        //         image_avg.accumulate(pos, v[self.nb_buffers-1].clone(), &real_primal_name);
+        //     }
+        // }
+
+        // Mean and average
         image_avg.register_mean_variance(&"primal".to_string(), &image_recons, &buffernames);
-        //image_avg.dump_all(scene.output_img_path.clone());
+        // image_avg.dump_all(scene.output_img_path.clone()); // Debug only
         image_avg.rename(&"primal_mean".to_string(), &"primal".to_string());
         image_avg
     }
