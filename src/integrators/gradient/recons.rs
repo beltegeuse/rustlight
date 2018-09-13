@@ -21,10 +21,7 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
             panic!("Impossible to do bagging with less than two buffers");
         }
 
-        let mut image_recons =Bitmap::new(
-            Point2::new(0, 0),
-            img_size.clone(),
-            &Vec::new());
+        let mut image_recons = Bitmap::new(Point2::new(0, 0), img_size.clone(), &Vec::new());
         let mut buffernames = Vec::new();
         for n_recons in 0..self.nb_buffers {
             // Construct the buffer id
@@ -38,20 +35,18 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
             }
 
             // Do the reconstruction
-            let weighted_recons = WeightedPoissonReconstruction::new(self.iterations).restrict_buffers(buffer_id);
-            info!("Reconstruction {} / {}", n_recons+1, self.nb_buffers);
+            let weighted_recons =
+                WeightedPoissonReconstruction::new(self.iterations).restrict_buffers(buffer_id);
+            info!("Reconstruction {} / {}", n_recons + 1, self.nb_buffers);
             let image_res = weighted_recons.reconstruct(scene, est);
-            let image_name = format!("primal_{}",n_recons);
+            let image_name = format!("primal_{}", n_recons);
             image_recons.register(image_name.clone());
             image_recons.accumulate_bitmap_buffer(&image_res, &"primal".to_string(), &image_name);
             buffernames.push(image_name);
         }
 
         // Average the different results
-        let mut image_avg = Bitmap::new(
-            Point2::new(0, 0),
-            img_size.clone(),
-            &Vec::new());
+        let mut image_avg = Bitmap::new(Point2::new(0, 0), img_size.clone(), &Vec::new());
         // Using the median or min or max
         // let real_primal_name = "primal".to_string();
         // image_avg.register(real_primal_name.clone());
@@ -66,7 +61,21 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
 
         // Mean and average
         image_avg.register_mean_variance(&"primal".to_string(), &image_recons, &buffernames);
-        // image_avg.dump_all(scene.output_img_path.clone()); // Debug only
+
+        // Relative error
+        let primal_mean_name = "primal_mean".to_string();
+        let primal_var_name = "primal_variance".to_string();
+        let relative_err_name = "relerr".to_string();
+        image_avg.register(relative_err_name.clone());
+        for x in 0..img_size.x {
+            for y in 0..img_size.y {
+                let pos = Point2::new(x,y);
+                let v = image_avg.get(pos, &primal_var_name).clone() / &(image_avg.get(pos, &primal_mean_name).clone() + Color::value(0.001));
+                image_avg.accumulate(pos, v, &relative_err_name);
+            }
+        }
+
+        //image_avg.dump_all(scene.output_img_path.clone()); // Debug only
         image_avg.rename(&"primal_mean".to_string(), &"primal".to_string());
         image_avg
     }

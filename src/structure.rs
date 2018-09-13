@@ -137,6 +137,17 @@ impl Div<f32> for Color {
     }
 }
 
+impl<'a> Div<&'a Color> for Color {
+    type Output = Self;
+    fn div(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r / other.r,
+            g: self.g / other.g,
+            b: self.b / other.b,
+        }
+    }
+}
+
 impl Mul<f32> for Color {
     type Output = Self;
     fn mul(self, other: f32) -> Color {
