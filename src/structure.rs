@@ -20,13 +20,13 @@ pub enum PDF {
 impl PDF {
     pub fn is_zero(&self) -> bool {
         match self {
-            &PDF::Discrete(v) | &PDF::SolidAngle(v) | &PDF::Area(v) => (v == 0.0),
+            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => (*v == 0.0),
         }
     }
 
     pub fn value(&self) -> f32 {
         match self {
-            &PDF::Discrete(v) | &PDF::SolidAngle(v) | &PDF::Area(v) => v,
+            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => *v,
         }
     }
 }
@@ -73,7 +73,7 @@ impl Color {
 
     pub fn luminance(&self) -> f32 {
         // FIXME: sRGB??
-        self.r * 0.212671 + self.g * 0.715160 + self.b * 0.072169
+        self.r * 0.212_671 + self.g * 0.715_160 + self.b * 0.072_169
     }
 }
 
@@ -133,6 +133,17 @@ impl Div<f32> for Color {
             r: self.r / other,
             g: self.g / other,
             b: self.b / other,
+        }
+    }
+}
+
+impl<'a> Div<&'a Color> for Color {
+    type Output = Self;
+    fn div(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r / other.r,
+            g: self.g / other.g,
+            b: self.b / other.b,
         }
     }
 }

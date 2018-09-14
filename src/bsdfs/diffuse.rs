@@ -49,6 +49,6 @@ impl BSDF for BSDFDiffuse {
     }
 
     fn is_smooth(&self) -> bool {
-        return false;
+        false
     }
 }

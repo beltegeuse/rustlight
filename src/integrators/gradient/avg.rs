@@ -45,7 +45,7 @@ impl Integrator for IntegratorGradientAverage {
             info!("Reconstruction time: {:?}", elapsed_recons);
             // Save the bitmap for the current iteration
             let imgout_path_str = format!("{}_{}.{}", base_output_img_path, iteration, output_ext);
-            tools::save(imgout_path_str.as_str(), &recons_img, "primal".to_string());
+            tools::save(imgout_path_str.as_str(), &recons_img, "primal");
 
             // Check the time elapsed when we started the rendering...
             let elapsed = start.elapsed();
@@ -68,12 +68,10 @@ impl Integrator for IntegratorGradientAverage {
             Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
         } else {
             info!("Do the final reconstruction");
-            let recons_img = self
-                .integrator
+            self.integrator
                 .reconstruct()
-                .reconstruct(scene, bitmap.as_ref().unwrap());
-            recons_img
+                .reconstruct(scene, bitmap.as_ref().unwrap())
         };
-        return bitmap;
+        bitmap
     }
 }

@@ -39,7 +39,7 @@ impl<'a> Technique<'a> for TechniqueLightTracing {
     }
 
     fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> bool {
-        return true;
+        true
     }
 
     fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {

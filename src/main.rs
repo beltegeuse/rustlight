@@ -279,8 +279,14 @@ fn main() {
                     },
                 ),
                 "weighted" => Box::new(
-                    rustlight::integrators::gradient::recons::WeightedPoissonReconstruction {
+                    rustlight::integrators::gradient::recons::WeightedPoissonReconstruction::new(
                         iterations,
+                    ),
+                ),
+                "bagging" => Box::new(
+                    rustlight::integrators::gradient::recons::BaggingPoissonReconstruction {
+                        iterations,
+                        nb_buffers: if nb_samples <= 8 { nb_samples } else { 8 },
                     },
                 ),
                 _ => panic!("Impossible to found a reconstruction_type"),
@@ -370,5 +376,5 @@ fn main() {
     let img = int.compute(&scene);
 
     // Save the image
-    rustlight::tools::save(imgout_path_str, &img, "primal".to_string());
+    rustlight::tools::save(imgout_path_str, &img, "primal");
 }

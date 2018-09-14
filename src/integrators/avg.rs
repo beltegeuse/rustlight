@@ -39,7 +39,7 @@ impl Integrator for IntegratorAverage {
             tools::save(
                 imgout_path_str.as_str(),
                 bitmap.as_ref().unwrap(),
-                "primal".to_string(),
+                "primal",
             );
 
             // Check the time elapsed when we started the rendering...
@@ -66,6 +66,6 @@ impl Integrator for IntegratorAverage {
                 &buffernames,
             ));
         }
-        return bitmap.unwrap();
+        bitmap.unwrap()
     }
 }

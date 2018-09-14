@@ -77,6 +77,6 @@ impl BSDF for BSDFPhong {
     }
 
     fn is_smooth(&self) -> bool {
-        return false;
+        false
     }
 }

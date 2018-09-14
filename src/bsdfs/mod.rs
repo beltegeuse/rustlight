@@ -25,9 +25,9 @@ impl Texture {
         let pix = self.img.get_pixel(x as u32, y as u32);
         assert!(pix.data[3] == 255); // Just check that there is no alpha
         Color::new(
-            (pix.data[0] as f32) / 255.0,
-            (pix.data[1] as f32) / 255.0,
-            (pix.data[2] as f32) / 255.0,
+            f32::from(pix.data[0]) / 255.0,
+            f32::from(pix.data[1]) / 255.0,
+            f32::from(pix.data[2]) / 255.0,
         )
     }
 }
@@ -51,8 +51,8 @@ pub enum BSDFColor {
 impl BSDFColor {
     pub fn color(&self, uv: &Option<Vector2<f32>>) -> Color {
         match self {
-            &BSDFColor::UniformColor(ref c) => c.clone(),
-            &BSDFColor::TextureColor(ref t) => {
+            BSDFColor::UniformColor(ref c) => c.clone(),
+            BSDFColor::TextureColor(ref t) => {
                 if let &Some(uv_coords) = uv {
                     t.pixel(uv_coords)
                 } else {
