@@ -49,14 +49,15 @@ impl DirectionalSamplingStrategy {
                     scene,
                     id_strategy,
                 );
-                return (Some(edge), new_vertex);
+                (Some(edge), new_vertex)
             }
             Vertex::Surface(ref v) => {
-                if let Some(sampled_bsdf) = v.its.mesh.bsdf.sample(
-                    &v.its.uv,
-                    &v.its.wi,
-                    sampler.next2d(),
-                ) {
+                if let Some(sampled_bsdf) =
+                    v.its
+                        .mesh
+                        .bsdf
+                        .sample(&v.its.uv, &v.its.wi, sampler.next2d())
+                {
                     // Update the throughput
                     *throughput *= &sampled_bsdf.weight;
                     if throughput.is_zero() {
@@ -86,7 +87,7 @@ impl DirectionalSamplingStrategy {
                     return (Some(edge), new_vertex);
                 }
 
-                return (None, None);
+                (None, None)
             }
             Vertex::Emitter(ref v) => {
                 // For now, just computing the outgoing direction
@@ -112,7 +113,7 @@ impl DirectionalSamplingStrategy {
                     id_strategy,
                 );
 
-                return (Some(edge), new_vertex);
+                (Some(edge), new_vertex)
             }
         }
     }
@@ -177,8 +178,8 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                 }
                 unimplemented!();
             }
-            Vertex::Sensor(ref _v) => return Some(1.0),
-            _ => return None,
+            Vertex::Sensor(ref _v) => Some(1.0),
+            _ => None,
         }
     }
 }
@@ -295,9 +296,9 @@ impl SamplingStrategy for LightSamplingStrategy {
                         _ => return None,
                     }
                 }
-                return None;
+                None
             }
-            _ => return None,
+            _ => None,
         }
     }
 }

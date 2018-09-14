@@ -50,7 +50,7 @@ impl<'a> Edge<'a> {
             _ => unimplemented!(),
         };
 
-        return edge;
+        edge
     }
 
     pub fn from_ray(
@@ -85,7 +85,7 @@ impl<'a> Edge<'a> {
         // Create the new vertex
         let intersection_distance = its.dist;
         let new_vertex = Rc::new(RefCell::new(Vertex::Surface(SurfaceVertex {
-            its: its,
+            its,
             rr_weight: 1.0,
             edge_in: Rc::downgrade(&edge),
             edge_out: vec![],

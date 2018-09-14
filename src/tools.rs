@@ -9,7 +9,7 @@ use std::iter::Iterator;
 use std::path::Path;
 use openexr;
 
-pub fn save(imgout_path_str: &str, img: &Bitmap, name: String) {
+pub fn save(imgout_path_str: &str, img: &Bitmap, name: &str) {
     let output_ext = match std::path::Path::new(imgout_path_str).extension() {
         None => panic!("No file extension provided"),
         Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
@@ -28,7 +28,7 @@ pub fn save(imgout_path_str: &str, img: &Bitmap, name: String) {
     }
 }
 
-pub fn save_exr(imgout_path_str: &str, img: &Bitmap, name: &String) {
+pub fn save_exr(imgout_path_str: &str, img: &Bitmap, name: &str) {
     // Pixel data for floating point RGB image.
     let mut pixel_data = vec![];
     pixel_data.reserve((img.size.x * img.size.y) as usize);
@@ -61,7 +61,7 @@ pub fn save_exr(imgout_path_str: &str, img: &Bitmap, name: &String) {
     output_file.write_pixels(&fb).unwrap();
 }
 
-pub fn save_pfm(imgout_path_str: &str, img: &Bitmap, name: &String) {
+pub fn save_pfm(imgout_path_str: &str, img: &Bitmap, name: &str) {
     let mut file = File::create(Path::new(imgout_path_str)).unwrap();
     let header = format!("PF\n{} {}\n-1.0\n", img.size.y, img.size.x);
     file.write(header.as_bytes()).unwrap();
@@ -75,7 +75,7 @@ pub fn save_pfm(imgout_path_str: &str, img: &Bitmap, name: &String) {
     }
 }
 
-pub fn save_png(imgout_path_str: &str, img: &Bitmap, name: &String) {
+pub fn save_png(imgout_path_str: &str, img: &Bitmap, name: &str) {
     // The image that we will render
     let mut image_ldr = DynamicImage::new_rgb8(img.size.x, img.size.y);
     for x in 0..img.size.x {

@@ -46,7 +46,7 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
         }
 
         // Average the different results
-        let mut image_avg = Bitmap::new(Point2::new(0, 0), img_size.clone(), &Vec::new());
+        let mut image_avg = Bitmap::new(Point2::new(0, 0), img_size, &Vec::new());
         // Using the median or min or max
         // let real_primal_name = "primal".to_string();
         // image_avg.register(real_primal_name.clone());
@@ -70,7 +70,7 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
         for x in 0..img_size.x {
             for y in 0..img_size.y {
                 let pos = Point2::new(x,y);
-                let v = image_avg.get(pos, &primal_var_name).clone() / &(image_avg.get(pos, &primal_mean_name).clone() + Color::value(0.001));
+                let v = image_avg.get(pos, &primal_var_name) / &(image_avg.get(pos, &primal_mean_name) + Color::value(0.001));
                 image_avg.accumulate(pos, v, &relative_err_name);
             }
         }
@@ -98,8 +98,8 @@ impl WeightedPoissonReconstruction {
         self
     }
 
-    fn generate_average_variance_bitmap(&self, est: &Bitmap, img_size: &Vector2<u32>) -> Bitmap {
-        let mut averaged_variance = Bitmap::new(Point2::new(0, 0), img_size.clone(), &Vec::new());
+    fn generate_average_variance_bitmap(&self, est: &Bitmap, img_size: Vector2<u32>) -> Bitmap {
+        let mut averaged_variance = Bitmap::new(Point2::new(0, 0), img_size, &Vec::new());
         let buffernames = vec![
             String::from("primal"),
             String::from("gradient_x"),
@@ -137,7 +137,7 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
         let img_size = est.size;
 
         // Average the different buffers
-        let averaged_variance = self.generate_average_variance_bitmap(est, &img_size);
+        let averaged_variance = self.generate_average_variance_bitmap(est, img_size);
 
         // Define names of buffers so we do not need to reallocate them
         let primal_name = String::from("primal_mean");
@@ -153,7 +153,7 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
 
         // 1) Init
         let buffernames = vec![recons_name.clone()];
-        let mut current = Bitmap::new(Point2::new(0, 0), img_size.clone(), &buffernames);
+        let mut current = Bitmap::new(Point2::new(0, 0), img_size, &buffernames);
         current.accumulate_bitmap_buffer(&averaged_variance, &primal_name, &recons_name);
 
         // Generate the buffer names
@@ -176,7 +176,7 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                                 .channel_max()
                                 * coeff_var_red;
                             let curr_weight = inv_or_1(var_pos);
-                            let mut c = current.get(pos, &recons_name).clone() * curr_weight;
+                            let mut c = current.get(pos, &recons_name) * curr_weight;
                             let mut w = curr_weight;
 
                             if x > 0 {
@@ -187,8 +187,8 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                                             .get(pos_off, &gradient_x_variance_name)
                                             .channel_max(),
                                 );
-                                c += (current.get(pos_off, &recons_name).clone()
-                                    + averaged_variance.get(pos_off, &gradient_x_name).clone())
+                                c += (current.get(pos_off, &recons_name)
+                                    + averaged_variance.get(pos_off, &gradient_x_name))
                                     * curr_weight;
                                 w += curr_weight;
                             }
@@ -200,8 +200,8 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                                             .get(pos, &gradient_x_variance_name)
                                             .channel_max(),
                                 );
-                                c += (current.get(pos_off, &recons_name).clone()
-                                    - averaged_variance.get(pos, &gradient_x_name).clone())
+                                c += (current.get(pos_off, &recons_name)
+                                    - averaged_variance.get(pos, &gradient_x_name))
                                     * curr_weight;
                                 w += curr_weight;
                             }
@@ -213,8 +213,8 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                                             .get(pos_off, &gradient_y_variance_name)
                                             .channel_max(),
                                 );
-                                c += (current.get(pos_off, &recons_name).clone()
-                                    + averaged_variance.get(pos_off, &gradient_y_name).clone())
+                                c += (current.get(pos_off, &recons_name)
+                                    + averaged_variance.get(pos_off, &gradient_y_name))
                                     * curr_weight;
                                 w += curr_weight;
                             }
@@ -226,8 +226,8 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                                             .get(pos, &gradient_y_variance_name)
                                             .channel_max(),
                                 );
-                                c += (current.get(pos_off, &recons_name).clone()
-                                    - averaged_variance.get(pos, &gradient_y_name).clone())
+                                c += (current.get(pos_off, &recons_name)
+                                    - averaged_variance.get(pos, &gradient_y_name))
                                     * curr_weight;
                                 w += curr_weight;
                             }
@@ -269,7 +269,7 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
         // Reconstruction (image-space covariate, uniform reconstruction)
         let img_size = est.size;
         let buffernames = vec!["recons".to_string()];
-        let mut current = Bitmap::new(Point2::new(0, 0), img_size.clone(), &buffernames);
+        let mut current = Bitmap::new(Point2::new(0, 0), img_size, &buffernames);
         let mut image_blocks = generate_img_blocks(scene, &buffernames);
 
         // Define names of buffers so we do not need to reallocate them
@@ -283,7 +283,7 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
         for y in 0..img_size.y {
             for x in 0..img_size.x {
                 let pos = Point2::new(x, y);
-                current.accumulate(pos, *est.get(pos, &primal_name), &recons_name);
+                current.accumulate(pos, est.get(pos, &primal_name), &recons_name);
             }
         }
 
@@ -297,30 +297,30 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
                         for local_x in 0..im_block.size.x {
                             let (x, y) = (local_x + im_block.pos.x, local_y + im_block.pos.y);
                             let pos = Point2::new(x, y);
-                            let mut c = current.get(pos, &recons_name).clone();
+                            let mut c = current.get(pos, &recons_name);
                             let mut w = 1.0;
                             if x > 0 {
                                 let pos_off = Point2::new(x - 1, y);
-                                c += current.get(pos_off, &recons_name).clone()
-                                    + est.get(pos_off, &gradient_x_name).clone();
+                                c += (current.get(pos_off, &recons_name)
+                                    + est.get(pos_off, &gradient_x_name));
                                 w += 1.0;
                             }
                             if x < img_size.x - 1 {
                                 let pos_off = Point2::new(x + 1, y);
-                                c += current.get(pos_off, &recons_name).clone()
-                                    - est.get(pos, &gradient_x_name).clone();
+                                c += (current.get(pos_off, &recons_name)
+                                    - est.get(pos, &gradient_x_name));
                                 w += 1.0;
                             }
                             if y > 0 {
                                 let pos_off = Point2::new(x, y - 1);
-                                c += current.get(pos_off, &recons_name).clone()
-                                    + est.get(pos_off, &gradient_y_name).clone();
+                                c += (current.get(pos_off, &recons_name)
+                                    + est.get(pos_off, &gradient_y_name));
                                 w += 1.0;
                             }
                             if y < img_size.y - 1 {
                                 let pos_off = Point2::new(x, y + 1);
-                                c += current.get(pos_off, &recons_name).clone()
-                                    - est.get(pos, &gradient_y_name).clone();
+                                c += (current.get(pos_off, &recons_name)
+                                    - est.get(pos, &gradient_y_name));
                                 w += 1.0;
                             }
                             c.scale(1.0 / w);

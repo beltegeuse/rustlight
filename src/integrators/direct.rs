@@ -69,10 +69,10 @@ impl IntegratorMC for IntegratorDirect {
                     // Compute MIS weights
                     let weight_light =
                         mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
-                    l_i += weight_light
+                    l_i += &(weight_light
                         * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
                         * weight_nb_light
-                        * light_record.weight;
+                        * light_record.weight);
                 }
             }
         }
@@ -107,10 +107,10 @@ impl IntegratorMC for IntegratorDirect {
                         }
                     };
 
-                    l_i += weight_bsdf
+                    l_i += &(weight_bsdf
                         * sampled_bsdf.weight
                         * (&next_its.mesh.emission)
-                        * weight_nb_bsdf;
+                        * weight_nb_bsdf);
                 }
             }
         }

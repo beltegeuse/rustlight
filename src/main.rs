@@ -376,5 +376,5 @@ fn main() {
     let img = int.compute(&scene);
 
     // Save the image
-    rustlight::tools::save(imgout_path_str, &img, "primal".to_string());
+    rustlight::tools::save(imgout_path_str, &img, "primal");
 }
