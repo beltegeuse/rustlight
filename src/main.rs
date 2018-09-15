@@ -65,10 +65,10 @@ fn main() {
         .takes_value(true)
         .short("r")
         .default_value("50");
-    let recons_type_arg =  Arg::with_name("reconstruction_type")
-                            .takes_value(true)
-                            .short("t")
-                            .default_value("uniform");
+    let recons_type_arg = Arg::with_name("reconstruction_type")
+        .takes_value(true)
+        .short("t")
+        .default_value("uniform");
     let matches =
         App::new("rustlight")
             .version("0.1.0")
@@ -123,7 +123,13 @@ fn main() {
                     .arg(&max_arg)
                     .arg(&min_arg)
                     .arg(&iterations_arg)
-                    .arg(&recons_type_arg),
+                    .arg(&recons_type_arg)
+                    .arg(
+                        Arg::with_name("min_survival")
+                            .takes_value(true)
+                            .short("s")
+                            .default_value("1.0"),
+                    ),
             ).subcommand(
                 SubCommand::with_name("pssmlt")
                     .about("path tracing with MCMC sampling")
@@ -297,13 +303,18 @@ fn main() {
                     recons: recons.unwrap(),
                 },
             ))
-        },
+        }
         ("gradient-path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_survival = value_t_or_exit!(m.value_of("min_survival"), f32);
+            if min_survival <= 0.0 || min_survival > 1.0 {
+                panic!("need to specify min_survival in ]0.0,1.0]");
+            }
             IntegratorType::Gradient(Box::new(
                 rustlight::integrators::gradient::explicit::IntegratorGradientPathTracing {
                     max_depth,
                     recons: recons.unwrap(),
+                    min_survival: Some(min_survival),
                 },
             ))
         }

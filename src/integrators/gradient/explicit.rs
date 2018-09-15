@@ -30,6 +30,10 @@ impl<'sampler, 'seq> ReplaySampler<'sampler, 'seq> {
             v
         }
     }
+
+    pub fn unregistered(&mut self) -> f32 {
+        self.sampler.next()
+    }
 }
 impl<'sampler, 'seq> Sampler for ReplaySampler<'sampler, 'seq> {
     fn next(&mut self) -> f32 {
@@ -58,6 +62,7 @@ impl Default for ShiftRandomReplay {
 pub struct IntegratorGradientPathTracing {
     pub max_depth: Option<u32>,
     pub recons: Box<PoissonReconstruction + Sync>,
+        pub min_survival: Option<f32>,
 }
 /// This structure is responsible to the graph generation
 pub struct TechniqueGradientPathTracing {
@@ -276,35 +281,51 @@ impl IntegratorGradientPathTracing {
         // the generator give back the root nodes
         let root = generate(scene, &mut capture_sampler, &mut technique);
         let root_value = technique.evaluate(scene, &root[0].0);
-        let mut output = ColorGradient {
-            very_direct: Color::zero(),
-            main: root_value * 4.0 * 0.5,
-            radiances: [Color::zero(); 4],
-            gradients: [Color::zero(); 4],
+        let weight_survival = if let Some(min_survival) = self.min_survival {
+            // TODO: Change the 0.1 hard coded to a more meaningful value
+            let prob_survival = (root_value.luminance() / 0.1).min(1.0).max(min_survival);
+            if prob_survival == 1.0 || prob_survival >= capture_sampler.unregistered() {
+                1.0 / prob_survival
+            } else {
+                0.0
+            }
+        } else {
+            1.0
         };
 
-        GRADIENT_ORDER.iter().enumerate().for_each(|(i,off)| {
-            let pix = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
-            if pix.x < 0
-            || pix.x > scene.camera.size().x as i32
-            || pix.y < 0
-            || pix.y > scene.camera.size().y as i32
-            {
-                // Do nothing
-            } else {
-                // Change the pixel for the sampling technique
-                // and reset the sampler
-                technique.img_pos = Point2::new(pix.x as u32, pix.y as u32);
-                capture_sampler.indice = 0; 
-                let offset_value = {
-                    let offset = generate(scene, &mut capture_sampler, &mut technique);
-                    technique.evaluate(scene, &offset[0].0)
-                };
-                output.radiances[i] = offset_value * 0.5;
-                output.gradients[i] = (offset_value - root_value) * 0.5;
-            }
-        });
-        output
+        if weight_survival != 0.0 {
+            let mut output = ColorGradient {
+                very_direct: Color::zero(),
+                main: root_value * 4.0 * 0.5 * weight_survival,
+                radiances: [Color::zero(); 4],
+                gradients: [Color::zero(); 4],
+            };
+
+            GRADIENT_ORDER.iter().enumerate().for_each(|(i,off)| {
+                let pix = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
+                if pix.x < 0
+                || pix.x > scene.camera.size().x as i32
+                || pix.y < 0
+                || pix.y > scene.camera.size().y as i32
+                {
+                    // Do nothing
+                } else {
+                    // Change the pixel for the sampling technique
+                    // and reset the sampler
+                    technique.img_pos = Point2::new(pix.x as u32, pix.y as u32);
+                    capture_sampler.indice = 0; 
+                    let offset_value = {
+                        let offset = generate(scene, &mut capture_sampler, &mut technique);
+                        technique.evaluate(scene, &offset[0].0)
+                    };
+                    output.radiances[i] = offset_value * 0.5 * weight_survival;
+                    output.gradients[i] = (offset_value - root_value) * 0.5 * weight_survival;
+                }
+            });
+            output
+        } else {
+            ColorGradient::default()
+        }
     }
 }
 
