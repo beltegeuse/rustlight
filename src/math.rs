@@ -114,9 +114,10 @@ impl Distribution1D {
         assert!(v >= 0.0);
         assert!(v < 1.0);
 
-        match self.cdf
+        match self
+            .cdf
             .binary_search_by(|probe| probe.partial_cmp(&v).unwrap())
-        { 
+        {
             Ok(x) => x,
             Err(x) => x - 1,
         }

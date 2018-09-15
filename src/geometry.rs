@@ -182,7 +182,7 @@ impl Mesh {
     }
 
     /// PDF value when we intersect the light
-    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> f32 {
+    pub fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> f32 {
         let cos_light = light_sampling.n.dot(-light_sampling.dir).max(0.0);
         if cos_light == 0.0 {
             0.0

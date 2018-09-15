@@ -59,7 +59,7 @@ impl<'a> RayState<'a> {
         }
     }
 
-    pub fn new((x, y): (f32, f32), off: &Point2<i32>, scene: &'a Scene) -> RayState<'a> {
+    pub fn new((x, y): (f32, f32), off: Point2<i32>, scene: &'a Scene) -> RayState<'a> {
         let pix = Point2::new(x + off.x as f32, y + off.y as f32);
         if pix.x < 0.0
             || pix.x > (scene.camera.size().x as f32)
@@ -273,14 +273,14 @@ impl IntegratorGradientPath {
     ) -> ColorGradient {
         let mut l_i = ColorGradient::default();
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
-        let mut main = match RayState::new(pix, &Point2::new(0, 0), scene) {
+        let mut main = match RayState::new(pix, Point2::new(0, 0), scene) {
             RayState::NotConnected(x) => x,
             _ => return l_i,
         };
         let mut offsets: Vec<RayState> = {
             GRADIENT_ORDER
                 .iter()
-                .map(|e| RayState::new(pix, e, &scene))
+                .map(|e| RayState::new(pix, *e, &scene))
                 .collect()
         };
 
@@ -325,11 +325,13 @@ impl IntegratorGradientPath {
                         .bsdf
                         .eval(&main.its.uv, &main.its.wi, &main_d_out_local); // f(...) * cos(...)
                 let main_bsdf_pdf = if main_light_visible {
-                    f64::from(main.its
-                        .mesh
-                        .bsdf
-                        .pdf(&main.its.uv, &main.its.wi, &main_d_out_local)
-                        .value())
+                    f64::from(
+                        main.its
+                            .mesh
+                            .bsdf
+                            .pdf(&main.its.uv, &main.its.wi, &main_d_out_local)
+                            .value(),
+                    )
                 } else {
                     0.0
                 };
@@ -375,12 +377,13 @@ impl IntegratorGradientPath {
                                     (0.0, Color::zero())
                                 } else {
                                     // BSDF
-                                    let shift_bsdf_pdf =
-                                        f64::from(main.its
+                                    let shift_bsdf_pdf = f64::from(
+                                        main.its
                                             .mesh
                                             .bsdf
                                             .pdf(&s.its.uv, &shift_d_in_local, &main_d_out_local)
-                                            .value());
+                                            .value(),
+                                    );
                                     let shift_bsdf_value = main.its.mesh.bsdf.eval(
                                         &s.its.uv,
                                         &shift_d_in_local,
@@ -422,19 +425,23 @@ impl IntegratorGradientPath {
                                     &shift_d_out_local,
                                 );
                                 let shift_bsdf_pdf = if shift_light_visible {
-                                    f64::from(shift_hit_mesh
-                                        .bsdf
-                                        .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
-                                        .value())
+                                    f64::from(
+                                        shift_hit_mesh
+                                            .bsdf
+                                            .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
+                                            .value(),
+                                    )
                                 } else {
                                     0.0
                                 };
                                 // Compute Jacobian: Here the ratio of geometry terms
-                                let jacobian = f64::from((shift_light_record.n.dot(shift_light_record.d)
-                                    * main_geom_dsquared)
-                                    .abs()
-                                    / (main_geom_cos_light
-                                        * (s.its.p - shift_light_record.p).magnitude2()).abs());
+                                let jacobian = f64::from(
+                                    (shift_light_record.n.dot(shift_light_record.d)
+                                        * main_geom_dsquared)
+                                        .abs()
+                                        / (main_geom_cos_light
+                                            * (s.its.p - shift_light_record.p).magnitude2()).abs(),
+                                );
                                 assert!(jacobian.is_finite());
                                 assert!(jacobian >= 0.0);
                                 // Bake the final results
@@ -492,10 +499,12 @@ impl IntegratorGradientPath {
             // Check that we have intersected a light or not
             let (main_light_pdf, main_emitter_rad) = {
                 if main_next_mesh.is_light() && main.its.cos_theta() > 0.0 {
-                    let light_pdf = f64::from(scene
-                        .direct_pdf(LightSamplingPDF::new(&main.ray, &main.its))
-                        .value());
-                    (light_pdf, main_next_mesh.emission.clone())
+                    let light_pdf = f64::from(
+                        scene
+                            .direct_pdf(&LightSamplingPDF::new(&main.ray, &main.its))
+                            .value(),
+                    );
+                    (light_pdf, main_next_mesh.emission)
                 } else {
                     (0.0, Color::zero())
                 }
@@ -610,7 +619,7 @@ impl IntegratorGradientPath {
                                     (Color::zero(), 0.0)
                                 } else {
                                     let shift_emitter_pdf = scene
-                                        .direct_pdf(LightSamplingPDF {
+                                        .direct_pdf(&LightSamplingPDF {
                                             mesh: main_next_mesh,
                                             o: s.its.p,
                                             p: main.its.p,
@@ -620,7 +629,7 @@ impl IntegratorGradientPath {
                                         .value();
                                     // FIXME: We return without the cos as the light
                                     // FIXME: does not change, does it true for non uniform light?
-                                    (main_emitter_rad.clone(), f64::from(shift_emitter_pdf))
+                                    (main_emitter_rad, f64::from(shift_emitter_pdf))
                                 };
 
                                 // Return the shift path updated + MIS weights

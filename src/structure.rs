@@ -175,7 +175,7 @@ impl Mul<Color> for f32 {
     }
 }
 
-impl<'a,'b> Sub<&'a Color> for &'b Color {
+impl<'a, 'b> Sub<&'a Color> for &'b Color {
     type Output = Color;
     fn sub(self, other: &'a Color) -> Color {
         Color {
@@ -299,7 +299,7 @@ pub struct Intersection<'a> {
 
 impl<'a> Intersection<'a> {
     pub fn new(
-        embree_its: embree_rs::Intersection,
+        embree_its: &embree_rs::Intersection,
         d: Vector3<f32>,
         mesh: &'a Arc<Mesh>,
     ) -> Intersection<'a> {

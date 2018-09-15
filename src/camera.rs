@@ -78,7 +78,7 @@ impl Camera {
             return None;
         }
 
-        let screen_pos = self.camera_to_sample.transform_point(ref_p.clone());
+        let screen_pos = self.camera_to_sample.transform_point(ref_p);
         if screen_pos.x < 0.0 || screen_pos.x > 1.0 || screen_pos.y < 0.0 || screen_pos.y > 1.0 {
             return None;
         }
@@ -114,7 +114,8 @@ impl Camera {
             return 0.0;
         }
 
-        let size = (self.image_rect_max.x - self.image_rect_min.x)*(self.image_rect_max.y - self.image_rect_min.y);
+        let size = (self.image_rect_max.x - self.image_rect_min.x)
+            * (self.image_rect_max.y - self.image_rect_min.y);
         (1.0 / size as f32) * inv_cos_theta * inv_cos_theta * inv_cos_theta
     }
 

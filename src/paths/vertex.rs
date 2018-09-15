@@ -54,7 +54,7 @@ impl<'a> Edge<'a> {
     }
 
     pub fn from_ray(
-        ray: Ray,
+        ray: &Ray,
         org_vertex: &Rc<VertexPtr<'a>>,
         pdf_direction: PDF,
         weight: Color,

@@ -50,20 +50,14 @@ pub trait IntegratorGradient: Integrator {
         let start = Instant::now();
         let image = self.compute_gradients(scene);
         let elapsed = start.elapsed();
-        info!(
-            "Rendering Elapsed: {} ms",
-            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-        );
+        info!("Rendering Elapsed: {:?}", elapsed,);
 
         // Reconstruct the image
         info!("Reconstruction...");
         let start = Instant::now();
         let image = self.reconstruct().reconstruct(scene, &image);
         let elapsed = start.elapsed();
-        info!(
-            "Reconstruction Elapsed: {} ms",
-            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-        );
+        info!("Reconstruction Elapsed: {:?}", elapsed,);
 
         image
     }

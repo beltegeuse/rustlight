@@ -143,7 +143,7 @@ impl Scene {
         let emitters = meshes
             .iter()
             .filter(|m| !m.emission.is_zero())
-            .map(|m| m.clone())
+            .cloned()
             .collect::<Vec<_>>();
         let emitters_cdf = {
             let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
@@ -192,7 +192,7 @@ impl Scene {
             None => None,
             Some(its) => {
                 let geom_id = its.geom_id as usize;
-                Some(Intersection::new(its, -ray.d, &self.meshes[geom_id]))
+                Some(Intersection::new(&its, -ray.d, &self.meshes[geom_id]))
             }
         }
     }
@@ -204,7 +204,7 @@ impl Scene {
             .occluded(embree_rs::Ray::new(*p0, d).near(0.00001).far(0.9999))
     }
 
-    pub fn direct_pdf(&self, light_sampling: LightSamplingPDF) -> PDF {
+    pub fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
         let emitter_id = self
             .emitters
             .iter()
@@ -212,7 +212,7 @@ impl Scene {
             .unwrap();
         // FIXME: As for now, we only support surface light, the PDF measure is always SA
         PDF::SolidAngle(
-            light_sampling.mesh.direct_pdf(light_sampling) * self.emitters_cdf.pdf(emitter_id),
+            light_sampling.mesh.direct_pdf(&light_sampling) * self.emitters_cdf.pdf(emitter_id),
         )
     }
     pub fn sample_light(

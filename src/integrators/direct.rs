@@ -96,7 +96,7 @@ impl IntegratorMC for IntegratorDirect {
                     let weight_bsdf = match sampled_bsdf.pdf {
                         PDF::SolidAngle(bsdf_pdf) => {
                             let light_pdf = scene
-                                .direct_pdf(LightSamplingPDF::new(&ray, &next_its))
+                                .direct_pdf(&LightSamplingPDF::new(&ray, &next_its))
                                 .value();
                             mis_weight(bsdf_pdf * weight_nb_bsdf, light_pdf * weight_nb_light)
                         }
@@ -107,10 +107,8 @@ impl IntegratorMC for IntegratorDirect {
                         }
                     };
 
-                    l_i += &(weight_bsdf
-                        * sampled_bsdf.weight
-                        * (&next_its.mesh.emission)
-                        * weight_nb_bsdf);
+                    l_i +=
+                        weight_bsdf * sampled_bsdf.weight * next_its.mesh.emission * weight_nb_bsdf;
                 }
             }
         }

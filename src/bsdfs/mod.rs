@@ -51,10 +51,10 @@ pub enum BSDFColor {
 impl BSDFColor {
     pub fn color(&self, uv: &Option<Vector2<f32>>) -> Color {
         match self {
-            BSDFColor::UniformColor(ref c) => c.clone(),
+            BSDFColor::UniformColor(ref c) => *c,
             BSDFColor::TextureColor(ref t) => {
-                if let &Some(uv_coords) = uv {
-                    t.pixel(uv_coords)
+                if let Some(uv_coords) = uv {
+                    t.pixel(*uv_coords)
                 } else {
                     warn!("Found a texture but no uv coordinate given");
                     Color::zero()

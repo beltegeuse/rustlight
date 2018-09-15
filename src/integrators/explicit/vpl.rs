@@ -177,7 +177,7 @@ impl IntegratorVPL {
         (ix, iy): (u32, u32),
         scene: &'a Scene,
         sampler: &mut Sampler,
-        vpls: &Vec<Box<VPL<'a>>>,
+        vpls: &[Box<VPL<'a>>],
     ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);

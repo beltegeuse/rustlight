@@ -41,7 +41,7 @@ impl DirectionalSamplingStrategy {
             Vertex::Sensor(ref v) => {
                 let ray = scene.camera.generate(v.uv);
                 let (edge, new_vertex) = Edge::from_ray(
-                    ray,
+                    &ray,
                     &vertex,
                     PDF::SolidAngle(1.0),
                     Color::one(),
@@ -76,7 +76,7 @@ impl DirectionalSamplingStrategy {
                     let d_out_global = v.its.frame.to_world(sampled_bsdf.d);
                     let ray = Ray::new(v.its.p, d_out_global);
                     let (edge, new_vertex) = Edge::from_ray(
-                        ray,
+                        &ray,
                         &vertex,
                         sampled_bsdf.pdf.clone(),
                         sampled_bsdf.weight,
@@ -104,7 +104,7 @@ impl DirectionalSamplingStrategy {
                 let weight = v.mesh.emission * std::f32::consts::FRAC_1_PI;
 
                 let (edge, new_vertex) = Edge::from_ray(
-                    ray,
+                    &ray,
                     &vertex,
                     PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
                     weight,
@@ -277,19 +277,20 @@ impl SamplingStrategy for LightSamplingStrategy {
                     match *next_vertex.borrow() {
                         Vertex::Surface(ref v) => {
                             if let PDF::SolidAngle(light_pdf) =
-                                scene.direct_pdf(LightSamplingPDF::new(&ray, &v.its))
+                                scene.direct_pdf(&LightSamplingPDF::new(&ray, &v.its))
                             {
                                 return Some(light_pdf);
                             }
                         }
                         Vertex::Emitter(ref v) => {
-                            if let PDF::SolidAngle(light_pdf) = scene.direct_pdf(LightSamplingPDF {
-                                mesh: v.mesh,
-                                o: ray.o,
-                                p: v.pos,
-                                n: v.n,
-                                dir: ray.d,
-                            }) {
+                            if let PDF::SolidAngle(light_pdf) =
+                                scene.direct_pdf(&LightSamplingPDF {
+                                    mesh: v.mesh,
+                                    o: ray.o,
+                                    p: v.pos,
+                                    n: v.n,
+                                    dir: ray.d,
+                                }) {
                                 return Some(light_pdf);
                             }
                         }

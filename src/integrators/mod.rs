@@ -70,12 +70,7 @@ impl Bitmap {
         );
     }
 
-    pub fn register_mean_variance(
-        &mut self,
-        base_name: &str,
-        o: &Bitmap,
-        buffers: &Vec<String>,
-    ) {
+    pub fn register_mean_variance(&mut self, base_name: &str, o: &Bitmap, buffers: &Vec<String>) {
         // Create buffers
         let mean_name = format!("{}_mean", base_name);
         let variance_name = format!("{}_variance", base_name);
@@ -158,19 +153,19 @@ impl Bitmap {
     }
 
     pub fn reset(&mut self) {
-        for (_, val) in &mut self.values {
+        for val in self.values.values_mut() {
             val.iter_mut().for_each(|x| *x = Color::default());
         }
     }
 
     pub fn average_pixel(&self, name: &str) -> Color {
         let mut s = Color::default();
-        self.values[name].iter().for_each(|x| s += x.clone());
+        self.values[name].iter().for_each(|x| s += x);
         s.scale(1.0 / self.values[name].len() as f32);
         s
     }
 
-    pub fn scale_buffer(&mut self, f: f32, name: &String) {
+    pub fn scale_buffer(&mut self, f: f32, name: &str) {
         self.values
             .get_mut(name)
             .unwrap()
@@ -182,7 +177,7 @@ impl Bitmap {
 impl Scale<f32> for Bitmap {
     fn scale(&mut self, f: f32) {
         assert!(f > 0.0);
-        for (_, val) in &mut self.values {
+        for val in self.values.values_mut() {
             val.iter_mut().for_each(|v| v.scale(f));
         }
     }
@@ -268,7 +263,7 @@ pub fn generate_pool(scene: &Scene) -> rayon::ThreadPool {
         None => rayon::ThreadPoolBuilder::new(),
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
     }.build()
-        .unwrap()
+    .unwrap()
 }
 
 /// Power heuristic for path tracing or direct lighting

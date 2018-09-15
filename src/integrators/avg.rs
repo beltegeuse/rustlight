@@ -36,11 +36,7 @@ impl Integrator for IntegratorAverage {
 
             // Save the bitmap for the current iteration
             let imgout_path_str = format!("{}_{}.{}", base_output_img_path, iteration, output_ext);
-            tools::save(
-                imgout_path_str.as_str(),
-                bitmap.as_ref().unwrap(),
-                "primal",
-            );
+            tools::save(imgout_path_str.as_str(), bitmap.as_ref().unwrap(), "primal");
 
             // Check the time elapsed when we started the rendering...
             let elapsed = start.elapsed();
