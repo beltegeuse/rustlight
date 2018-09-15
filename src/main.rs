@@ -65,6 +65,10 @@ fn main() {
         .takes_value(true)
         .short("r")
         .default_value("50");
+    let recons_type_arg =  Arg::with_name("reconstruction_type")
+                            .takes_value(true)
+                            .short("t")
+                            .default_value("uniform");
     let matches =
         App::new("rustlight")
             .version("0.1.0")
@@ -112,12 +116,14 @@ fn main() {
                     .arg(&max_arg)
                     .arg(&min_arg)
                     .arg(&iterations_arg)
-                    .arg(
-                        Arg::with_name("reconstruction_type")
-                            .takes_value(true)
-                            .short("t")
-                            .default_value("uniform"),
-                    ),
+                    .arg(&recons_type_arg),
+            ).subcommand(
+                SubCommand::with_name("gradient-path-explicit")
+                    .about("gradient path tracing")
+                    .arg(&max_arg)
+                    .arg(&min_arg)
+                    .arg(&iterations_arg)
+                    .arg(&recons_type_arg),
             ).subcommand(
                 SubCommand::with_name("pssmlt")
                     .about("path tracing with MCMC sampling")
@@ -236,23 +242,9 @@ fn main() {
         }
     }
 
-    ///////////////// Create the main integrator
-    let int = match matches.subcommand() {
-        ("path-explicit", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth },
-            ))
-        }
-        ("light-explicit", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth },
-            ))
-        }
-        ("gradient-path", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
+    ///////////////// Get the reconstruction algorithm
+    let recons = match matches.subcommand() {
+        ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {
             let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
             let recons: Box<
                 rustlight::integrators::gradient::PoissonReconstruction + Sync,
@@ -275,12 +267,43 @@ fn main() {
                 ),
                 _ => panic!("Impossible to found a reconstruction_type"),
             };
+            Some(recons)
+        }
+        _ => None,
+    };
+
+    ///////////////// Create the main integrator
+    let int = match matches.subcommand() {
+        ("path-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth },
+            ))
+        }
+        ("light-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth },
+            ))
+        }
+        ("gradient-path", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_depth = match_infinity(m.value_of("min").unwrap());
 
             IntegratorType::Gradient(Box::new(
                 rustlight::integrators::gradient::path::IntegratorGradientPath {
                     max_depth,
                     min_depth,
-                    recons,
+                    recons: recons.unwrap(),
+                },
+            ))
+        },
+        ("gradient-path-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            IntegratorType::Gradient(Box::new(
+                rustlight::integrators::gradient::explicit::IntegratorGradientPathTracing {
+                    max_depth,
+                    recons: recons.unwrap(),
                 },
             ))
         }

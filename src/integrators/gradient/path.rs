@@ -91,76 +91,7 @@ impl IntegratorGradient for IntegratorGradientPath {
     }
 
     fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {
-        // The buffers names are always:
-        // ["very_direct", ("primal", "gradient_x", "gradient_y")+]
-        let (nb_buffers, buffernames) =
-            if let Some(number_buffers) = self.recons.need_variance_estimates() {
-                let mut buffernames = Vec::new();
-                buffernames.reserve((3 * number_buffers) + 1);
-                buffernames.push(String::from("very_direct"));
-                for i in 0..number_buffers {
-                    buffernames.push(format!("primal_{}", i));
-                    buffernames.push(format!("gradient_x_{}", i));
-                    buffernames.push(format!("gradient_y_{}", i));
-                }
-                (number_buffers, buffernames)
-            } else {
-                (
-                    1,
-                    vec![
-                        String::from("very_direct"),
-                        String::from("primal"),
-                        String::from("gradient_x"),
-                        String::from("gradient_y"),
-                    ],
-                )
-            };
-
-        let id_very_direct = 0;
-        let id_primal = 1;
-        let id_gradient_x = 2;
-        let id_gradient_y = 3;
-
-        // Compare to path tracing, make the block a bit bigger
-        // so that we can store all the path contribution
-        struct BlockInfo {
-            pub x_pos_off: u32,
-            pub y_pos_off: u32,
-            pub x_size_off: u32,
-            pub y_size_off: u32,
-        };
-        let mut image_blocks = Vec::new();
-        for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
-            for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
-                let pos_off = Point2 {
-                    x: cmp::max(0, ix as i32 - 1) as u32,
-                    y: cmp::max(0, iy as i32 - 1) as u32,
-                };
-                let desired_size = Vector2 {
-                    x: 16 + if ix == 0 { 1 } else { 2 },
-                    y: 16 + if iy == 0 { 1 } else { 2 },
-                };
-                let max_size = Vector2 {
-                    x: (scene.camera.size().x - pos_off.x) as u32,
-                    y: (scene.camera.size().y - pos_off.y) as u32,
-                };
-                let mut block = Bitmap::new(
-                    pos_off,
-                    Vector2 {
-                        x: cmp::min(desired_size.x, max_size.x),
-                        y: cmp::min(desired_size.y, max_size.y),
-                    },
-                    &buffernames,
-                );
-                let info = BlockInfo {
-                    x_pos_off: if ix == 0 { 0 } else { 1 },
-                    y_pos_off: if iy == 0 { 0 } else { 1 },
-                    x_size_off: if desired_size.x <= max_size.x { 1 } else { 0 },
-                    y_size_off: if desired_size.y <= max_size.y { 1 } else { 0 },
-                };
-                image_blocks.push((info, block));
-            }
-        }
+        let (nb_buffers, buffernames, mut image_blocks, ids) = generate_img_blocks_gradient(scene, &self.recons);
 
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         let pool = generate_pool(scene);
@@ -181,12 +112,12 @@ impl IntegratorGradient for IntegratorGradientPath {
                             im_block.accumulate(
                                 pos,
                                 c.main,
-                                &buffernames[id_primal + offset_buffers],
+                                &buffernames[ids.primal + offset_buffers],
                             );
                             im_block.accumulate(
                                 pos,
                                 c.very_direct,
-                                &buffernames[id_very_direct].to_owned(),
+                                &buffernames[ids.very_direct].to_owned(),
                             );
                             for i in 0..4 {
                                 // primal reuse
@@ -195,7 +126,7 @@ impl IntegratorGradient for IntegratorGradientPath {
                                 im_block.accumulate_safe(
                                     pos_off,
                                     c.radiances[i],
-                                    &buffernames[id_primal + offset_buffers],
+                                    &buffernames[ids.primal + offset_buffers],
                                 );
                                 // gradient
                                 match GRADIENT_DIRECTION[i] {
@@ -203,12 +134,12 @@ impl IntegratorGradient for IntegratorGradientPath {
                                         1 => im_block.accumulate(
                                             pos,
                                             c.gradients[i],
-                                            &buffernames[id_gradient_x + offset_buffers],
+                                            &buffernames[ids.gradient_x + offset_buffers],
                                         ),
                                         -1 => im_block.accumulate_safe(
                                             pos_off,
                                             c.gradients[i] * -1.0,
-                                            &buffernames[id_gradient_x + offset_buffers],
+                                            &buffernames[ids.gradient_x + offset_buffers],
                                         ),
                                         _ => panic!("wrong displacement X"), // FIXME: Fix the enum
                                     },
@@ -216,12 +147,12 @@ impl IntegratorGradient for IntegratorGradientPath {
                                         1 => im_block.accumulate(
                                             pos,
                                             c.gradients[i],
-                                            &buffernames[id_gradient_y + offset_buffers],
+                                            &buffernames[ids.gradient_y + offset_buffers],
                                         ),
                                         -1 => im_block.accumulate_safe(
                                             pos_off,
                                             c.gradients[i] * -1.0,
-                                            &buffernames[id_gradient_y + offset_buffers],
+                                            &buffernames[ids.gradient_y + offset_buffers],
                                         ),
                                         _ => panic!("wrong displacement Y"),
                                     },
@@ -237,15 +168,15 @@ impl IntegratorGradient for IntegratorGradientPath {
                                                 // 4 strategies as reuse primal
                     im_block.scale_buffer(
                         0.25 * nb_buffers as f32,
-                        &buffernames[id_primal + offset_buffers],
+                        &buffernames[ids.primal + offset_buffers],
                     );
                     im_block.scale_buffer(
                         nb_buffers as f32,
-                        &buffernames[id_gradient_x + offset_buffers],
+                        &buffernames[ids.gradient_x + offset_buffers],
                     );
                     im_block.scale_buffer(
                         nb_buffers as f32,
-                        &buffernames[id_gradient_y + offset_buffers],
+                        &buffernames[ids.gradient_y + offset_buffers],
                     );
                 }
 

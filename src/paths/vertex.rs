@@ -151,6 +151,12 @@ pub enum Vertex<'a> {
     Emitter(EmitterVertex<'a>),
 }
 impl<'a> Vertex<'a> {
+    pub fn pixel_pos(&self) -> Point2<f32> {
+        match *self {
+            Vertex::Sensor(ref v) => v.uv,
+            _ => unreachable!(),
+        }
+    }
     pub fn position(&self) -> Point3<f32> {
         match *self {
             Vertex::Surface(ref v) => v.its.p,
