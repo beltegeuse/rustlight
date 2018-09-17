@@ -172,7 +172,11 @@ fn main() {
                             .takes_value(true)
                             .short("d")
                             .default_value("inf"),
-                    ).arg(Arg::with_name("normal-correction").short("n")),
+                    ).arg(
+                        Arg::with_name("normal-correction")
+                            .takes_value(false)
+                            .short("n"),
+                    ),
             ).subcommand(
                 SubCommand::with_name("direct")
                     .about("direct lighting")

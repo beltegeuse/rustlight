@@ -37,18 +37,15 @@ pub fn load_obj(
             .map(|i| Vector3::new(i[0], i[1], i[2]))
             .collect();
         // Load normal
-        if mesh.normals.is_empty() {
-            // Normally, we want to generate the normal on the fly.
-            // However, this can be difficult and as the rendering engine
-            // does not support two sided BSDF, this can create problems for the user.
-            // For now, just panic if the normal are not provided inside the OBJ.
-            panic!("No normal provided, quit");
-        }
-        let normals = mesh
-            .normals
-            .chunks(3)
-            .map(|i| Vector3::new(i[0], i[1], i[2]))
-            .collect();
+        let normals = if mesh.normals.is_empty() {
+            // Only rely on face normals
+            Vec::new()
+        } else {
+            mesh.normals
+                .chunks(3)
+                .map(|i| Vector3::new(i[0], i[1], i[2]))
+                .collect()
+        };
 
         let uv = if mesh.texcoords.is_empty() {
             vec![]

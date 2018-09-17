@@ -5,7 +5,7 @@ use cgmath::*;
 use embree_rs;
 use geometry;
 use math::{Distribution1D, Distribution1DConstruct};
-use scene_parsing;
+use pbrt_rs;
 use serde_json;
 use std;
 use std::error::Error;
@@ -75,8 +75,8 @@ impl Scene {
         nb_threads: Option<usize>,
         output_img_path: String,
     ) -> Result<Scene, Box<Error>> {
-        let mut scene_info = scene_parsing::Scene::default();
-        scene_parsing::read_pbrt_file(filename, &mut scene_info, scene_parsing::State::default());
+        let mut scene_info = pbrt_rs::Scene::default();
+        pbrt_rs::read_pbrt_file(filename, &mut scene_info, pbrt_rs::State::default());
 
         // Allocate embree
         let device = embree_rs::Device::debug();
@@ -87,10 +87,7 @@ impl Scene {
             .shapes
             .iter()
             .map(|m| match m.data {
-                scene_parsing::Shape::TriMesh(ref data) => {
-                    if data.normals.is_none() {
-                        warn!("The normals need to be provided");
-                    }
+                pbrt_rs::Shape::TriMesh(ref data) => {
                     let uv = if let Some(uv) = data.uv.clone() {
                         uv
                     } else {
@@ -98,10 +95,7 @@ impl Scene {
                     };
                     let normals = match data.normals {
                         Some(ref v) => v.clone(),
-                        None => {
-                            // FIXME: Fake data
-                            vec![Vector3::new(1.0,0.0,0.0); data.points.len()]
-                        },
+                        None => Vec::new(),
                     };
                     let trimesh = scene_embree.add_triangle_mesh(
                         &device,
@@ -124,24 +118,48 @@ impl Scene {
                     panic!("Ignore the type of mesh");
                 }
             }).collect();
-        
         info!("Build the acceleration structure");
         let scene_embree = scene_embree.commit()?;
+
+        // Assign materials and emissions
+        for (i, shape) in scene_info.shapes.iter().enumerate() {
+            match shape.emission {
+                Some(pbrt_rs::Param::RGB(r, g, b)) => {
+                    info!("assign emission: RGB({},{},{})", r, g, b);
+                    meshes[i].emission = Color::new(r, g, b)
+                }
+                None => {}
+                _ => warn!("unsupported emission profile: {:?}", shape.emission),
+            }
+        }
+
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
+        // Update the list of lights & construct the CDF
+        let emitters = meshes
+            .iter()
+            .filter(|m| !m.emission.is_zero())
+            .cloned()
+            .collect::<Vec<_>>();
         let emitters_cdf = {
-            let mut cdf_construct = Distribution1DConstruct::new(0);
+            let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
+            emitters
+                .iter()
+                .map(|e| e.flux())
+                .for_each(|f| cdf_construct.add(f));
             cdf_construct.normalize()
         };
+        if emitters_cdf.normalization == 0.0 {
+            warn!("no light attached to the scene. Only AO will works");
+        }
 
         let camera = {
             if let Some(camera) = scene_info.cameras.get(0) {
-                let img = Vector2::new(512, 512);
                 match camera {
-                    scene_parsing::Camera::Perspective(ref cam) => {
+                    pbrt_rs::Camera::Perspective(ref cam) => {
                         let mat = cam.world_to_camera.inverse_transform().unwrap();
                         info!("camera matrix: {:?}", mat);
-                        Camera::new(img, cam.fov, mat)
+                        Camera::new(scene_info.image_size, cam.fov, mat)
                     }
                     _ => panic!("Unsupported camera type"),
                 }
@@ -155,7 +173,7 @@ impl Scene {
             embree_device: device,
             embree_scene: scene_embree,
             meshes,
-            emitters: Vec::new(),
+            emitters,
             emitters_cdf,
             nb_samples,
             nb_threads,

@@ -303,12 +303,17 @@ impl<'a> Intersection<'a> {
         d: Vector3<f32>,
         mesh: &'a Arc<Mesh>,
     ) -> Intersection<'a> {
-        let frame = Frame::new(embree_its.n_s);
+        let n_s = if embree_its.n_s.is_none() {
+            embree_its.n_g
+        } else {
+            embree_its.n_s.unwrap()
+        };
+        let frame = Frame::new(n_s);
         let wi = frame.to_local(d);
         Intersection {
             dist: embree_its.t,
             n_g: embree_its.n_g,
-            n_s: embree_its.n_s,
+            n_s,
             p: embree_its.p,
             uv: embree_its.uv,
             mesh,
