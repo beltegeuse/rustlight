@@ -1,9 +1,11 @@
+use bsdfs;
 use bsdfs::*;
 use camera::Camera;
 use cgmath::*;
 use embree_rs;
 use geometry;
 use math::{Distribution1D, Distribution1DConstruct};
+use scene_parsing;
 use serde_json;
 use std;
 use std::error::Error;
@@ -66,9 +68,104 @@ impl Scene {
     pub fn nb_samples(&self) -> usize {
         self.nb_samples
     }
+
+    pub fn pbrt(
+        filename: &str,
+        nb_samples: usize,
+        nb_threads: Option<usize>,
+        output_img_path: String,
+    ) -> Result<Scene, Box<Error>> {
+        let mut scene_info = scene_parsing::Scene::default();
+        scene_parsing::read_pbrt_file(filename, &mut scene_info, scene_parsing::State::default());
+
+        // Allocate embree
+        let device = embree_rs::Device::debug();
+        let mut scene_embree = embree_rs::SceneConstruct::new(&device);
+
+        // Load the data
+        let mut meshes: Vec<Box<geometry::Mesh>> = scene_info
+            .shapes
+            .iter()
+            .map(|m| match m.data {
+                scene_parsing::Shape::TriMesh(ref data) => {
+                    if data.normals.is_none() {
+                        warn!("The normals need to be provided");
+                    }
+                    let uv = if let Some(uv) = data.uv.clone() {
+                        uv
+                    } else {
+                        vec![]
+                    };
+                    let normals = match data.normals {
+                        Some(ref v) => v.clone(),
+                        None => {
+                            // FIXME: Fake data
+                            vec![Vector3::new(1.0,0.0,0.0); data.points.len()]
+                        },
+                    };
+                    let trimesh = scene_embree.add_triangle_mesh(
+                        &device,
+                        data.points.clone(),
+                        normals,
+                        uv,
+                        data.indices.clone(),
+                    );
+
+                    // FIXME FIXME
+                    Box::new(geometry::Mesh::new(
+                        "noname".to_string(),
+                        trimesh,
+                        Box::new(bsdfs::diffuse::BSDFDiffuse {
+                            diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
+                        }),
+                    ))
+                }
+                _ => {
+                    panic!("Ignore the type of mesh");
+                }
+            }).collect();
+        
+        info!("Build the acceleration structure");
+        let scene_embree = scene_embree.commit()?;
+        let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
+
+        let emitters_cdf = {
+            let mut cdf_construct = Distribution1DConstruct::new(0);
+            cdf_construct.normalize()
+        };
+
+        let camera = {
+            if let Some(camera) = scene_info.cameras.get(0) {
+                let img = Vector2::new(512, 512);
+                match camera {
+                    scene_parsing::Camera::Perspective(ref cam) => {
+                        let mat = cam.world_to_camera.inverse_transform().unwrap();
+                        info!("camera matrix: {:?}", mat);
+                        Camera::new(img, cam.fov, mat)
+                    }
+                    _ => panic!("Unsupported camera type"),
+                }
+            } else {
+                panic!("The camera is not set!");
+            }
+        };
+
+        Ok(Scene {
+            camera: camera,
+            embree_device: device,
+            embree_scene: scene_embree,
+            meshes,
+            emitters: Vec::new(),
+            emitters_cdf,
+            nb_samples,
+            nb_threads,
+            output_img_path,
+        })
+    }
+
     /// Take a json formatted string and an working directory
     /// and build the scene representation.
-    pub fn new(
+    pub fn json(
         data: &str,
         wk: &std::path::Path,
         nb_samples: usize,
@@ -166,15 +263,15 @@ impl Scene {
                     m[3], m[7], m[11], m[15],
                 );
                 info!("m: {:?}", matrix);
-                Some(Camera::new(img, fov, matrix))
+                Camera::new(img, fov, matrix)
             } else {
-                None
+                panic!("The camera is not set!");
             }
         };
 
         // Define a default scene
         Ok(Scene {
-            camera: camera.unwrap(),
+            camera,
             embree_device: device,
             embree_scene: scene_embree,
             meshes,

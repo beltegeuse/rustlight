@@ -165,12 +165,14 @@ fn main() {
                             .default_value("128"),
                     ),
             ).subcommand(
-                SubCommand::with_name("ao").about("ambiant occlusion").arg(
-                    Arg::with_name("distance")
-                        .takes_value(true)
-                        .short("d")
-                        .default_value("inf"),
-                ),
+                SubCommand::with_name("ao")
+                    .about("ambiant occlusion")
+                    .arg(
+                        Arg::with_name("distance")
+                            .takes_value(true)
+                            .short("d")
+                            .default_value("inf"),
+                    ).arg(Arg::with_name("normal-correction").short("n")),
             ).subcommand(
                 SubCommand::with_name("direct")
                     .about("direct lighting")
@@ -219,24 +221,39 @@ fn main() {
     let scene_path_str = matches
         .value_of("scene")
         .expect("no scene parameter provided");
-    let scene_path = std::path::Path::new(scene_path_str);
+    let scene_ext = match std::path::Path::new(scene_path_str).extension() {
+        None => panic!("No file extension provided"),
+        Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
+    };
     // - read the file
-    let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
-    let mut data = String::new();
-    fscene
-        .read_to_string(&mut data)
-        .expect("impossible to read the file");
-    // - build the scene
-    let wk = scene_path
-        .parent()
-        .expect("impossible to extract parent directory for OBJ loading");
-    let mut scene = rustlight::scene::Scene::new(
-        &data,
-        wk,
-        nb_samples,
-        nb_threads,
-        imgout_path_str.to_string(),
-    ).expect("error when loading the scene");
+    let mut scene = match scene_ext {
+        "json" => {
+            let scene_path = std::path::Path::new(scene_path_str);
+            let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
+            let mut data = String::new();
+            fscene
+                .read_to_string(&mut data)
+                .expect("impossible to read the file");
+            // - build the scene
+            let wk = scene_path
+                .parent()
+                .expect("impossible to extract parent directory for OBJ loading");
+            rustlight::scene::Scene::json(
+                &data,
+                wk,
+                nb_samples,
+                nb_threads,
+                imgout_path_str.to_string(),
+            ).expect("error when loading the scene")
+        }
+        "pbrt" => rustlight::scene::Scene::pbrt(
+            scene_path_str,
+            nb_samples,
+            nb_threads,
+            imgout_path_str.to_string(),
+        ).expect("error when loading the scene"),
+        _ => panic!("unsupported scene format: {}", scene_ext),
+    };
 
     ///////////////// Tweak the image size
     {
@@ -356,9 +373,11 @@ fn main() {
             }))
         }
         ("ao", Some(m)) => {
+            let normal_correction = m.is_present("normal-correction");
             let dist = match_infinity(m.value_of("distance").unwrap());
             IntegratorType::Primal(Box::new(rustlight::integrators::ao::IntegratorAO {
                 max_distance: dist,
+                normal_correction,
             }))
         }
         ("direct", Some(m)) => {
