@@ -47,7 +47,7 @@ impl Integrator for IntegratorPSSMLT {
         ///////////// Compute the state initialization
         let nb_samples_total =
             scene.nb_samples() * (scene.camera.size().x * scene.camera.size().y) as usize;
-        let nb_samples_per_chains = 100000;
+        let nb_samples_per_chains = 100_000;
         let nb_chains = nb_samples_total / nb_samples_per_chains;
         info!("Number of states: {:?}", nb_chains);
         // - Initialize the samplers
@@ -118,10 +118,7 @@ impl Integrator for IntegratorPSSMLT {
 
         let mut img: Bitmap = img.into_inner().unwrap();
         let elapsed = start.elapsed();
-        info!(
-            "Elapsed: {} ms",
-            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-        );
+        info!("Elapsed: {:?}", elapsed,);
 
         // ==== Compute and scale to the normalization factor
         let img_avg = img.average_pixel(&buffer_names[0]);
@@ -143,7 +140,7 @@ impl IntegratorPSSMLT {
                 let y = (sampler.next() * scene.camera.size().y as f32) as u32;
                 let c = self.integrator.compute_pixel((x, y), scene, &mut sampler);
                 (c.r + c.g + c.b) / 3.0
-            })
-            .sum::<f32>() / (nb_samples as f32)
+            }).sum::<f32>()
+            / (nb_samples as f32)
     }
 }

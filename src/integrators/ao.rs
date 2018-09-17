@@ -5,6 +5,7 @@ use structure::*;
 
 pub struct IntegratorAO {
     pub max_distance: Option<f32>,
+    pub normal_correction: bool,
 }
 
 impl Integrator for IntegratorAO {
@@ -26,11 +27,16 @@ impl IntegratorMC for IntegratorAO {
         // Compute an new direction
         // Note that we do not flip the normal automatically,
         // for the light definition (only one sided)
-        if its.cos_theta() <= 0.0 {
+        if !self.normal_correction && its.cos_theta() <= 0.0 {
             return Color::zero();
         }
+        let flipped = self.normal_correction && its.cos_theta() <= 0.0;
         let d_local = cosine_sample_hemisphere(sampler.next2d());
-        let d_world = its.frame.to_world(d_local);
+        let d_world = if flipped {
+            its.frame.to_world(-d_local)
+        } else {
+            its.frame.to_world(d_local)
+        };
 
         // Check the new intersection distance
         let ray = Ray::new(its.p, d_world);

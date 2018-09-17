@@ -38,7 +38,7 @@ impl<'a> Technique<'a> for TechniquePathTracing {
     }
 
     fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> bool {
-        return true;
+        true
     }
 
     fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {
@@ -63,8 +63,7 @@ impl TechniquePathTracing {
                                     } else {
                                         0.0
                                     }
-                                })
-                                .sum();
+                                }).sum();
                             v / total
                         } else {
                             1.0
@@ -95,7 +94,7 @@ impl TechniquePathTracing {
             }
             _ => {}
         };
-        return l_i;
+        l_i
     }
 }
 
@@ -111,7 +110,7 @@ impl IntegratorMC for IntegratorPathTracing {
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
         samplings.push(Box::new(LightSamplingStrategy {}));
         let mut technique = TechniquePathTracing {
-            max_depth: self.max_depth.clone(),
+            max_depth: self.max_depth,
             samplings,
             img_pos: Point2::new(ix, iy),
         };

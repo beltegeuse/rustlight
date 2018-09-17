@@ -22,12 +22,13 @@ impl Camera {
 
         // Compute camera informations
         // fov: y
+        // TODO: Check this fov problem
         let aspect_ratio = img.x as f32 / img.y as f32;
-        let fov_rad = Rad(fov * f32::consts::PI / 180.0); //2.0 * f32::tan((fov / 2.0) * f32::consts::PI / 180.0));//(fov * f32::consts::PI / 180.0);
+        let fov_rad = Rad(fov * aspect_ratio * f32::consts::PI / 180.0); //2.0 * f32::tan((fov / 2.0) * f32::consts::PI / 180.0));//(fov * f32::consts::PI / 180.0);
         let camera_to_sample = Matrix4::from_nonuniform_scale(-0.5, -0.5 * aspect_ratio, 1.0)
             * Matrix4::from_translation(Vector3::new(-1.0, -1.0 / aspect_ratio, 0.0))
-            * perspective(fov_rad, aspect_ratio, 0.1, 100.0)
-            * Matrix4::from_nonuniform_scale(1.0, 1.0, -1.0); // undo gluPerspective (z neg)
+            * perspective(fov_rad, 1.0, 1e-2, 1000.0)
+            * Matrix4::from_nonuniform_scale(-1.0, 1.0, -1.0); // undo gluPerspective (z neg)
         let sample_to_camera = camera_to_sample.inverse_transform().unwrap();
 
         // Compute the image plane inside the sample space.
@@ -78,7 +79,7 @@ impl Camera {
             return None;
         }
 
-        let screen_pos = self.camera_to_sample.transform_point(ref_p.clone());
+        let screen_pos = self.camera_to_sample.transform_point(ref_p);
         if screen_pos.x < 0.0 || screen_pos.x > 1.0 || screen_pos.y < 0.0 || screen_pos.y > 1.0 {
             return None;
         }
@@ -114,8 +115,9 @@ impl Camera {
             return 0.0;
         }
 
-        let size = (self.image_rect_max.x - self.image_rect_min.x)*(self.image_rect_max.y - self.image_rect_min.y);
-        return (1.0 / size as f32) * inv_cos_theta * inv_cos_theta * inv_cos_theta;
+        let size = (self.image_rect_max.x - self.image_rect_min.x)
+            * (self.image_rect_max.y - self.image_rect_min.y);
+        (1.0 / size as f32) * inv_cos_theta * inv_cos_theta * inv_cos_theta
     }
 
     pub fn position(&self) -> Point3<f32> {

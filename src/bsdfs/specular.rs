@@ -35,6 +35,6 @@ impl BSDF for BSDFSpecular {
     }
 
     fn is_smooth(&self) -> bool {
-        return false;
+        false
     }
 }

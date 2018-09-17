@@ -27,6 +27,8 @@ extern crate serde_json;
 extern crate tobj;
 // For print a progress bar
 extern crate pbr;
+// For loading other type of scene format
+extern crate pbrt_rs;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;

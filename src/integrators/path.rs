@@ -105,14 +105,14 @@ impl IntegratorMC for IntegratorPath {
                 let weight_bsdf = match sampled_bsdf.pdf {
                     PDF::SolidAngle(v) => {
                         // Know the the light is intersectable so have a solid angle PDF
-                        let light_pdf = scene.direct_pdf(LightSamplingPDF::new(&ray, &its));
+                        let light_pdf = scene.direct_pdf(&LightSamplingPDF::new(&ray, &its));
                         mis_weight(v, light_pdf.value())
                     }
                     PDF::Discrete(_v) => 1.0,
                     _ => panic!("Unsupported type."),
                 };
                 if self.min_depth.map_or(true, |min| depth >= min) || weight_bsdf > 0.0 {
-                    l_i += throughput * (&its.mesh.emission) * weight_bsdf;
+                    l_i += throughput * its.mesh.emission * weight_bsdf;
                 }
             }
 

@@ -20,13 +20,13 @@ pub enum PDF {
 impl PDF {
     pub fn is_zero(&self) -> bool {
         match self {
-            &PDF::Discrete(v) | &PDF::SolidAngle(v) | &PDF::Area(v) => (v == 0.0),
+            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => (*v == 0.0),
         }
     }
 
     pub fn value(&self) -> f32 {
         match self {
-            &PDF::Discrete(v) | &PDF::SolidAngle(v) | &PDF::Area(v) => v,
+            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => *v,
         }
     }
 }
@@ -73,7 +73,7 @@ impl Color {
 
     pub fn luminance(&self) -> f32 {
         // FIXME: sRGB??
-        self.r * 0.212671 + self.g * 0.715160 + self.b * 0.072169
+        self.r * 0.212_671 + self.g * 0.715_160 + self.b * 0.072_169
     }
 }
 
@@ -137,6 +137,17 @@ impl Div<f32> for Color {
     }
 }
 
+impl<'a> Div<&'a Color> for Color {
+    type Output = Self;
+    fn div(self, other: &'a Color) -> Color {
+        Color {
+            r: self.r / other.r,
+            g: self.g / other.g,
+            b: self.b / other.b,
+        }
+    }
+}
+
 impl Mul<f32> for Color {
     type Output = Self;
     fn mul(self, other: f32) -> Color {
@@ -164,7 +175,7 @@ impl Mul<Color> for f32 {
     }
 }
 
-impl<'a,'b> Sub<&'a Color> for &'b Color {
+impl<'a, 'b> Sub<&'a Color> for &'b Color {
     type Output = Color;
     fn sub(self, other: &'a Color) -> Color {
         Color {
@@ -288,16 +299,21 @@ pub struct Intersection<'a> {
 
 impl<'a> Intersection<'a> {
     pub fn new(
-        embree_its: embree_rs::Intersection,
+        embree_its: &embree_rs::Intersection,
         d: Vector3<f32>,
         mesh: &'a Arc<Mesh>,
     ) -> Intersection<'a> {
-        let frame = Frame::new(embree_its.n_s);
+        let n_s = if embree_its.n_s.is_none() {
+            embree_its.n_g
+        } else {
+            embree_its.n_s.unwrap()
+        };
+        let frame = Frame::new(n_s);
         let wi = frame.to_local(d);
         Intersection {
             dist: embree_its.t,
             n_g: embree_its.n_g,
-            n_s: embree_its.n_s,
+            n_s,
             p: embree_its.p,
             uv: embree_its.uv,
             mesh,

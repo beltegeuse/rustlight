@@ -65,6 +65,10 @@ fn main() {
         .takes_value(true)
         .short("r")
         .default_value("50");
+    let recons_type_arg = Arg::with_name("reconstruction_type")
+        .takes_value(true)
+        .short("t")
+        .default_value("uniform");
     let matches =
         App::new("rustlight")
             .version("0.1.0")
@@ -76,57 +80,57 @@ fn main() {
                     .takes_value(true)
                     .index(1)
                     .help("JSON file description"),
-            )
-            .arg(Arg::with_name("average").short("a").takes_value(true).help(
+            ).arg(Arg::with_name("average").short("a").takes_value(true).help(
                 "average several pass of the integrator with a time limit ('inf' is possible)",
-            ))
-            .arg(
+            )).arg(
                 Arg::with_name("nbthreads")
                     .takes_value(true)
                     .short("t")
                     .default_value("auto")
                     .help("number of thread for the computation"),
-            )
-            .arg(
+            ).arg(
                 Arg::with_name("image_scale")
                     .takes_value(true)
                     .short("s")
                     .default_value("1.0")
                     .help("image scaling factor"),
-            )
-            .arg(
+            ).arg(
                 Arg::with_name("output")
                     .takes_value(true)
                     .short("o")
                     .help("output image file"),
-            )
-            .arg(Arg::with_name("debug").short("d").help("debug output"))
+            ).arg(Arg::with_name("debug").short("d").help("debug output"))
             .arg(
                 Arg::with_name("nbsamples")
                     .short("n")
                     .takes_value(true)
                     .help("integration technique"),
-            )
-            .subcommand(
+            ).subcommand(
                 SubCommand::with_name("path")
                     .about("path tracing")
                     .arg(&max_arg)
                     .arg(&min_arg),
-            )
-            .subcommand(
+            ).subcommand(
                 SubCommand::with_name("gradient-path")
                     .about("gradient path tracing")
                     .arg(&max_arg)
                     .arg(&min_arg)
                     .arg(&iterations_arg)
+                    .arg(&recons_type_arg),
+            ).subcommand(
+                SubCommand::with_name("gradient-path-explicit")
+                    .about("gradient path tracing")
+                    .arg(&max_arg)
+                    .arg(&min_arg)
+                    .arg(&iterations_arg)
+                    .arg(&recons_type_arg)
                     .arg(
-                        Arg::with_name("reconstruction_type")
+                        Arg::with_name("min_survival")
                             .takes_value(true)
-                            .short("t")
-                            .default_value("uniform"),
+                            .short("s")
+                            .default_value("1.0"),
                     ),
-            )
-            .subcommand(
+            ).subcommand(
                 SubCommand::with_name("pssmlt")
                     .about("path tracing with MCMC sampling")
                     .arg(&max_arg)
@@ -137,18 +141,15 @@ fn main() {
                             .short("p")
                             .default_value("0.3"),
                     ),
-            )
-            .subcommand(
+            ).subcommand(
                 SubCommand::with_name("path-explicit")
                     .about("path tracing with explict light path construction")
                     .arg(&max_arg),
-            )
-            .subcommand(
+            ).subcommand(
                 SubCommand::with_name("light-explicit")
                     .about("light tracing with explict light path construction")
                     .arg(&max_arg),
-            )
-            .subcommand(
+            ).subcommand(
                 SubCommand::with_name("vpl")
                     .about("brute force virtual point light integrator")
                     .arg(&max_arg)
@@ -157,23 +158,26 @@ fn main() {
                             .takes_value(true)
                             .short("b")
                             .default_value("0.0"),
-                    )
-                    .arg(
+                    ).arg(
                         Arg::with_name("nb_vpl")
                             .takes_value(true)
                             .short("n")
                             .default_value("128"),
                     ),
-            )
-            .subcommand(
-                SubCommand::with_name("ao").about("ambiant occlusion").arg(
-                    Arg::with_name("distance")
-                        .takes_value(true)
-                        .short("d")
-                        .default_value("inf"),
-                ),
-            )
-            .subcommand(
+            ).subcommand(
+                SubCommand::with_name("ao")
+                    .about("ambiant occlusion")
+                    .arg(
+                        Arg::with_name("distance")
+                            .takes_value(true)
+                            .short("d")
+                            .default_value("inf"),
+                    ).arg(
+                        Arg::with_name("normal-correction")
+                            .takes_value(false)
+                            .short("n"),
+                    ),
+            ).subcommand(
                 SubCommand::with_name("direct")
                     .about("direct lighting")
                     .arg(
@@ -181,15 +185,13 @@ fn main() {
                             .takes_value(true)
                             .short("b")
                             .default_value("1"),
-                    )
-                    .arg(
+                    ).arg(
                         Arg::with_name("light")
                             .takes_value(true)
                             .short("l")
                             .default_value("1"),
                     ),
-            )
-            .get_matches();
+            ).get_matches();
 
     /////////////// Setup logging system
     if matches.is_present("debug") {
@@ -223,24 +225,39 @@ fn main() {
     let scene_path_str = matches
         .value_of("scene")
         .expect("no scene parameter provided");
-    let scene_path = std::path::Path::new(scene_path_str);
+    let scene_ext = match std::path::Path::new(scene_path_str).extension() {
+        None => panic!("No file extension provided"),
+        Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
+    };
     // - read the file
-    let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
-    let mut data = String::new();
-    fscene
-        .read_to_string(&mut data)
-        .expect("impossible to read the file");
-    // - build the scene
-    let wk = scene_path
-        .parent()
-        .expect("impossible to extract parent directory for OBJ loading");
-    let mut scene = rustlight::scene::Scene::new(
-        &data,
-        wk,
-        nb_samples,
-        nb_threads,
-        imgout_path_str.to_string(),
-    ).expect("error when loading the scene");
+    let mut scene = match scene_ext {
+        "json" => {
+            let scene_path = std::path::Path::new(scene_path_str);
+            let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
+            let mut data = String::new();
+            fscene
+                .read_to_string(&mut data)
+                .expect("impossible to read the file");
+            // - build the scene
+            let wk = scene_path
+                .parent()
+                .expect("impossible to extract parent directory for OBJ loading");
+            rustlight::scene::Scene::json(
+                &data,
+                wk,
+                nb_samples,
+                nb_threads,
+                imgout_path_str.to_string(),
+            ).expect("error when loading the scene")
+        }
+        "pbrt" => rustlight::scene::Scene::pbrt(
+            scene_path_str,
+            nb_samples,
+            nb_threads,
+            imgout_path_str.to_string(),
+        ).expect("error when loading the scene"),
+        _ => panic!("unsupported scene format: {}", scene_ext),
+    };
 
     ///////////////// Tweak the image size
     {
@@ -251,6 +268,36 @@ fn main() {
             scene.camera.scale_image(image_scale);
         }
     }
+
+    ///////////////// Get the reconstruction algorithm
+    let recons = match matches.subcommand() {
+        ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {
+            let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
+            let recons: Box<
+                rustlight::integrators::gradient::PoissonReconstruction + Sync,
+            > = match m.value_of("reconstruction_type").unwrap() {
+                "uniform" => Box::new(
+                    rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
+                        iterations,
+                    },
+                ),
+                "weighted" => Box::new(
+                    rustlight::integrators::gradient::recons::WeightedPoissonReconstruction::new(
+                        iterations,
+                    ),
+                ),
+                "bagging" => Box::new(
+                    rustlight::integrators::gradient::recons::BaggingPoissonReconstruction {
+                        iterations,
+                        nb_buffers: if nb_samples <= 8 { nb_samples } else { 8 },
+                    },
+                ),
+                _ => panic!("Impossible to found a reconstruction_type"),
+            };
+            Some(recons)
+        }
+        _ => None,
+    };
 
     ///////////////// Create the main integrator
     let int = match matches.subcommand() {
@@ -269,28 +316,26 @@ fn main() {
         ("gradient-path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
-            let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            let recons: Box<
-                rustlight::integrators::gradient::PoissonReconstruction + Sync,
-            > = match m.value_of("reconstruction_type").unwrap() {
-                "uniform" => Box::new(
-                    rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
-                        iterations,
-                    },
-                ),
-                "weighted" => Box::new(
-                    rustlight::integrators::gradient::recons::WeightedPoissonReconstruction {
-                        iterations,
-                    },
-                ),
-                _ => panic!("Impossible to found a reconstruction_type"),
-            };
 
             IntegratorType::Gradient(Box::new(
                 rustlight::integrators::gradient::path::IntegratorGradientPath {
                     max_depth,
                     min_depth,
-                    recons,
+                    recons: recons.unwrap(),
+                },
+            ))
+        }
+        ("gradient-path-explicit", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_survival = value_t_or_exit!(m.value_of("min_survival"), f32);
+            if min_survival <= 0.0 || min_survival > 1.0 {
+                panic!("need to specify min_survival in ]0.0,1.0]");
+            }
+            IntegratorType::Gradient(Box::new(
+                rustlight::integrators::gradient::explicit::IntegratorGradientPathTracing {
+                    max_depth,
+                    recons: recons.unwrap(),
+                    min_survival: Some(min_survival),
                 },
             ))
         }
@@ -332,9 +377,11 @@ fn main() {
             }))
         }
         ("ao", Some(m)) => {
+            let normal_correction = m.is_present("normal-correction");
             let dist = match_infinity(m.value_of("distance").unwrap());
             IntegratorType::Primal(Box::new(rustlight::integrators::ao::IntegratorAO {
                 max_distance: dist,
+                normal_correction,
             }))
         }
         ("direct", Some(m)) => {
@@ -370,5 +417,5 @@ fn main() {
     let img = int.compute(&scene);
 
     // Save the image
-    rustlight::tools::save(imgout_path_str, &img, "primal".to_string());
+    rustlight::tools::save(imgout_path_str, &img, "primal");
 }

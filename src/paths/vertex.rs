@@ -50,11 +50,11 @@ impl<'a> Edge<'a> {
             _ => unimplemented!(),
         };
 
-        return edge;
+        edge
     }
 
     pub fn from_ray(
-        ray: Ray,
+        ray: &Ray,
         org_vertex: &Rc<VertexPtr<'a>>,
         pdf_direction: PDF,
         weight: Color,
@@ -85,7 +85,7 @@ impl<'a> Edge<'a> {
         // Create the new vertex
         let intersection_distance = its.dist;
         let new_vertex = Rc::new(RefCell::new(Vertex::Surface(SurfaceVertex {
-            its: its,
+            its,
             rr_weight: 1.0,
             edge_in: Rc::downgrade(&edge),
             edge_out: vec![],
@@ -151,6 +151,12 @@ pub enum Vertex<'a> {
     Emitter(EmitterVertex<'a>),
 }
 impl<'a> Vertex<'a> {
+    pub fn pixel_pos(&self) -> Point2<f32> {
+        match *self {
+            Vertex::Sensor(ref v) => v.uv,
+            _ => unreachable!(),
+        }
+    }
     pub fn position(&self) -> Point3<f32> {
         match *self {
             Vertex::Surface(ref v) => v.its.p,

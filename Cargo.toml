@@ -12,17 +12,17 @@ image = "0.18.0"
 rayon = "1.0.0"
 rand = "0.4.2"
 tobj = "*"
-embree-rs = "0.3.1"
+embree-rs = { git = "https://github.com/beltegeuse/embree-rs" }
 serde = "1.0"
 serde_derive = "1.0" 
 serde_json = "1.0"
 byteorder = "*"
-clippy = { version = "*", optional = true }
 clap = "2.31.1"
 pbr = "1.0"
 log = "0.4.0"
 env_logger = "0.5.6"
 openexr = "0.6.0"
+pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs" }
 
 [dependencies.cgmath]
 version = "0.16.1"

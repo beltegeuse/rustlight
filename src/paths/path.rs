@@ -41,7 +41,7 @@ impl DirectionalSamplingStrategy {
             Vertex::Sensor(ref v) => {
                 let ray = scene.camera.generate(v.uv);
                 let (edge, new_vertex) = Edge::from_ray(
-                    ray,
+                    &ray,
                     &vertex,
                     PDF::SolidAngle(1.0),
                     Color::one(),
@@ -49,14 +49,15 @@ impl DirectionalSamplingStrategy {
                     scene,
                     id_strategy,
                 );
-                return (Some(edge), new_vertex);
+                (Some(edge), new_vertex)
             }
             Vertex::Surface(ref v) => {
-                if let Some(sampled_bsdf) = v.its.mesh.bsdf.sample(
-                    &v.its.uv,
-                    &v.its.wi,
-                    sampler.next2d(),
-                ) {
+                if let Some(sampled_bsdf) =
+                    v.its
+                        .mesh
+                        .bsdf
+                        .sample(&v.its.uv, &v.its.wi, sampler.next2d())
+                {
                     // Update the throughput
                     *throughput *= &sampled_bsdf.weight;
                     if throughput.is_zero() {
@@ -75,7 +76,7 @@ impl DirectionalSamplingStrategy {
                     let d_out_global = v.its.frame.to_world(sampled_bsdf.d);
                     let ray = Ray::new(v.its.p, d_out_global);
                     let (edge, new_vertex) = Edge::from_ray(
-                        ray,
+                        &ray,
                         &vertex,
                         sampled_bsdf.pdf.clone(),
                         sampled_bsdf.weight,
@@ -86,7 +87,7 @@ impl DirectionalSamplingStrategy {
                     return (Some(edge), new_vertex);
                 }
 
-                return (None, None);
+                (None, None)
             }
             Vertex::Emitter(ref v) => {
                 // For now, just computing the outgoing direction
@@ -103,7 +104,7 @@ impl DirectionalSamplingStrategy {
                 let weight = v.mesh.emission * std::f32::consts::FRAC_1_PI;
 
                 let (edge, new_vertex) = Edge::from_ray(
-                    ray,
+                    &ray,
                     &vertex,
                     PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
                     weight,
@@ -112,7 +113,7 @@ impl DirectionalSamplingStrategy {
                     id_strategy,
                 );
 
-                return (Some(edge), new_vertex);
+                (Some(edge), new_vertex)
             }
         }
     }
@@ -177,8 +178,8 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                 }
                 unimplemented!();
             }
-            Vertex::Sensor(ref _v) => return Some(1.0),
-            _ => return None,
+            Vertex::Sensor(ref _v) => Some(1.0),
+            _ => None,
         }
     }
 }
@@ -276,28 +277,29 @@ impl SamplingStrategy for LightSamplingStrategy {
                     match *next_vertex.borrow() {
                         Vertex::Surface(ref v) => {
                             if let PDF::SolidAngle(light_pdf) =
-                                scene.direct_pdf(LightSamplingPDF::new(&ray, &v.its))
+                                scene.direct_pdf(&LightSamplingPDF::new(&ray, &v.its))
                             {
                                 return Some(light_pdf);
                             }
                         }
                         Vertex::Emitter(ref v) => {
-                            if let PDF::SolidAngle(light_pdf) = scene.direct_pdf(LightSamplingPDF {
-                                mesh: v.mesh,
-                                o: ray.o,
-                                p: v.pos,
-                                n: v.n,
-                                dir: ray.d,
-                            }) {
+                            if let PDF::SolidAngle(light_pdf) =
+                                scene.direct_pdf(&LightSamplingPDF {
+                                    mesh: v.mesh,
+                                    o: ray.o,
+                                    p: v.pos,
+                                    n: v.n,
+                                    dir: ray.d,
+                                }) {
                                 return Some(light_pdf);
                             }
                         }
                         _ => return None,
                     }
                 }
-                return None;
+                None
             }
-            _ => return None,
+            _ => None,
         }
     }
 }
