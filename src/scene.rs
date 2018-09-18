@@ -94,12 +94,13 @@ impl Scene {
                         vec![]
                     };
                     let normals = match data.normals {
-                        Some(ref v) => v.clone(),
+                        Some(ref v) => v.iter().map(|n| m.matrix.transform_vector(n.clone())).collect(),
                         None => Vec::new(),
                     };
+                    let points = data.points.iter().map(|n| m.matrix.transform_vector(n.clone())).collect();
                     let trimesh = scene_embree.add_triangle_mesh(
                         &device,
-                        data.points.clone(),
+                        points,
                         normals,
                         uv,
                         data.indices.clone(),
