@@ -1,11 +1,10 @@
-use bsdfs::*;
 use bsdfs::distribution::*;
+use bsdfs::*;
 use cgmath::InnerSpace;
 
 pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
     -(wo) + n * 2.0 * wo.dot(n)
 }
-
 
 pub struct BSDFMetal {
     pub r: BSDFColor,
@@ -16,12 +15,7 @@ pub struct BSDFMetal {
     pub eta_t: BSDFColor,
 }
 
-pub fn fr_conductor(
-    cos_theta_i: f32,
-    eta_i: Color,
-    eta_t: Color,
-    k: Color,
-) -> Color {
+pub fn fr_conductor(cos_theta_i: f32, eta_i: Color, eta_t: Color, k: Color) -> Color {
     let not_clamped: f32 = cos_theta_i;
     let cos_theta_i: f32 = clamp_t(not_clamped, -1.0, 1.0);
     let eta: Color = eta_t / eta_i;
@@ -49,17 +43,17 @@ impl BSDF for BSDFMetal {
         d_in: &Vector3<f32>,
         sample: Point2<f32>,
     ) -> Option<SampledDirection> {
-         if d_in.z == 0.0 {
+        if d_in.z == 0.0 {
             return None;
         }
         let wh = self.distribution.sample_wh(d_in, &sample);
-        let d  = reflect_vector(*d_in, wh);
+        let d = reflect_vector(*d_in, wh);
         if !vec3_same_hemisphere_vec3(d_in, &d) {
             return None;
         }
         // compute PDF of _wi_ for microfacet reflection
         let pdf = self.distribution.pdf(d_in, &wh) / (4.0 * d_in.dot(wh));
-        let weight = self.eval(uv, d_in, &d) / pdf;
+        let weight = self.eval(uv, d_in, &d);
         Some(SampledDirection {
             weight,
             d,
@@ -68,7 +62,7 @@ impl BSDF for BSDFMetal {
     }
 
     fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
-         if !vec3_same_hemisphere_vec3(d_out, d_in) {
+        if !vec3_same_hemisphere_vec3(d_out, d_in) {
             return PDF::SolidAngle(0.0);
         }
         let wh = (d_out + d_in).normalize();
@@ -87,7 +81,12 @@ impl BSDF for BSDFMetal {
             return Color::zero();
         }
         let wh = wh.normalize();
-        let f: Color = fr_conductor(d_in.dot(wh), self.eta_i.color(uv), self.eta_t.color(uv), self.k.color(uv));
+        let f: Color = fr_conductor(
+            d_in.dot(wh),
+            self.eta_i.color(uv),
+            self.eta_t.color(uv),
+            self.k.color(uv),
+        );
         return self.r.color(uv) * self.distribution.d(&wh) * self.distribution.g(d_out, d_in) * f
             / (4.0 as f32 * cos_theta_i * cos_theta_o);
     }
@@ -96,6 +95,6 @@ impl BSDF for BSDFMetal {
         false
     }
     fn is_twosided(&self) -> bool {
-        true
+        false
     }
 }

@@ -1,13 +1,13 @@
-use samplers::*;
 use cgmath::Point2;
-use integrators::{*,gradient::*};
+use integrators::{gradient::*, *};
 use paths::path::*;
 use paths::vertex::*;
+use samplers::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use structure::*;
 
-// This special random number replay 
+// This special random number replay
 // can capture the underlying sampler
 // in order to replay the sequence of random number
 // if it is necessary
@@ -62,7 +62,7 @@ impl Default for ShiftRandomReplay {
 pub struct IntegratorGradientPathTracing {
     pub max_depth: Option<u32>,
     pub recons: Box<PoissonReconstruction + Sync>,
-        pub min_survival: Option<f32>,
+    pub min_survival: Option<f32>,
 }
 /// This structure is responsible to the graph generation
 pub struct TechniqueGradientPathTracing {
@@ -90,8 +90,8 @@ impl<'a> Technique<'a> for TechniqueGradientPathTracing {
         return vec![(root, Color::one())];
     }
 
-    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> bool {
-        true
+    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>, depth: u32) -> bool {
+        self.max_depth.map_or(true, |max| depth < max)
     }
 
     fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {
@@ -157,7 +157,8 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
     }
 
     fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {
-        let (nb_buffers, buffernames, mut image_blocks, ids) = generate_img_blocks_gradient(scene, &self.recons);
+        let (nb_buffers, buffernames, mut image_blocks, ids) =
+            generate_img_blocks_gradient(scene, &self.recons);
 
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         let pool = generate_pool(scene);
@@ -261,7 +262,12 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
     }
 }
 impl IntegratorGradientPathTracing {
-    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> ColorGradient {
+    fn compute_pixel(
+        &self,
+        (ix, iy): (u32, u32),
+        scene: &Scene,
+        sampler: &mut Sampler,
+    ) -> ColorGradient {
         // Initialize the technique
         let mut samplings: Vec<Box<SamplingStrategy>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
@@ -301,19 +307,19 @@ impl IntegratorGradientPathTracing {
                 gradients: [Color::zero(); 4],
             };
 
-            GRADIENT_ORDER.iter().enumerate().for_each(|(i,off)| {
+            GRADIENT_ORDER.iter().enumerate().for_each(|(i, off)| {
                 let pix = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
                 if pix.x < 0
-                || pix.x > scene.camera.size().x as i32
-                || pix.y < 0
-                || pix.y > scene.camera.size().y as i32
+                    || pix.x > scene.camera.size().x as i32
+                    || pix.y < 0
+                    || pix.y > scene.camera.size().y as i32
                 {
                     // Do nothing
                 } else {
                     // Change the pixel for the sampling technique
                     // and reset the sampler
                     technique.img_pos = Point2::new(pix.x as u32, pix.y as u32);
-                    capture_sampler.indice = 0; 
+                    capture_sampler.indice = 0;
                     let offset_value = {
                         let offset = generate(scene, &mut capture_sampler, &mut technique);
                         technique.evaluate(scene, &offset[0].0)
@@ -328,4 +334,3 @@ impl IntegratorGradientPathTracing {
         }
     }
 }
-

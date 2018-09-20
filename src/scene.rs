@@ -115,7 +115,7 @@ impl Scene {
 
                     let bsdf = if let Some(ref name) = m.material_name {
                         if let Some(bsdf_name) = scene_info.materials.get(name) {
-                            bsdfs::bsdf_pbrt(bsdf_name)
+                            bsdfs::bsdf_pbrt(bsdf_name, &scene_info)
                         } else {
                             Box::new(bsdfs::diffuse::BSDFDiffuse {
                                 diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),

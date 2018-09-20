@@ -4,7 +4,7 @@ use serde_json;
 use structure::*;
 
 use cgmath::{Point2, Vector2, Vector3};
-
+use image;
 use pbrt_rs;
 use std;
 use tools::*;
@@ -125,29 +125,39 @@ pub fn parse_bsdf(
     Ok(new_bsdf)
 }
 
-pub fn bsdf_texture_match(v: &pbrt_rs::Param) -> Option<BSDFColor> {
+pub fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option<BSDFColor> {
     match v {
         pbrt_rs::Param::RGB(r, g, b) => Some(BSDFColor::UniformColor(Color::new(*r, *g, *b))),
+        pbrt_rs::Param::Name(ref name) => {
+            if let Some(texture) = scene_info.textures.get(name) {
+                Some(BSDFColor::TextureColor(Texture {
+                    img: image::open(&texture.filename).expect("Impossible to load the image"),
+                }))
+            } else {
+                warn!("Impossible to found an texture with name: {}", name);
+                None
+            }
+        }
         _ => None,
     }
 }
 
-pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF) -> Box<BSDF + Sync + Send> {
+pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF + Sync + Send> {
     let bsdf: Option<Box<BSDF + Sync + Send>> = match bsdf {
         pbrt_rs::BSDF::Matte(ref v) => {
-            if let Some(diffuse) = bsdf_texture_match(&v.kd) {
+            if let Some(diffuse) = bsdf_texture_match(&v.kd, scene_info) {
                 Some(Box::new(BSDFDiffuse { diffuse }))
             } else {
                 None
             }
         }
         pbrt_rs::BSDF::Metal(ref v) => {
-            let eta = bsdf_texture_match(&v.eta).unwrap();
-            let k = bsdf_texture_match(&v.k).unwrap();
-            let u_roughness = 0.1;//bsdf_texture_match(&v.u_roughness.as_ref().unwrap()).unwrap();
-            let v_roughness = 0.1;//bsdf_texture_match(&v.v_roughness.as_ref().unwrap()).unwrap();
-            // TODO: roughness is ignored
-            // FIXME: remap
+            let eta = bsdf_texture_match(&v.eta, scene_info).unwrap();
+            let k = bsdf_texture_match(&v.k, scene_info).unwrap();
+            let u_roughness = 0.1; //bsdf_texture_match(&v.u_roughness.as_ref().unwrap()).unwrap();
+            let v_roughness = 0.1; //bsdf_texture_match(&v.v_roughness.as_ref().unwrap()).unwrap();
+                                   // TODO: roughness is ignored
+                                   // FIXME: remap
             Some(Box::new(BSDFMetal {
                 r: BSDFColor::UniformColor(Color::value(1.0)),
                 distribution: TrowbridgeReitzDistribution::new(

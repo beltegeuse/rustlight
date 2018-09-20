@@ -38,8 +38,8 @@ impl<'a> Technique<'a> for TechniqueLightTracing {
         vec![(emitter_vertex, Color::one())]
     }
 
-    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> bool {
-        true
+    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>, depth: u32) -> bool {
+        self.max_depth.map_or(true, |max| depth < max)
     }
 
     fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {

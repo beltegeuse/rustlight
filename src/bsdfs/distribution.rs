@@ -99,22 +99,27 @@ pub fn sin_2_phi(w: &Vector3<f32>) -> f32 {
 
 // see microfacet.h
 pub trait MicrofacetDistribution {
-    fn d(&self, wh: &Vector3<f32>) -> f32;
     fn lambda(&self, w: &Vector3<f32>) -> f32;
+    fn d(&self, wh: &Vector3<f32>) -> f32;
+    fn sample_wh(&self, wo: &Vector3<f32>, u: &Point2<f32>) -> Vector3<f32>;
+    fn roughness_to_alpha(&self, roughness: f32) -> f32;
+    fn sample_visible_area(&self) -> bool;
+    // The default functions
     fn g1(&self, w: &Vector3<f32>) -> f32 {
-        1.0 as f32 / (1.0 as f32 + self.lambda(w))
+        //    if (Dot(w, wh) * CosTheta(w) < 0.) return 0.;
+        1.0 / (1.0 + self.lambda(w))
     }
     fn g(&self, wo: &Vector3<f32>, wi: &Vector3<f32>) -> f32 {
-        1.0 as f32 / (1.0 as f32 + self.lambda(wo) + self.lambda(wi))
+        1.0 / (1.0 + self.lambda(wo) + self.lambda(wi))
     }
     fn pdf(&self, wo: &Vector3<f32>, wh: &Vector3<f32>) -> f32 {
-        if self.get_sample_visible_area() {
-            self.d(wh) * self.g1(wo) * wo.dot(*wh).abs() / abs_cos_theta(wo)
+        if self.sample_visible_area() {
+            // FIXME
+            self.d(wh) * self.g1(wo) * wo.dot(*wh).abs() / wo.z.abs()
         } else {
-            self.d(wh) * abs_cos_theta(wh)
+            self.d(wh) * wh.z.abs()
         }
     }
-    fn get_sample_visible_area(&self) -> bool;
 }
 
 pub struct TrowbridgeReitzDistribution {
@@ -132,11 +137,25 @@ impl TrowbridgeReitzDistribution {
             sample_visible_area: sample_visible_area,
         }
     }
-    /// Microfacet distribution function: In comparison to the
-    /// Beckmann-Spizzichino model, Trowbridge-Reitz has higher tails - it
-    /// falls off to zero more slowly for directions far from the surface
-    /// normal.
-    pub fn roughness_to_alpha(roughness: f32) -> f32 {
+}
+
+impl MicrofacetDistribution for TrowbridgeReitzDistribution {
+    fn sample_visible_area(&self) -> bool {
+        self.sample_visible_area
+    }
+    fn lambda(&self, w: &Vector3<f32>) -> f32 {
+        let abs_tan_theta: f32 = tan_theta(w).abs();
+        if abs_tan_theta.is_infinite() {
+            return 0.0;
+        }
+        // compute _alpha_ for direction _w_
+        let alpha: f32 = (cos_2_phi(w) * self.alpha_x * self.alpha_x
+            + sin_2_phi(w) * self.alpha_y * self.alpha_y)
+            .sqrt();
+        let alpha_2_tan_2_theta: f32 = (alpha * abs_tan_theta) * (alpha * abs_tan_theta);
+        (-1.0 as f32 + (1.0 as f32 + alpha_2_tan_2_theta).sqrt()) / 2.0 as f32
+    }
+    fn roughness_to_alpha(&self, roughness: f32) -> f32 {
         let mut roughness = roughness;
         let limit: f32 = 1e-3 as f32;
         if limit > roughness {
@@ -149,7 +168,7 @@ impl TrowbridgeReitzDistribution {
             + 0.0171201 * x * x * x
             + 0.000640711 * x * x * x * x
     }
-    pub fn sample_wh(&self, wo: &Vector3<f32>, u: &Point2<f32>) -> Vector3<f32> {
+    fn sample_wh(&self, wo: &Vector3<f32>, u: &Point2<f32>) -> Vector3<f32> {
         let mut wh: Vector3<f32>;
         if !self.sample_visible_area {
             let cos_theta;
@@ -186,9 +205,6 @@ impl TrowbridgeReitzDistribution {
         }
         wh
     }
-}
-
-impl MicrofacetDistribution for TrowbridgeReitzDistribution {
     fn d(&self, wh: &Vector3<f32>) -> f32 {
         let tan_2_theta: f32 = tan_2_theta(wh);
         if tan_2_theta.is_infinite() {
@@ -200,21 +216,6 @@ impl MicrofacetDistribution for TrowbridgeReitzDistribution {
             * tan_2_theta;
         1.0 as f32
             / (PI * self.alpha_x * self.alpha_y * cos_4_theta * (1.0 as f32 + e) * (1.0 as f32 + e))
-    }
-    fn lambda(&self, w: &Vector3<f32>) -> f32 {
-        let abs_tan_theta: f32 = tan_theta(w).abs();
-        if abs_tan_theta.is_infinite() {
-            return 0.0;
-        }
-        // compute _alpha_ for direction _w_
-        let alpha: f32 = (cos_2_phi(w) * self.alpha_x * self.alpha_x
-            + sin_2_phi(w) * self.alpha_y * self.alpha_y)
-            .sqrt();
-        let alpha_2_tan_2_theta: f32 = (alpha * abs_tan_theta) * (alpha * abs_tan_theta);
-        (-1.0 as f32 + (1.0 as f32 + alpha_2_tan_2_theta).sqrt()) / 2.0 as f32
-    }
-    fn get_sample_visible_area(&self) -> bool {
-        self.sample_visible_area
     }
 }
 
