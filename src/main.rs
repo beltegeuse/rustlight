@@ -144,7 +144,13 @@ fn main() {
             ).subcommand(
                 SubCommand::with_name("path-explicit")
                     .about("path tracing with explict light path construction")
-                    .arg(&max_arg),
+                    .arg(&max_arg)
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .default_value("all"),
+                    ),
             ).subcommand(
                 SubCommand::with_name("light-explicit")
                     .about("light tracing with explict light path construction")
@@ -303,8 +309,24 @@ fn main() {
     let int = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "all" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
+                }
+                "bsdf" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::BSDF
+                }
+                "emitter" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::Emitter
+                }
+                _ => panic!("invalid strategy: {}", strategy),
+            };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path::IntegratorPathTracing { max_depth },
+                rustlight::integrators::explicit::path::IntegratorPathTracing {
+                    max_depth,
+                    strategy,
+                },
             ))
         }
         ("light-explicit", Some(m)) => {

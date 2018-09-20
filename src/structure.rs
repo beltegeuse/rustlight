@@ -55,6 +55,9 @@ impl Color {
     pub fn abs(&self) -> Color {
         Color::new(self.r.abs(), self.g.abs(), self.b.abs())
     }
+    pub fn sqrt(self) -> Color {
+        Color::new(self.r.sqrt(), self.g.sqrt(), self.b.sqrt())
+    }
 
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
@@ -137,9 +140,9 @@ impl Div<f32> for Color {
     }
 }
 
-impl<'a> Div<&'a Color> for Color {
+impl Div<Color> for Color {
     type Output = Self;
-    fn div(self, other: &'a Color) -> Color {
+    fn div(self, other: Color) -> Color {
         Color {
             r: self.r / other.r,
             g: self.g / other.g,
@@ -308,11 +311,22 @@ impl<'a> Intersection<'a> {
         } else {
             embree_its.n_s.unwrap()
         };
+        // TODO: Hack for now for make automatic twosided.
+        let (n_s, n_g) = if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && d.dot(n_s) <= 0.0 {
+            (
+                Vector3::new(-n_s.x, -n_s.y, -n_s.z),
+                Vector3::new(-embree_its.n_g.x, -embree_its.n_g.y, -embree_its.n_g.z),
+            )
+        } else {
+            (n_s, embree_its.n_g)
+        };
+
         let frame = Frame::new(n_s);
         let wi = frame.to_local(d);
+
         Intersection {
             dist: embree_its.t,
-            n_g: embree_its.n_g,
+            n_g,
             n_s,
             p: embree_its.p,
             uv: embree_its.uv,

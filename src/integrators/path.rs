@@ -28,13 +28,8 @@ impl IntegratorMC for IntegratorPath {
 
         let mut depth: u32 = 1;
         while self.max_depth.map_or(true, |max| depth < max) {
-            // Check if we go the right orientation
-            if its.cos_theta() <= 0.0 {
-                return l_i;
-            }
-
             // Add the emission for the light intersection
-            if self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
+            if its.cos_theta() > 0.0 && self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
                 l_i += &(throughput * its.mesh.emission);
             }
 

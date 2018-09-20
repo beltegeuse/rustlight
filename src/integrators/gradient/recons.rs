@@ -71,7 +71,7 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
             for y in 0..img_size.y {
                 let pos = Point2::new(x, y);
                 let v = image_avg.get(pos, &primal_var_name)
-                    / &(image_avg.get(pos, &primal_mean_name) + Color::value(0.001));
+                    / (image_avg.get(pos, &primal_mean_name) + Color::value(0.001));
                 image_avg.accumulate(pos, v, &relative_err_name);
             }
         }

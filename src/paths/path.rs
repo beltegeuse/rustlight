@@ -312,6 +312,7 @@ pub fn generate<'a, T: Technique<'a>>(
     let root = technique.init(scene, sampler);
     let mut curr = root.clone();
     let mut next = vec![];
+    let mut depth = 1;
     while !curr.is_empty() {
         // Do a wavefront processing of the different vertices
         next.clear();
@@ -328,7 +329,7 @@ pub fn generate<'a, T: Technique<'a>>(
                 ) {
                     // This is the continue if we want to continue or not
                     // For example, we might want to not push the vertex if we have reach the depth limit
-                    if technique.expand(&new_vertex) {
+                    if technique.expand(&new_vertex, depth) {
                         next.push((new_vertex, new_throughput));
                     }
                 }
@@ -336,6 +337,7 @@ pub fn generate<'a, T: Technique<'a>>(
         }
         // Flip-flap buffer
         mem::swap(&mut curr, &mut next);
+        depth += 1;
     }
 
     root
@@ -348,5 +350,5 @@ pub trait Technique<'a> {
         sampler: &mut Sampler,
     ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)>;
     fn strategies(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>>;
-    fn expand(&self, vertex: &Rc<RefCell<Vertex<'a>>>) -> bool;
+    fn expand(&self, vertex: &Rc<RefCell<Vertex<'a>>>, depth: u32) -> bool;
 }
