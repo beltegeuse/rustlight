@@ -55,6 +55,9 @@ impl Color {
     pub fn abs(&self) -> Color {
         Color::new(self.r.abs(), self.g.abs(), self.b.abs())
     }
+    pub fn sqrt(self) -> Color {
+        Color::new(self.r.sqrt(), self.g.sqrt(), self.b.sqrt())
+    }
 
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
@@ -137,9 +140,9 @@ impl Div<f32> for Color {
     }
 }
 
-impl<'a> Div<&'a Color> for Color {
+impl Div<Color> for Color {
     type Output = Self;
-    fn div(self, other: &'a Color) -> Color {
+    fn div(self, other: Color) -> Color {
         Color {
             r: self.r / other.r,
             g: self.g / other.g,
