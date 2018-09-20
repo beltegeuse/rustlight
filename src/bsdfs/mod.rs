@@ -5,6 +5,7 @@ use structure::*;
 
 use cgmath::{Point2, Vector2, Vector3};
 
+use pbrt_rs;
 use std;
 use tools::*;
 
@@ -95,6 +96,7 @@ pub trait BSDF: Send + Sync {
     /// check if it is smooth
     //TODO: Replace this using flags
     fn is_smooth(&self) -> bool;
+    fn is_twosided(&self) -> bool;
 }
 
 pub mod diffuse;
@@ -104,6 +106,7 @@ pub mod specular;
 use bsdfs::diffuse::BSDFDiffuse;
 use bsdfs::phong::BSDFPhong;
 use bsdfs::specular::BSDFSpecular;
+
 /// Dispatch coded BSDF
 pub fn parse_bsdf(
     b: &serde_json::Value,
@@ -116,4 +119,34 @@ pub fn parse_bsdf(
         _ => panic!("Unknown BSDF type {}", new_bsdf_type),
     };
     Ok(new_bsdf)
+}
+
+pub fn bsdf_texture_match(v: &pbrt_rs::Param) -> Option<BSDFColor> {
+    match v {
+        pbrt_rs::Param::RGB(r,g,b) => Some(BSDFColor::UniformColor(Color::new(*r,*g,*b))),
+        _ => None,
+    }
+}
+
+pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF) -> Box<BSDF + Sync + Send> {
+    let bsdf = match bsdf {
+        pbrt_rs::BSDF::Matte(ref v) => {
+            if let Some(diffuse) = bsdf_texture_match(&v.kd) {
+                Some(Box::new(BSDFDiffuse {
+                    diffuse
+                }))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
+    if let Some(bsdf) = bsdf {
+        bsdf
+    } else {
+        Box::new(BSDFDiffuse {
+            diffuse: BSDFColor::UniformColor(Color::value(0.8)),
+        })
+    }
 }

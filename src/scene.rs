@@ -94,10 +94,17 @@ impl Scene {
                         vec![]
                     };
                     let normals = match data.normals {
-                        Some(ref v) => v.iter().map(|n| m.matrix.transform_vector(n.clone())).collect(),
+                        Some(ref v) => v
+                            .iter()
+                            .map(|n| m.matrix.transform_vector(n.clone()))
+                            .collect(),
                         None => Vec::new(),
                     };
-                    let points = data.points.iter().map(|n| m.matrix.transform_vector(n.clone())).collect();
+                    let points = data
+                        .points
+                        .iter()
+                        .map(|n| m.matrix.transform_vector(n.clone()))
+                        .collect();
                     let trimesh = scene_embree.add_triangle_mesh(
                         &device,
                         points,
@@ -106,14 +113,22 @@ impl Scene {
                         data.indices.clone(),
                     );
 
-                    // FIXME FIXME
-                    Box::new(geometry::Mesh::new(
-                        "noname".to_string(),
-                        trimesh,
+                    let bsdf = if let Some(ref name) = m.material_name {
+                        if let Some(bsdf_name) = scene_info.materials.get(name) {
+                            bsdfs::bsdf_pbrt(bsdf_name)
+                        } else {
+                            Box::new(bsdfs::diffuse::BSDFDiffuse {
+                                diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
+                            })
+                        }
+                    } else {
                         Box::new(bsdfs::diffuse::BSDFDiffuse {
                             diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
-                        }),
-                    ))
+                        })
+                    };
+
+                    // FIXME FIXME
+                    Box::new(geometry::Mesh::new("noname".to_string(), trimesh, bsdf))
                 }
                 _ => {
                     panic!("Ignore the type of mesh");
@@ -169,6 +184,7 @@ impl Scene {
             }
         };
 
+        info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
             camera: camera,
             embree_device: device,
