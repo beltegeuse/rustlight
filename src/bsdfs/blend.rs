@@ -1,0 +1,64 @@
+use bsdfs::*;
+use std;
+
+pub struct BSDFBlend {
+    pub bsdf1: Box<BSDF + Sync + Send>,
+    pub bsdf2: Box<BSDF + Sync + Send>,
+}
+
+impl BSDF for BSDFBlend {
+    fn sample(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        sample: Point2<f32>,
+    ) -> Option<SampledDirection> {
+        let sampled_dir = if sample.x < 0.5 {
+            let scaled_sample = Point2::new(sample.x * 2.0, sample.y);
+            self.bsdf1.sample(uv, d_in, scaled_sample)
+        } else {
+            let scaled_sample = Point2::new((sample.x - 0.5) * 2.0, sample.y);
+            self.bsdf2.sample(uv, d_in, scaled_sample)
+        };
+
+        if let Some(mut sampled_dir) = sampled_dir {
+            sampled_dir.pdf = self.pdf(uv, d_in, &sampled_dir.d);
+            if sampled_dir.pdf.value() == 0.0 {
+                None
+            } else {
+                sampled_dir.weight = self.eval(uv, d_in, &sampled_dir.d) / sampled_dir.pdf.value();
+                Some(sampled_dir)
+            }
+        } else {
+            None
+        }
+    }
+
+    fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+        let pdf_1 = self.bsdf1.pdf(uv, d_in, d_out);
+        let pdf_2 = self.bsdf2.pdf(uv, d_in, d_out);
+        if let (PDF::SolidAngle(pdf_1), PDF::SolidAngle(pdf_2)) = (pdf_1, pdf_2) {
+            PDF::SolidAngle((pdf_1 + pdf_2) *0.5)
+        } else {
+            panic!("get wrong type of BSDF");
+        }
+    }
+
+    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
+        self.bsdf1.eval(uv, d_in, d_out) + self.bsdf2.eval(uv, d_in, d_out) 
+    }
+
+    fn is_smooth(&self) -> bool {
+        if self.bsdf1.is_smooth() || self.bsdf2.is_smooth() {
+            panic!("is smooth on blend material");
+        }
+        false
+    }
+
+    fn is_twosided(&self) -> bool {
+         if !self.bsdf1.is_twosided() || !self.bsdf2.is_twosided() {
+            panic!("is twosided on blend material");
+        }
+        true
+    }
+}
