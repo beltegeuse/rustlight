@@ -33,7 +33,7 @@ pub fn fr_conductor(cos_theta_i: f32, eta_i: Color, eta_t: Color, k: Color) -> C
     let t3: Color = a2_plus_b2 * cos_theta_i2 + Color::value(sin_theta_i2 * sin_theta_i2);
     let t4: Color = t2 * sin_theta_i2;
     let rp: Color = rs * (t3 - t4) / (t3 + t4);
-    (rp + rs) * Color::value(0.5 as f32)
+    (rp + rs) * Color::value(0.5)
 }
 
 impl BSDF for BSDFMetal {
@@ -55,7 +55,7 @@ impl BSDF for BSDFMetal {
         let pdf = self.distribution.pdf(d_in, &wh) / (4.0 * d_in.dot(wh));
         let weight = self.eval(uv, d_in, &d);
         Some(SampledDirection {
-            weight,
+            weight: weight / pdf,
             d,
             pdf: PDF::SolidAngle(pdf),
         })
@@ -66,35 +66,38 @@ impl BSDF for BSDFMetal {
             return PDF::SolidAngle(0.0);
         }
         let wh = (d_out + d_in).normalize();
-        PDF::SolidAngle(self.distribution.pdf(d_out, &wh) / (4.0 * d_out.dot(wh)))
+        PDF::SolidAngle(self.distribution.pdf(d_in, &wh) / (4.0 * d_in.dot(wh)))
     }
 
     fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
-        let cos_theta_o = d_out.z.abs();
-        let cos_theta_i = d_in.z.abs();
-        let wh = *d_in + *d_out;
-        // handle degenerate cases for microfacet reflection
-        if cos_theta_i == 0.0 || cos_theta_o == 0.0 {
+        let cos_theta_o = d_out.z;
+        let cos_theta_i = d_in.z;
+        if cos_theta_o <= 0.0 {
             return Color::zero();
         }
+        if cos_theta_i <= 0.0 {
+            return Color::zero();
+        }
+        let wh = *d_out + *d_in;
+        // handle degenerate cases for microfacet reflection
         if wh.x == 0.0 && wh.y == 0.0 && wh.z == 0.0 {
             return Color::zero();
         }
         let wh = wh.normalize();
         let f: Color = fr_conductor(
-            d_in.dot(wh),
+            d_out.dot(wh),
             self.eta_i.color(uv),
             self.eta_t.color(uv),
             self.k.color(uv),
         );
-        return self.r.color(uv) * self.distribution.d(&wh) * self.distribution.g(d_out, d_in) * f
-            / (4.0 as f32 * cos_theta_i * cos_theta_o);
+        self.r.color(uv) * self.distribution.d(&wh) * self.distribution.g(d_in, d_out) * f
+            / (4.0 * cos_theta_i) // * cos_theta_o
     }
 
     fn is_smooth(&self) -> bool {
         false
     }
     fn is_twosided(&self) -> bool {
-        false
+        true
     }
 }
