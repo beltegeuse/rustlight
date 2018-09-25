@@ -54,7 +54,7 @@ impl<'a> Technique<'a> for TechniqueVPL {
     }
 
     fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>, depth: u32) -> bool {
-        self.max_depth.map_or(true, |max| depth < max)
+        self.max_depth.map_or(true, |max| depth < max - 1) // Because we do the gathering
     }
 
     fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {
@@ -137,6 +137,7 @@ impl Integrator for IntegratorVPL {
         // Render the image blocks VPL integration
         info!("Gathering VPL...");
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
+        let norm_vpl = 1.0 / nb_path_shot as f32;
         let pool = generate_pool(scene);
         pool.install(|| {
             image_blocks.par_iter_mut().for_each(|im_block| {
@@ -149,6 +150,7 @@ impl Integrator for IntegratorVPL {
                                 scene,
                                 &mut sampler,
                                 &vpls,
+                                norm_vpl,
                             );
                             im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_owned());
                         }
@@ -166,7 +168,6 @@ impl Integrator for IntegratorVPL {
         for im_block in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
-        image.scale(1.0 / nb_path_shot as f32);
         image
     }
 }
@@ -178,6 +179,7 @@ impl IntegratorVPL {
         scene: &'a Scene,
         sampler: &mut Sampler,
         vpls: &[Box<VPL<'a>>],
+        norm_vpl: f32,
     ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
@@ -189,6 +191,11 @@ impl IntegratorVPL {
             None => return l_i,
         };
 
+        // Check if we are on a light
+        if its.cos_theta() > 0.0 {
+            l_i += &(its.mesh.emission);
+        }
+
         for vpl in vpls {
             match **vpl {
                 VPL::Emitter(ref vpl) => {
@@ -199,7 +206,7 @@ impl IntegratorVPL {
 
                         let emitted_radiance = vpl.emitted_radiance * vpl.n.dot(-d).max(0.0);
                         let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d));
-                        l_i += emitted_radiance * bsdf_val / (dist * dist);
+                        l_i += norm_vpl * emitted_radiance * bsdf_val / (dist * dist);
                     }
                 }
                 VPL::Surface(ref vpl) => {
@@ -214,7 +221,7 @@ impl IntegratorVPL {
                             &vpl.its.to_local(&-d),
                         );
                         let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d));
-                        l_i += emitted_radiance * bsdf_val * vpl.radiance / (dist * dist);
+                        l_i += norm_vpl * emitted_radiance * bsdf_val * vpl.radiance / (dist * dist);
                     }
                 }
             }

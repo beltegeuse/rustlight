@@ -101,7 +101,7 @@ impl DirectionalSamplingStrategy {
                 let frame = Frame::new(v.n);
                 let d_out_global = frame.to_world(d_out);
                 let ray = Ray::new(v.pos, d_out_global);
-                let weight = v.mesh.emission * std::f32::consts::FRAC_1_PI;
+                let weight = v.mesh.emission * std::f32::consts::FRAC_1_PI; // FIXME: This normalization factor seems dubious for me
 
                 let (edge, new_vertex) = Edge::from_ray(
                     &ray,
@@ -318,18 +318,19 @@ pub fn generate<'a, T: Technique<'a>>(
         next.clear();
         for (curr_vertex, throughput) in &curr {
             // For all the sampling techniques
-            for (id_sampling, sampling) in technique.strategies(&curr_vertex).iter().enumerate() {
-                // If we want to continue the tracing toward this direction
-                if let Some((new_vertex, new_throughput)) = sampling.sample(
-                    curr_vertex.clone(),
-                    scene,
-                    *throughput,
-                    sampler,
-                    id_sampling,
-                ) {
-                    // This is the continue if we want to continue or not
-                    // For example, we might want to not push the vertex if we have reach the depth limit
-                    if technique.expand(&new_vertex, depth) {
+            // This is the continue if we want to continue or not
+            // For example, we might want to not push the vertex if we have reach the depth limit
+            if technique.expand(&curr_vertex, depth) {
+                for (id_sampling, sampling) in technique.strategies(&curr_vertex).iter().enumerate()
+                {
+                    // If we want to continue the tracing toward this direction
+                    if let Some((new_vertex, new_throughput)) = sampling.sample(
+                        curr_vertex.clone(),
+                        scene,
+                        *throughput,
+                        sampler,
+                        id_sampling,
+                    ) {
                         next.push((new_vertex, new_throughput));
                     }
                 }
