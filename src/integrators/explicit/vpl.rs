@@ -90,7 +90,7 @@ impl TechniqueVPL {
                 }
             }
             Vertex::Emitter(ref v) => {
-                let flux = v.mesh.emission / self.pdf_vertex.as_ref().unwrap().value();
+                let flux = v.mesh.flux() / self.pdf_vertex.as_ref().unwrap().value();
                 vpls.borrow_mut().push(Box::new(VPL::Emitter(VPLEmitter {
                     pos: v.pos,
                     n: v.n,

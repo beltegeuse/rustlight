@@ -90,7 +90,7 @@ impl TechniqueLightTracing {
                 }
             }
             Vertex::Emitter(ref v) => {
-                let flux = v.mesh.emission / self.pdf_vertex.as_ref().unwrap().value();
+                let flux = v.mesh.flux() / self.pdf_vertex.as_ref().unwrap().value();
                 let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.pos).normalize();
                 if scene.visible(&v.pos, &pos_sensor) {

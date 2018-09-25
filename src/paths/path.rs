@@ -101,7 +101,7 @@ impl DirectionalSamplingStrategy {
                 let frame = Frame::new(v.n);
                 let d_out_global = frame.to_world(d_out);
                 let ray = Ray::new(v.pos, d_out_global);
-                let weight = v.mesh.emission * std::f32::consts::FRAC_1_PI; // FIXME: This normalization factor seems dubious for me
+                let weight = Color::one(); // Perfectly importance sampled
 
                 let (edge, new_vertex) = Edge::from_ray(
                     &ray,

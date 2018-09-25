@@ -162,7 +162,7 @@ impl Scene {
             emitters
                 .iter()
                 .map(|e| e.flux())
-                .for_each(|f| cdf_construct.add(f));
+                .for_each(|f| cdf_construct.add(f.channel_max()));
             cdf_construct.normalize()
         };
         if emitters_cdf.normalization == 0.0 {
@@ -240,7 +240,7 @@ impl Scene {
                     0 => panic!("Not found {} in the obj list", name),
                     1 => {
                         matched_meshes[0].emission = emission;
-                        info!("vertices: {:?}", matched_meshes[0].trimesh.vertices);
+                        info!("   * flux: {:?}",  matched_meshes[0].flux());
                     }
                     _ => panic!("Several {} in the obj list", name),
                 };
@@ -282,9 +282,13 @@ impl Scene {
             emitters
                 .iter()
                 .map(|e| e.flux())
-                .for_each(|f| cdf_construct.add(f));
+                .for_each(|f| cdf_construct.add(f.channel_max()));
             cdf_construct.normalize()
         };
+        info!(
+            "CDF lights: {:?} norm: {:?}",
+            emitters_cdf.cdf, emitters_cdf.normalization
+        );
 
         // Read the camera config
         let camera = {
