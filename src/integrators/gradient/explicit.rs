@@ -372,11 +372,49 @@ impl ShiftMapping for DiffuseReconnection {
         pos: Point2<u32>,
         scene: &Scene,
         sampler: &mut Sampler,
-        _base: &Rc<VertexPtr<'a>>,
+        base: &Rc<VertexPtr<'a>>,
     ) -> (f32, Color) {
+        // Generate
         self.technique.img_pos = pos;
-        let root_shift = self.technique.init(scene, sampler);
-        (0.0, Color::zero())
+        let offset = base.borrow().pixel_pos();
+        let root_shift = Rc::new(RefCell::new(Vertex::Sensor(SensorVertex {
+            uv: Point2::new(
+                pos.x as f32 + offset.x.fract(),
+                pos.y as f32 + offset.y.fract(),
+            ),
+            pos: scene.camera.position(),
+            edge_in: None,
+            edge_out: None,
+        })));
+
+        let directional = &self.technique.strategies(&root_shift)[0];
+        if let Some((next_vertex, next_throughput)) =
+            directional.sample(root_shift.clone(), scene, Color::one(), sampler, 0)
+        {
+            let mut primary_base = base.borrow().next_vertex();
+            if primary_base.len() == 0 {
+                return (0.0, Color::zero());
+            }
+            let primary_base = primary_base.pop().unwrap();
+
+            // Check the reconnection to the light source.
+            for second_base in primary_base.borrow().next_vertex() {
+                match *second_base.borrow() {
+                    Vertex::Surface(ref v) => {
+                        // TODO: Do the diffuse reconnection or half vector copy
+                    }
+                    Vertex::Emitter(ref v) => {
+                        // TODO: Do the explicit connection to the light
+                        // TODO: The edge need to created but the contribution from the edge need to be 0
+                    }
+                    _ => panic!("Unexpected vertex"),
+                }
+            }
+
+            (1.0, Color::zero())
+        } else {
+            (0.0, Color::zero())
+        }
     }
     fn clear(&mut self) {}
 }

@@ -151,6 +151,20 @@ pub enum Vertex<'a> {
     Emitter(EmitterVertex<'a>),
 }
 impl<'a> Vertex<'a> {
+    pub fn next_vertex(&self) -> Vec<Rc<VertexPtr<'a>>> {
+        match *self {
+            Vertex::Sensor(ref v) => match v.edge_out.as_ref() {
+                None => vec![],
+                Some(ref e) => e
+                    .borrow()
+                    .vertices
+                    .1
+                    .as_ref()
+                    .map_or(vec![], |v| vec![v.clone()]),
+            },
+            _ => unimplemented!(),
+        }
+    }
     pub fn pixel_pos(&self) -> Point2<f32> {
         match *self {
             Vertex::Sensor(ref v) => v.uv,
