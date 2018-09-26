@@ -161,3 +161,4 @@ pub mod avg;
 pub mod explicit;
 pub mod path;
 pub mod recons;
+pub mod shiftmapping;

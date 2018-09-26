@@ -111,6 +111,14 @@ impl<'b> MulAssign<&'b Color> for Color {
     }
 }
 
+impl MulAssign<f32> for Color {
+    fn mul_assign(&mut self, other: f32) {
+        self.r *= other;
+        self.g *= other;
+        self.b *= other;
+    }
+}
+
 impl<'b> AddAssign<&'b Color> for Color {
     fn add_assign(&mut self, other: &'b Color) {
         self.r += other.r;
