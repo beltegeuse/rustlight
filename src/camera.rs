@@ -27,7 +27,7 @@ impl Camera {
         let fov_rad = Rad(fov * aspect_ratio * f32::consts::PI / 180.0); //2.0 * f32::tan((fov / 2.0) * f32::consts::PI / 180.0));//(fov * f32::consts::PI / 180.0);
         let camera_to_sample = Matrix4::from_nonuniform_scale(-0.5, -0.5 * aspect_ratio, 1.0)
             * Matrix4::from_translation(Vector3::new(-1.0, -1.0 / aspect_ratio, 0.0))
-            * perspective(fov_rad, aspect_ratio, 1e-2, 1000.0)
+            * perspective(fov_rad, 1.0, 1e-2, 1000.0)
             * Matrix4::from_nonuniform_scale(-1.0, 1.0, -1.0); // undo gluPerspective (z neg)
         let sample_to_camera = camera_to_sample.inverse_transform().unwrap();
 

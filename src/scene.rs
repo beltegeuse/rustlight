@@ -76,7 +76,13 @@ impl Scene {
         output_img_path: String,
     ) -> Result<Scene, Box<Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
-        pbrt_rs::read_pbrt_file(filename, &mut scene_info, pbrt_rs::State::default());
+        let working_dir = std::path::Path::new(filename.clone()).parent().unwrap();
+        pbrt_rs::read_pbrt_file(
+            filename,
+            &working_dir,
+            &mut scene_info,
+            pbrt_rs::State::default(),
+        );
 
         // Allocate embree
         let device = embree_rs::Device::debug();
@@ -88,22 +94,20 @@ impl Scene {
             .iter()
             .map(|m| match m.data {
                 pbrt_rs::Shape::TriMesh(ref data) => {
+                    let mat = m.matrix;
                     let uv = if let Some(uv) = data.uv.clone() {
                         uv
                     } else {
                         vec![]
                     };
                     let normals = match data.normals {
-                        Some(ref v) => v
-                            .iter()
-                            .map(|n| m.matrix.transform_vector(n.clone()))
-                            .collect(),
+                        Some(ref v) => v.iter().map(|n| mat.transform_vector(n.clone())).collect(),
                         None => Vec::new(),
                     };
                     let points = data
                         .points
                         .iter()
-                        .map(|n| m.matrix.transform_vector(n.clone()))
+                        .map(|n| mat.transform_vector(n.clone()))
                         .collect();
                     let trimesh = scene_embree.add_triangle_mesh(
                         &device,
@@ -240,7 +244,7 @@ impl Scene {
                     0 => panic!("Not found {} in the obj list", name),
                     1 => {
                         matched_meshes[0].emission = emission;
-                        info!("   * flux: {:?}",  matched_meshes[0].flux());
+                        info!("   * flux: {:?}", matched_meshes[0].flux());
                     }
                     _ => panic!("Several {} in the obj list", name),
                 };
