@@ -32,10 +32,10 @@ impl Camera {
         let sample_to_camera = camera_to_sample.inverse_transform().unwrap();
 
         // Compute the image plane inside the sample space.
-        let min = sample_to_camera.transform_point(Point3::new(0.0, 0.0, 0.0));
-        let max = sample_to_camera.transform_point(Point3::new(1.0, 1.0, 0.0));
-        let image_rect_min = Point2::new(min.x, min.y) / min.z;
-        let image_rect_max = Point2::new(max.x, max.y) / max.z;
+        let p0 = sample_to_camera.transform_point(Point3::new(0.0, 0.0, 0.0));
+        let p1 = sample_to_camera.transform_point(Point3::new(1.0, 1.0, 0.0));
+        let image_rect_min = Point2::new(p0.x.min(p1.x), p0.y.min(p1.y)) / p0.z.min(p1.z);
+        let image_rect_max = Point2::new(p0.x.max(p1.x), p0.y.max(p1.y)) / p0.z.max(p1.z);
         Camera {
             img,
             fov,
@@ -104,13 +104,12 @@ impl Camera {
         if cos_theta <= 0.0 {
             return 0.0;
         }
-
         let inv_cos_theta = 1.0 / cos_theta;
         let p = Point2::new(d.x * inv_cos_theta, d.y * inv_cos_theta);
-        if p.x > self.image_rect_min.x
-            || p.x < self.image_rect_max.x
-            || p.y > self.image_rect_min.y
-            || p.x < self.image_rect_max.y
+        if p.x < self.image_rect_min.x
+            || p.x > self.image_rect_max.x
+            || p.y < self.image_rect_min.y
+            || p.x > self.image_rect_max.y
         {
             return 0.0;
         }

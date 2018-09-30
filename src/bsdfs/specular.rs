@@ -35,7 +35,7 @@ impl BSDF for BSDFSpecular {
     }
 
     fn is_smooth(&self) -> bool {
-        false
+        true
     }
     fn is_twosided(&self) -> bool {
         true

@@ -1,60 +1,11 @@
 use cgmath::Point2;
+use integrators::gradient::shiftmapping::{random_replay::RandomReplay, ShiftMapping};
 use integrators::{gradient::*, *};
 use paths::path::*;
 use paths::vertex::*;
-use samplers::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use structure::*;
-
-// This special random number replay
-// can capture the underlying sampler
-// in order to replay the sequence of random number
-// if it is necessary
-pub struct ReplaySampler<'sampler, 'seq> {
-    pub sampler: &'sampler mut Sampler,
-    pub random: &'seq mut Vec<f32>,
-    pub indice: usize,
-}
-impl<'sampler, 'seq> ReplaySampler<'sampler, 'seq> {
-    fn generate(&mut self) -> f32 {
-        assert!(self.indice <= self.random.len());
-        if self.indice < self.random.len() {
-            let v = self.indice;
-            self.indice += 1;
-            self.random[v]
-        } else {
-            let v = self.sampler.next();
-            self.indice += 1;
-            self.random.push(v);
-            v
-        }
-    }
-
-    pub fn unregistered(&mut self) -> f32 {
-        self.sampler.next()
-    }
-}
-impl<'sampler, 'seq> Sampler for ReplaySampler<'sampler, 'seq> {
-    fn next(&mut self) -> f32 {
-        self.generate()
-    }
-    fn next2d(&mut self) -> Point2<f32> {
-        let v1 = self.generate();
-        let v2 = self.generate();
-        Point2::new(v1, v2)
-    }
-}
-pub struct ShiftRandomReplay {
-    pub random_sequence: Vec<f32>,
-}
-impl Default for ShiftRandomReplay {
-    fn default() -> Self {
-        Self {
-            random_sequence: vec![],
-        }
-    }
-}
 
 /// Path tracing system
 /// This structure store the rendering options
@@ -99,7 +50,7 @@ impl<'a> Technique<'a> for TechniqueGradientPathTracing {
     }
 }
 impl TechniqueGradientPathTracing {
-    fn evaluate<'a>(&self, scene: &'a Scene, vertex: &Rc<VertexPtr<'a>>) -> Color {
+    pub fn evaluate<'a>(&self, scene: &'a Scene, vertex: &Rc<VertexPtr<'a>>) -> Color {
         let mut l_i = Color::zero();
         match *vertex.borrow() {
             Vertex::Surface(ref v) => {
@@ -165,13 +116,16 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
         pool.install(|| {
             image_blocks.par_iter_mut().for_each(|(info, im_block)| {
                 let mut sampler = independent::IndependentSampler::default();
+                let mut shiftmapping = RandomReplay::default();
                 for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
                     for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
                         for n in 0..scene.nb_samples() {
+                            shiftmapping.clear();
                             let c = self.compute_pixel(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
                                 scene,
                                 &mut sampler,
+                                &mut shiftmapping
                             );
                             // Accumulate the values inside the buffer
                             let pos = Point2::new(ix, iy);
@@ -261,36 +215,29 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
         image
     }
 }
+
 impl IntegratorGradientPathTracing {
-    fn compute_pixel(
+    fn compute_pixel<T: ShiftMapping>(
         &self,
         (ix, iy): (u32, u32),
         scene: &Scene,
         sampler: &mut Sampler,
+        shiftmapping: &mut T,
     ) -> ColorGradient {
-        // Initialize the technique
         let mut samplings: Vec<Box<SamplingStrategy>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
         samplings.push(Box::new(LightSamplingStrategy {}));
         let mut technique = TechniqueGradientPathTracing {
-            max_depth: self.max_depth,
+            max_depth: None, // FIXME
             samplings,
-            img_pos: Point2::new(ix, iy),
+            img_pos: Point2::new(0, 0), // FIXME
         };
-        let mut random_sequence = vec![];
-        let mut capture_sampler = ReplaySampler {
-            sampler,
-            random: &mut random_sequence,
-            indice: 0,
-        };
-        // Call the generator on this technique
-        // the generator give back the root nodes
-        let root = generate(scene, &mut capture_sampler, &mut technique);
-        let root_value = technique.evaluate(scene, &root[0].0);
+
+        let (base_contrib, base_path) = shiftmapping.base(&mut technique, Point2::new(ix, iy), scene, sampler);
         let weight_survival = if let Some(min_survival) = self.min_survival {
             // TODO: Change the 0.1 hard coded to a more meaningful value
-            let prob_survival = (root_value.luminance() / 0.1).min(1.0).max(min_survival);
-            if prob_survival == 1.0 || prob_survival >= capture_sampler.unregistered() {
+            let prob_survival = (base_contrib.luminance() / 0.1).min(1.0).max(min_survival);
+            if prob_survival == 1.0 || prob_survival >= sampler.next() {
                 1.0 / prob_survival
             } else {
                 0.0
@@ -302,7 +249,7 @@ impl IntegratorGradientPathTracing {
         if weight_survival != 0.0 {
             let mut output = ColorGradient {
                 very_direct: Color::zero(),
-                main: root_value * 4.0 * 0.5 * weight_survival,
+                main: Color::zero(),
                 radiances: [Color::zero(); 4],
                 gradients: [Color::zero(); 4],
             };
@@ -318,14 +265,16 @@ impl IntegratorGradientPathTracing {
                 } else {
                     // Change the pixel for the sampling technique
                     // and reset the sampler
-                    technique.img_pos = Point2::new(pix.x as u32, pix.y as u32);
-                    capture_sampler.indice = 0;
-                    let offset_value = {
-                        let offset = generate(scene, &mut capture_sampler, &mut technique);
-                        technique.evaluate(scene, &offset[0].0)
-                    };
-                    output.radiances[i] = offset_value * 0.5 * weight_survival;
-                    output.gradients[i] = (offset_value - root_value) * 0.5 * weight_survival;
+                    let shift_value = shiftmapping.shift(
+                        &mut technique,
+                        Point2::new(pix.x as u32, pix.y as u32),
+                        scene,
+                        sampler,
+                        &base_path,
+                    );
+                    output.main += shift_value.base * weight_survival;
+                    output.radiances[i] = shift_value.offset * weight_survival;
+                    output.gradients[i] = shift_value.gradient * weight_survival;
                 }
             });
             output
