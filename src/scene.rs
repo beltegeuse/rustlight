@@ -59,8 +59,6 @@ pub struct Scene {
     pub meshes: Vec<Arc<geometry::Mesh>>,
     pub emitters: Vec<Arc<geometry::Mesh>>,
     emitters_cdf: Distribution1D,
-    #[allow(dead_code)]
-    embree_device: embree_rs::Device,
     embree_scene: embree_rs::Scene,
 }
 
@@ -191,7 +189,6 @@ impl Scene {
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
             camera: camera,
-            embree_device: device,
             embree_scene: scene_embree,
             meshes,
             emitters,
@@ -315,7 +312,6 @@ impl Scene {
         // Define a default scene
         Ok(Scene {
             camera,
-            embree_device: device,
             embree_scene: scene_embree,
             meshes,
             emitters,
