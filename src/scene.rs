@@ -74,13 +74,9 @@ impl Scene {
         output_img_path: String,
     ) -> Result<Scene, Box<Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
+        let mut state = pbrt_rs::State::default();
         let working_dir = std::path::Path::new(filename.clone()).parent().unwrap();
-        pbrt_rs::read_pbrt_file(
-            filename,
-            &working_dir,
-            &mut scene_info,
-            pbrt_rs::State::default(),
-        );
+        pbrt_rs::read_pbrt_file(filename, &working_dir, &mut scene_info, &mut state);
 
         // Allocate embree
         let device = embree_rs::Device::debug();
