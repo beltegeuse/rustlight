@@ -34,7 +34,7 @@ pub fn load_obj(
         let vertices = mesh
             .positions
             .chunks(3)
-            .map(|i| Vector3::new(i[0], i[1], i[2]))
+            .map(|i| Point3::new(i[0], i[1], i[2]))
             .collect();
         // Load normal
         let normals = if mesh.normals.is_empty() {
@@ -153,9 +153,9 @@ impl Mesh {
         let i1 = self.trimesh.indices[i + 1] as usize;
         let i2 = self.trimesh.indices[i + 2] as usize;
 
-        let v0 = self.trimesh.vertices[i0];
-        let v1 = self.trimesh.vertices[i1];
-        let v2 = self.trimesh.vertices[i2];
+        let v0 = self.trimesh.vertices[i0].to_vec();
+        let v1 = self.trimesh.vertices[i1].to_vec();
+        let v2 = self.trimesh.vertices[i2].to_vec();
 
         let n0 = self.trimesh.normals[i0];
         let n1 = self.trimesh.normals[i1];

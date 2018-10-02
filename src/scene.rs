@@ -101,7 +101,7 @@ impl Scene {
                     let points = data
                         .points
                         .iter()
-                        .map(|n| mat.transform_vector(n.clone()))
+                        .map(|n| mat.transform_point(n.clone()))
                         .collect();
                     let trimesh = scene_embree.add_triangle_mesh(
                         &device,
