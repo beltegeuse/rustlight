@@ -2,6 +2,7 @@ use cgmath::*;
 use integrators::gradient::*;
 use integrators::*;
 use structure::*;
+use bsdfs::reflect_vector;
 
 pub struct IntegratorGradientPath {
     pub max_depth: Option<u32>,
@@ -236,7 +237,7 @@ impl IntegratorGradientPath {
             // Light sampling
             /////////////////////////////////
             // Explict connect to the light source
-            {
+            if !main.its.mesh.bsdf.is_smooth() {
                 let (r_sel_rand, r_rand, uv_rand) =
                     (sampler.next(), sampler.next(), sampler.next2d());
                 let main_light_record =
@@ -266,6 +267,7 @@ impl IntegratorGradientPath {
                 } else {
                     0.0
                 };
+
                 // Cache PDF / throughput values
                 let main_weight_num = main_light_pdf.powi(MIS_POWER);
                 let main_weight_dem =
@@ -276,19 +278,14 @@ impl IntegratorGradientPath {
                 let main_geom_cos_light = main_light_record.n.dot(main_light_record.d);
 
                 if main_light_record.pdf.value() != 0.0 {
-                    // FIXME: Double check this condition. Normally, it will be fine
-                    // FIXME: But pdf = 0 for the main path does not necessary imply
-                    // FIXME: 0 probability for the shift path, no?
+                    // Do the actual shift mapping
                     for (i, offset) in offsets.iter().enumerate() {
                         let (shift_weight_dem, shift_contrib) = match offset {
                             RayState::Dead => {
                                 (main_weight_num / (0.0001 + main_weight_dem), Color::zero())
                             }
                             RayState::Connected(ref s) => {
-                                // FIXME: See if we can simplify the structure, as we need to know:
-                                //  - throughput
-                                //  - pdf
-                                // only
+                                // Just reuse all the computation from the base path
                                 let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER)
                                     * (main_light_pdf.powi(MIS_POWER)
                                         + main_bsdf_pdf.powi(MIS_POWER));
@@ -297,11 +294,8 @@ impl IntegratorGradientPath {
                                 (shift_weight_dem, shift_contrib)
                             }
                             RayState::RecentlyConnected(ref s) => {
-                                // Need to re-evaluate the BSDF as the incomming direction is different
-                                // FIXME: We only need to know:
-                                //  - throughput
-                                //  - pdf
-                                //  - incomming direction (in world space)
+                                // Need to re-evaluate the incomming direction
+                                // as the path are recently get connected
                                 let shift_d_in_global = (s.its.p - main.its.p).normalize();
                                 let shift_d_in_local = main.its.frame.to_local(shift_d_in_global);
                                 if shift_d_in_local.z <= 0.0 || (!main_light_visible) {
@@ -332,59 +326,67 @@ impl IntegratorGradientPath {
                             RayState::NotConnected(ref s) => {
                                 // Get intersection informations
                                 let shift_hit_mesh = &s.its.mesh;
-                                // FIXME: We need to check the light source type in order to continue or not
-                                // FIXME: the ray tracing...
+                                let intersectable_light = true;
+                                let main_bsdf_rought = true;
+                                let shift_bsdf_rought = !s.its.mesh.bsdf.is_smooth();
 
-                                // Sample the light from the point
-                                let shift_light_record =
-                                    scene.sample_light(&s.its.p, r_sel_rand, r_rand, uv_rand);
-                                let shift_light_visible =
-                                    scene.visible(&s.its.p, &shift_light_record.p);
-                                let shift_emitter_rad = if shift_light_visible {
-                                    shift_light_record.weight
-                                        * (shift_light_record.pdf.value()
-                                            / main_light_record.pdf.value())
+                                if !intersectable_light || (main_bsdf_rought && shift_bsdf_rought) {
+                                    // Sample the light from the point
+                                    let shift_light_record =
+                                        scene.sample_light(&s.its.p, r_sel_rand, r_rand, uv_rand);
+                                    let shift_light_visible =
+                                        scene.visible(&s.its.p, &shift_light_record.p);
+                                    let shift_emitter_rad = if shift_light_visible {
+                                        shift_light_record.weight
+                                            * (shift_light_record.pdf.value()
+                                                / main_light_record.pdf.value())
+                                    } else {
+                                        Color::zero()
+                                    };
+                                    let shift_d_out_local = s.its.frame.to_local(shift_light_record.d);
+                                    // BSDF
+                                    let shift_light_pdf = f64::from(shift_light_record.pdf.value());
+                                    let shift_bsdf_value = shift_hit_mesh.bsdf.eval(
+                                        &s.its.uv,
+                                        &s.its.wi,
+                                        &shift_d_out_local,
+                                    );
+                                    let shift_bsdf_pdf = if shift_light_visible {
+                                        f64::from(
+                                            shift_hit_mesh
+                                                .bsdf
+                                                .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
+                                                .value(),
+                                        )
+                                    } else {
+                                        0.0
+                                    };
+                                    // Compute Jacobian: Here the ratio of geometry terms
+                                    let jacobian = f64::from(
+                                        (shift_light_record.n.dot(shift_light_record.d)
+                                            * main_geom_dsquared)
+                                            .abs()
+                                            / (main_geom_cos_light
+                                                * (s.its.p - shift_light_record.p).magnitude2()).abs(),
+                                    );
+                                    assert!(jacobian.is_finite());
+                                    assert!(jacobian >= 0.0);
+                                    // Bake the final results
+                                    let shift_weight_dem = (jacobian * (s.pdf / main.pdf))
+                                        .powi(MIS_POWER)
+                                        * (shift_light_pdf.powi(MIS_POWER)
+                                            + shift_bsdf_pdf.powi(MIS_POWER));
+                                    let shift_contrib = (jacobian as f32)
+                                        * s.throughput
+                                        * shift_bsdf_value
+                                        * shift_emitter_rad;
+                                    (shift_weight_dem, shift_contrib)
                                 } else {
-                                    Color::zero()
-                                };
-                                let shift_d_out_local = s.its.frame.to_local(shift_light_record.d);
-                                // BSDF
-                                let shift_light_pdf = f64::from(shift_light_record.pdf.value());
-                                let shift_bsdf_value = shift_hit_mesh.bsdf.eval(
-                                    &s.its.uv,
-                                    &s.its.wi,
-                                    &shift_d_out_local,
-                                );
-                                let shift_bsdf_pdf = if shift_light_visible {
-                                    f64::from(
-                                        shift_hit_mesh
-                                            .bsdf
-                                            .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
-                                            .value(),
-                                    )
-                                } else {
-                                    0.0
-                                };
-                                // Compute Jacobian: Here the ratio of geometry terms
-                                let jacobian = f64::from(
-                                    (shift_light_record.n.dot(shift_light_record.d)
-                                        * main_geom_dsquared)
-                                        .abs()
-                                        / (main_geom_cos_light
-                                            * (s.its.p - shift_light_record.p).magnitude2()).abs(),
-                                );
-                                assert!(jacobian.is_finite());
-                                assert!(jacobian >= 0.0);
-                                // Bake the final results
-                                let shift_weight_dem = (jacobian * (s.pdf / main.pdf))
-                                    .powi(MIS_POWER)
-                                    * (shift_light_pdf.powi(MIS_POWER)
-                                        + shift_bsdf_pdf.powi(MIS_POWER));
-                                let shift_contrib = (jacobian as f32)
-                                    * s.throughput
-                                    * shift_bsdf_value
-                                    * shift_emitter_rad;
-                                (shift_weight_dem, shift_contrib)
+                                    // In this case, we need to intersect directly the light source
+                                    // however, the decision made inside GPT is to not handle this case
+                                    // so we need to mark the shift failed
+                                    (0.0, Color::zero())
+                                }
                             }
                         };
 
@@ -505,75 +507,128 @@ impl IntegratorGradientPath {
                             }
                         }
                         RayState::NotConnected(mut s) => {
-                            // FIXME: Always do a reconnection here
-                            // FIXME: Implement half-vector copy
-                            if !scene.visible(&s.its.p, &main.its.p) {
-                                (0.0, Color::zero(), RayState::Dead) // FIXME: Found a way to do it in an elegant way
-                            } else {
-                                // Compute the ratio of geometry factors
-                                let shift_d_out_global = (main.its.p - s.its.p).normalize();
-                                let shift_d_out_local = s.its.frame.to_local(shift_d_out_global);
-                                let jacobian = f64::from((main.its.n_g.dot(-shift_d_out_global)
-                                    * main.its.dist.powi(2))
-                                    .abs()
-                                    / (main.its.n_g.dot(-main.ray.d)
-                                        * (s.its.p - main.its.p).magnitude2())
-                                        .abs());
-                                assert!(jacobian.is_finite());
-                                assert!(jacobian >= 0.0);
-                                // BSDF
-                                let shift_bsdf_value = s.its.mesh.bsdf.eval(
-                                    &s.its.uv,
-                                    &s.its.wi,
-                                    &shift_d_out_local,
-                                );
-                                let shift_bsdf_pdf =
-                                    f64::from(s.its
-                                        .mesh
-                                        .bsdf
-                                        .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
-                                        .value());
-                                // Update shift path
-                                let shift_pdf_pred = s.pdf;
-                                s.throughput *=
-                                    &(shift_bsdf_value * (jacobian / main_bsdf_pdf) as f32);
-                                s.pdf *= shift_bsdf_pdf * jacobian;
-
-                                // Two case:
-                                // - the main are on a emitter, need to do MIS
-                                // - the main are not on a emitter, just do a reconnection
-                                let (shift_emitter_rad, shift_emitter_pdf) = if main_light_pdf
-                                    == 0.0
-                                {
-                                    // The base path did not hit a light source
-                                    // FIXME: Do not use the trick of 0 PDF
-                                    (Color::zero(), 0.0)
+                            let main_bsdf_rought = !main_pred_its.mesh.bsdf.is_smooth();
+                            let main_next_bsdf_rought = !main_next_mesh.bsdf.is_smooth();
+                            let shift_bsdf_rought = !s.its.mesh.bsdf.is_smooth();
+                            if main_bsdf_rought && main_next_bsdf_rought && shift_bsdf_rought {
+                                // In this case, we can do the reconnection
+                                if !scene.visible(&s.its.p, &main.its.p) {
+                                    (0.0, Color::zero(), RayState::Dead) // FIXME: Found a way to do it in an elegant way
                                 } else {
-                                    let shift_emitter_pdf = scene
-                                        .direct_pdf(&LightSamplingPDF {
-                                            mesh: main_next_mesh,
-                                            o: s.its.p,
-                                            p: main.its.p,
-                                            n: main.its.n_g,
-                                            dir: shift_d_out_global,
-                                        })
-                                        .value();
-                                    // FIXME: We return without the cos as the light
-                                    // FIXME: does not change, does it true for non uniform light?
-                                    (main_emitter_rad, f64::from(shift_emitter_pdf))
-                                };
+                                    // Compute the ratio of geometry factors
+                                    let shift_d_out_global = (main.its.p - s.its.p).normalize();
+                                    let shift_d_out_local = s.its.frame.to_local(shift_d_out_global);
+                                    let jacobian = f64::from((main.its.n_g.dot(-shift_d_out_global)
+                                        * main.its.dist.powi(2))
+                                        .abs()
+                                        / (main.its.n_g.dot(-main.ray.d)
+                                            * (s.its.p - main.its.p).magnitude2())
+                                            .abs());
+                                    assert!(jacobian.is_finite());
+                                    assert!(jacobian >= 0.0);
+                                    // BSDF
+                                    let shift_bsdf_value = s.its.mesh.bsdf.eval(
+                                        &s.its.uv,
+                                        &s.its.wi,
+                                        &shift_d_out_local,
+                                    );
+                                    let shift_bsdf_pdf =
+                                        f64::from(s.its
+                                            .mesh
+                                            .bsdf
+                                            .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
+                                            .value());
+                                    // Update shift path
+                                    let shift_pdf_pred = s.pdf;
+                                    s.throughput *=
+                                        &(shift_bsdf_value * (jacobian / main_bsdf_pdf) as f32);
+                                    s.pdf *= shift_bsdf_pdf * jacobian;
 
-                                // Return the shift path updated + MIS weights
-                                let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)
-                                    .powi(MIS_POWER)
-                                    * (shift_bsdf_pdf.powi(MIS_POWER)
-                                        + shift_emitter_pdf.powi(MIS_POWER));
-                                let shift_contrib = s.throughput * shift_emitter_rad;
-                                (
-                                    shift_weight_dem,
-                                    shift_contrib,
-                                    RayState::RecentlyConnected(s),
-                                )
+                                    // Two case:
+                                    // - the main are on a emitter, need to do MIS
+                                    // - the main are not on a emitter, just do a reconnection
+                                    let (shift_emitter_rad, shift_emitter_pdf) = if main_light_pdf
+                                        == 0.0
+                                    {
+                                        // The base path did not hit a light source
+                                        // FIXME: Do not use the trick of 0 PDF
+                                        (Color::zero(), 0.0)
+                                    } else {
+                                        let shift_emitter_pdf = scene
+                                            .direct_pdf(&LightSamplingPDF {
+                                                mesh: main_next_mesh,
+                                                o: s.its.p,
+                                                p: main.its.p,
+                                                n: main.its.n_g,
+                                                dir: shift_d_out_global,
+                                            })
+                                            .value();
+                                        // FIXME: We return without the cos as the light
+                                        // FIXME: does not change, does it true for non uniform light?
+                                        (main_emitter_rad, f64::from(shift_emitter_pdf))
+                                    };
+
+                                    // Return the shift path updated + MIS weights
+                                    let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)
+                                        .powi(MIS_POWER)
+                                        * (shift_bsdf_pdf.powi(MIS_POWER)
+                                            + shift_emitter_pdf.powi(MIS_POWER));
+                                    let shift_contrib = s.throughput * shift_emitter_rad;
+                                    (
+                                        shift_weight_dem,
+                                        shift_contrib,
+                                        RayState::RecentlyConnected(s),
+                                    )
+                                }
+                            } else {
+                                // In this case, we need to continue to shift the offset path
+                                // we do that using half-vector copy
+                                // note that if the light is intersected, we add its contribution
+                                // NOTE: In this case, we have both of the path that are on a delta surface
+                                let (success, mut jacobian, wo) = {
+                                    // Half vector copy
+                                    let tan_space_main_wi = main_pred_its.wi;
+                                    let tan_space_main_wo = main_sampled_bsdf.d;
+                                    let tan_space_shift_wi = s.its.wi;
+                                    let main_eta = 1.0;
+                                    let shift_eta = 1.0;
+                                    if tan_space_main_wi.z * tan_space_main_wo.z < 0.0 {
+                                        // Reflection
+                                        if main_eta == 1.0 || shift_eta == 1.0 {
+                                            // This will be null interaction
+                                            // need to handle it properly
+                                            return (false, 1.0, Vector3::new(0.0, 0.0, 0.0))
+                                        }
+                                        let tan_space_hv_main_unorm = if tan_space_main_wi.z < 0.0 {
+                                            -(tan_space_main_wi * main_eta + tan_space_main_wo)
+                                        } else {
+                                            -(tan_space_main_wi + main_eta * tan_space_main_wo)
+                                        };
+                                        let tan_space_hv_main = tan_space_hv_main_unorm.normalize();
+                                        let tan_space_shift_wo = reflect_vector(tan_space_shift_wi, tan_space_hv_main);
+                                        if tan_space_shift_wo.x == 0.0 && tan_space_shift_wo.y == 0.0 && tan_space_shift_wo.z == 0.0 {
+                                            (false, 1.0, Vector3::new(0.0,0.0,0.0))
+                                        } else {
+                                            let tan_space_hv_shift_unorm = if tan_space_shift_wi.z < 0.0 {
+                                                -(tan_space_shift_wi * shift_eta + tan_space_shift_wo)
+                                            } else {
+                                                -(tan_space_shift_wi + shift_eta * tan_space_shift_wo)
+                                            };
+                                            let lenght_sqr = tan_space_hv_shift_unorm.magnitude2() / (tan_space_hv_main_unorm.magnitude2());
+                                            let wo_dot_hv = tan_space_main_wo.dot(tan_space_hv_main) / tan_space_shift_wo.dot(tan_space_hv_main);
+                                            (true, lenght_sqr * wo_dot_hv.abs(), tan_space_shift_wo)
+                                        }
+                                    } else {
+                                        // Reflexion
+                                        let tan_space_hv_main = (tan_space_main_wo + tan_space_main_wi).normalize();
+                                        let tan_space_shift_wo = reflect_vector(tan_space_shift_wi, tan_space_hv_main);
+                                        let wo_dot_h = tan_space_shift_wo.dot(tan_space_hv_main) / tan_space_main_wo.dot(tan_space_hv_main);
+                                        (true, wo_dot_h.abs(), tan_space_shift_wo)
+                                    }
+                                };
+                                jacobian = 1.0; // TODO: Always dirac
+                                // FIXME: Impossible to sample dirac in the current code
+                                (0.0, Color::zero(), RayState::Dead)
                             }
                         }
                     };

@@ -2,10 +2,6 @@ use bsdfs::distribution::*;
 use bsdfs::*;
 use cgmath::InnerSpace;
 
-pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
-    -(wo) + n * 2.0 * wo.dot(n)
-}
-
 pub struct BSDFMetal {
     pub r: BSDFColor,
     pub distribution: TrowbridgeReitzDistribution,

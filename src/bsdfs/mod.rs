@@ -3,11 +3,15 @@ use serde::{Deserialize, Deserializer};
 use serde_json;
 use structure::*;
 
-use cgmath::{Point2, Vector2, Vector3};
+use cgmath::{Point2, Vector2, Vector3, InnerSpace};
 use image;
 use pbrt_rs;
 use std;
 use tools::*;
+
+pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
+    -(wo) + n * 2.0 * wo.dot(n)
+}
 
 // Texture or uniform color buffers
 #[derive(Deserialize)]
@@ -204,9 +208,7 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF 
         }
         pbrt_rs::BSDF::Mirror(ref v) => {
             let specular = bsdf_texture_match(&v.kr, scene_info).unwrap();
-            Some(Box::new(BSDFSpecular {
-                specular
-            }))
+            Some(Box::new(BSDFSpecular { specular }))
         }
         pbrt_rs::BSDF::Substrate(ref v) => {
             let kd = bsdf_texture_match(&v.kd, scene_info).unwrap();
@@ -219,26 +221,26 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF 
             assert!(u_roughness != 0.0);
             assert!(v_roughness != 0.0);
 
-            // let metal = Box::new(BSDFMetal {
-            //     r: BSDFColor::UniformColor(Color::value(1.0)),
-            //     distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
-            //     k: ks,
-            //     eta_i: BSDFColor::UniformColor(Color::one()),
-            //     eta_t: BSDFColor::UniformColor(Color::one()),
-            // });
-            // let diffuse = Box::new(BSDFDiffuse { diffuse: kd });
-            // Some(Box::new(BSDFBlend {
-            //     bsdf1: metal,
-            //     bsdf2: diffuse,
-            // }))
-
-            Some(Box::new(SubstratePBRTMaterial {
-                kd,
-                ks,
-                u_roughness,
-                v_roughness,
-                remap_roughness: false,
+            let metal = Box::new(BSDFMetal {
+                r: BSDFColor::UniformColor(Color::value(1.0)),
+                distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
+                k: ks,
+                eta_i: BSDFColor::UniformColor(Color::one()),
+                eta_t: BSDFColor::UniformColor(Color::one()),
+            });
+            let diffuse = Box::new(BSDFDiffuse { diffuse: kd });
+            Some(Box::new(BSDFBlend {
+                bsdf1: metal,
+                bsdf2: diffuse,
             }))
+
+            // Some(Box::new(SubstratePBRTMaterial {
+            //     kd,
+            //     ks,
+            //     u_roughness,
+            //     v_roughness,
+            //     remap_roughness: false,
+            // }))
         }
         _ => None,
     };
