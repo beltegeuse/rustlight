@@ -466,8 +466,22 @@ impl IntegratorGradientPath {
                 .into_iter()
                 .enumerate()
                 .map(|(i, offset)| {
-                    let (shift_weight_dem, shift_contrib, new_state) = match offset {
-                        RayState::Dead => (0.0, Color::zero(), RayState::Dead),
+                    struct ShiftResult<'a> {
+                        pub weight_dem: f64,
+                        pub contrib: Color,
+                        pub state: RayState<'a>,
+                    };
+                    impl<'a> Default for ShiftResult<'a> {
+                        fn default() -> Self {
+                            Self {
+                                weight_dem: 0.0,
+                                contrib: Color::zero(),
+                                state: RayState::Dead,
+                            }
+                        }
+                    };
+                    let result: ShiftResult = match offset {
+                        RayState::Dead => ShiftResult::default(),
                         RayState::Connected(mut s) => {
                             let shift_pdf_pred = s.pdf;
                             // Update the shifted path
@@ -477,17 +491,21 @@ impl IntegratorGradientPath {
                             let shift_weight_dem = (shift_pdf_pred / main_pdf_pred).powi(MIS_POWER)
                                 * (main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER));
                             let shift_contrib = s.throughput * main_emitter_rad;
-                            (shift_weight_dem, shift_contrib, RayState::Connected(s))
+                            ShiftResult {
+                                weight_dem: shift_weight_dem,
+                                contrib: shift_contrib,
+                                state: RayState::Connected(s),
+                            }
                         }
                         RayState::RecentlyConnected(mut s) => {
                             if main_pred_its.mesh.bsdf.is_smooth() {
-                                return (0.0, Color::zero(), RayState::Dead);
+                                return ShiftResult::default();
                             }
                             let shift_d_in_global = (s.its.p - main.ray.o).normalize();
                             let shift_d_in_local = main_pred_its.frame.to_local(shift_d_in_global);
                             if shift_d_in_local.z <= 0.0 {
                                 // FIXME: Dead path as we do not deal with glass
-                                (0.0, Color::zero(), RayState::Dead)
+                                ShiftResult::default()
                             } else {
                                 // BSDF
                                 let shift_bsdf_pdf = f64::from(main_pred_its
@@ -511,7 +529,11 @@ impl IntegratorGradientPath {
                                     * (shift_bsdf_pdf.powi(MIS_POWER)
                                         + main_light_pdf.powi(MIS_POWER));
                                 let shift_contrib = s.throughput * main_emitter_rad;
-                                (shift_weight_dem, shift_contrib, RayState::Connected(s))
+                                ShiftResult {
+                                    weight_dem: shift_weight_dem,
+                                    contrib: shift_contrib,
+                                    state: RayState::Connected(s),
+                                }
                             }
                         }
                         RayState::NotConnected(mut s) => {
@@ -521,7 +543,7 @@ impl IntegratorGradientPath {
                             if main_bsdf_rought && main_next_bsdf_rought && shift_bsdf_rought {
                                 // In this case, we can do the reconnection
                                 if !scene.visible(&s.its.p, &main.its.p) {
-                                    (0.0, Color::zero(), RayState::Dead) // FIXME: Found a way to do it in an elegant way
+                                    ShiftResult::default()
                                 } else {
                                     // Compute the ratio of geometry factors
                                     let shift_d_out_global = (main.its.p - s.its.p).normalize();
@@ -583,11 +605,11 @@ impl IntegratorGradientPath {
                                         * (shift_bsdf_pdf.powi(MIS_POWER)
                                             + shift_emitter_pdf.powi(MIS_POWER));
                                     let shift_contrib = s.throughput * shift_emitter_rad;
-                                    (
-                                        shift_weight_dem,
-                                        shift_contrib,
-                                        RayState::RecentlyConnected(s),
-                                    )
+                                    ShiftResult {
+                                        weight_dem: shift_weight_dem,
+                                        contrib: shift_contrib,
+                                        state: RayState::RecentlyConnected(s),
+                                    }
                                 }
                             } else {
                                 // In this case, we need to continue to shift the offset path
@@ -640,7 +662,7 @@ impl IntegratorGradientPath {
                                 // FIXME: Impossible to sample dirac in the current code
                                 // FIXME: As the code will crash if there is a dirac material
                                 // FIXME: Need to be able to evaluate dirac in this case
-                                (0.0, Color::zero(), RayState::Dead)
+                                ShiftResult::default()
                             }
                         }
                     };
@@ -648,18 +670,17 @@ impl IntegratorGradientPath {
                     if self.min_depth.map_or(true, |min| depth >= min) {
                         //let weight = if shift_weight_dem == 0.0 { 1.0 } else { 0.5 };
                         let weight =
-                            (main_weight_num / (main_weight_dem + shift_weight_dem)) as f32;
+                            (main_weight_num / (main_weight_dem + result.weight_dem)) as f32;
                         assert!(weight.is_finite());
                         assert!(weight >= 0.0);
                         assert!(weight <= 1.0);
                         l_i.main += main_contrib * weight;
-                        l_i.radiances[i] += shift_contrib * weight;
-                        l_i.gradients[i] += (shift_contrib - main_contrib) * weight;
+                        l_i.radiances[i] += result.contrib * weight;
+                        l_i.gradients[i] += (result.contrib - main_contrib) * weight;
                     }
                     // Return the new state
-                    new_state
-                })
-                .collect();
+                    result.state
+                }).collect::<Vec<RayState>>();
 
             // Russian roulette
             let rr_pdf = main.throughput.channel_max().min(0.95);
