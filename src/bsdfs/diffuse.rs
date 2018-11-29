@@ -26,7 +26,9 @@ impl BSDF for BSDFDiffuse {
         }
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+        assert!(domain == Domain::SolidAngle);
+
         if d_in.z <= 0.0 {
             return PDF::SolidAngle(0.0);
         }
@@ -37,7 +39,9 @@ impl BSDF for BSDFDiffuse {
         }
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
+    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+        assert!(domain == Domain::SolidAngle);
+        
         if d_in.z <= 0.0 {
             return Color::zero();
         }

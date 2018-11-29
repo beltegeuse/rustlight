@@ -169,10 +169,14 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
 
         match *vertex.borrow() {
             Vertex::Surface(ref v) => {
+                if v.its.mesh.bsdf.is_smooth() {
+                    return None;
+                }
                 if let PDF::SolidAngle(pdf) = v.its.mesh.bsdf.pdf(
                     &v.its.uv,
                     &v.its.wi,
                     &v.its.frame.to_local(edge.borrow().d),
+                    Domain::SolidAngle,
                 ) {
                     return Some(pdf);
                 }
@@ -224,7 +228,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                     weight.b /= light_record.emitter.emission.b;
 
                     // Need to evaluate the BSDF
-                    weight *= &v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local);
+                    weight *= &v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local, Domain::SolidAngle);
 
                     (
                         Edge::from_vertex(

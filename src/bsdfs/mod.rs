@@ -94,9 +94,9 @@ pub trait BSDF: Send + Sync {
         sample: Point2<f32>,
     ) -> Option<SampledDirection>;
     /// eval the bsdf pdf value in solid angle
-    fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF;
+    fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF;
     /// eval the bsdf value : $fs(...)$
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color;
+    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color;
     /// check if it is smooth
     //TODO: Replace this using flags
     fn is_smooth(&self) -> bool;

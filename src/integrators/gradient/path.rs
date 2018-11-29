@@ -255,13 +255,13 @@ impl IntegratorGradientPath {
                     main.its
                         .mesh
                         .bsdf
-                        .eval(&main.its.uv, &main.its.wi, &main_d_out_local); // f(...) * cos(...)
+                        .eval(&main.its.uv, &main.its.wi, &main_d_out_local, Domain::SolidAngle); // f(...) * cos(...)
                 let main_bsdf_pdf = if main_light_visible {
                     f64::from(
                         main.its
                             .mesh
                             .bsdf
-                            .pdf(&main.its.uv, &main.its.wi, &main_d_out_local)
+                            .pdf(&main.its.uv, &main.its.wi, &main_d_out_local, Domain::SolidAngle)
                             .value(),
                     )
                 } else {
@@ -301,18 +301,21 @@ impl IntegratorGradientPath {
                                 if shift_d_in_local.z <= 0.0 || (!main_light_visible) {
                                     (0.0, Color::zero())
                                 } else {
+                                    assert!(!main.its.mesh.bsdf.is_smooth());
+
                                     // BSDF
                                     let shift_bsdf_pdf = f64::from(
                                         main.its
                                             .mesh
                                             .bsdf
-                                            .pdf(&s.its.uv, &shift_d_in_local, &main_d_out_local)
+                                            .pdf(&s.its.uv, &shift_d_in_local, &main_d_out_local, Domain::SolidAngle)
                                             .value(),
                                     );
                                     let shift_bsdf_value = main.its.mesh.bsdf.eval(
                                         &s.its.uv,
                                         &shift_d_in_local,
                                         &main_d_out_local,
+                                        Domain::SolidAngle,
                                     );
                                     // Compute and return
                                     let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER)
@@ -350,12 +353,13 @@ impl IntegratorGradientPath {
                                         &s.its.uv,
                                         &s.its.wi,
                                         &shift_d_out_local,
+                                        Domain::SolidAngle, // Already check that we are on a non smooth surface
                                     );
                                     let shift_bsdf_pdf = if shift_light_visible {
                                         f64::from(
                                             shift_hit_mesh
                                                 .bsdf
-                                                .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
+                                                .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local, Domain::SolidAngle)
                                                 .value(),
                                         )
                                     } else {
@@ -476,6 +480,9 @@ impl IntegratorGradientPath {
                             (shift_weight_dem, shift_contrib, RayState::Connected(s))
                         }
                         RayState::RecentlyConnected(mut s) => {
+                            if main_pred_its.mesh.bsdf.is_smooth() {
+                                return (0.0, Color::zero(), RayState::Dead);
+                            }
                             let shift_d_in_global = (s.its.p - main.ray.o).normalize();
                             let shift_d_in_local = main_pred_its.frame.to_local(shift_d_in_global);
                             if shift_d_in_local.z <= 0.0 {
@@ -486,12 +493,13 @@ impl IntegratorGradientPath {
                                 let shift_bsdf_pdf = f64::from(main_pred_its
                                     .mesh
                                     .bsdf
-                                    .pdf(&main_pred_its.uv, &shift_d_in_local, &main_sampled_bsdf.d)
+                                    .pdf(&main_pred_its.uv, &shift_d_in_local, &main_sampled_bsdf.d, Domain::SolidAngle)
                                     .value());
                                 let shift_bsdf_value = main_pred_its.mesh.bsdf.eval(
                                     &main_pred_its.uv,
                                     &shift_d_in_local,
                                     &main_sampled_bsdf.d,
+                                    Domain::SolidAngle,
                                 );
                                 // Update main path
                                 let shift_pdf_pred = s.pdf;
@@ -531,12 +539,13 @@ impl IntegratorGradientPath {
                                         &s.its.uv,
                                         &s.its.wi,
                                         &shift_d_out_local,
+                                        Domain::SolidAngle, // Already checked that we are not on a smooth surface
                                     );
                                     let shift_bsdf_pdf =
                                         f64::from(s.its
                                             .mesh
                                             .bsdf
-                                            .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local)
+                                            .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local, Domain::SolidAngle)
                                             .value());
                                     // Update shift path
                                     let shift_pdf_pred = s.pdf;
@@ -597,26 +606,27 @@ impl IntegratorGradientPath {
                                         if main_eta == 1.0 || shift_eta == 1.0 {
                                             // This will be null interaction
                                             // need to handle it properly
-                                            return (false, 1.0, Vector3::new(0.0, 0.0, 0.0))
-                                        }
-                                        let tan_space_hv_main_unorm = if tan_space_main_wi.z < 0.0 {
-                                            -(tan_space_main_wi * main_eta + tan_space_main_wo)
+                                            (false, 1.0, Vector3::new(0.0, 0.0, 0.0))
                                         } else {
-                                            -(tan_space_main_wi + main_eta * tan_space_main_wo)
-                                        };
-                                        let tan_space_hv_main = tan_space_hv_main_unorm.normalize();
-                                        let tan_space_shift_wo = reflect_vector(tan_space_shift_wi, tan_space_hv_main);
-                                        if tan_space_shift_wo.x == 0.0 && tan_space_shift_wo.y == 0.0 && tan_space_shift_wo.z == 0.0 {
-                                            (false, 1.0, Vector3::new(0.0,0.0,0.0))
-                                        } else {
-                                            let tan_space_hv_shift_unorm = if tan_space_shift_wi.z < 0.0 {
-                                                -(tan_space_shift_wi * shift_eta + tan_space_shift_wo)
+                                            let tan_space_hv_main_unorm = if tan_space_main_wi.z < 0.0 {
+                                                -(tan_space_main_wi * main_eta + tan_space_main_wo)
                                             } else {
-                                                -(tan_space_shift_wi + shift_eta * tan_space_shift_wo)
+                                                -(tan_space_main_wi + main_eta * tan_space_main_wo)
                                             };
-                                            let lenght_sqr = tan_space_hv_shift_unorm.magnitude2() / (tan_space_hv_main_unorm.magnitude2());
-                                            let wo_dot_hv = tan_space_main_wo.dot(tan_space_hv_main) / tan_space_shift_wo.dot(tan_space_hv_main);
-                                            (true, lenght_sqr * wo_dot_hv.abs(), tan_space_shift_wo)
+                                            let tan_space_hv_main = tan_space_hv_main_unorm.normalize();
+                                            let tan_space_shift_wo = reflect_vector(tan_space_shift_wi, tan_space_hv_main);
+                                            if tan_space_shift_wo.x == 0.0 && tan_space_shift_wo.y == 0.0 && tan_space_shift_wo.z == 0.0 {
+                                                (false, 1.0, Vector3::new(0.0,0.0,0.0))
+                                            } else {
+                                                let tan_space_hv_shift_unorm = if tan_space_shift_wi.z < 0.0 {
+                                                    -(tan_space_shift_wi * shift_eta + tan_space_shift_wo)
+                                                } else {
+                                                    -(tan_space_shift_wi + shift_eta * tan_space_shift_wo)
+                                                };
+                                                let lenght_sqr = tan_space_hv_shift_unorm.magnitude2() / (tan_space_hv_main_unorm.magnitude2());
+                                                let wo_dot_hv = tan_space_main_wo.dot(tan_space_hv_main) / tan_space_shift_wo.dot(tan_space_hv_main);
+                                                (true, lenght_sqr * wo_dot_hv.abs(), tan_space_shift_wo)
+                                            }
                                         }
                                     } else {
                                         // Reflexion
@@ -628,6 +638,8 @@ impl IntegratorGradientPath {
                                 };
                                 jacobian = 1.0; // TODO: Always dirac
                                 // FIXME: Impossible to sample dirac in the current code
+                                // FIXME: As the code will crash if there is a dirac material
+                                // FIXME: Need to be able to evaluate dirac in this case
                                 (0.0, Color::zero(), RayState::Dead)
                             }
                         }

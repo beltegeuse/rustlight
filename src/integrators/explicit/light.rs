@@ -65,7 +65,7 @@ impl TechniqueLightTracing {
                         // Compute BSDF for the splatting
                         let wo_local = v.its.frame.to_local(d);
                         let wi_global = v.its.frame.to_world(v.its.wi);
-                        let bsdf_value = v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &wo_local);
+                        let bsdf_value = v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &wo_local, Domain::SolidAngle);
                         let correction = (v.its.wi.z * d.dot(v.its.n_g))
                             / (wo_local.z * wi_global.dot(v.its.n_g));
                         // Accumulate the results

@@ -205,8 +205,10 @@ impl IntegratorVPL {
                         d /= dist;
 
                         let emitted_radiance = vpl.emitted_radiance * vpl.n.dot(-d).max(0.0);
-                        let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d));
-                        l_i += norm_vpl * emitted_radiance * bsdf_val / (dist * dist);
+                        if !its.mesh.bsdf.is_smooth() {
+                            let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d), Domain::SolidAngle);
+                            l_i += norm_vpl * emitted_radiance * bsdf_val / (dist * dist);
+                        }
                     }
                 }
                 VPL::Surface(ref vpl) => {
@@ -215,13 +217,16 @@ impl IntegratorVPL {
                         let dist = d.magnitude();
                         d /= dist;
 
-                        let emitted_radiance = vpl.its.mesh.bsdf.eval(
-                            &vpl.its.uv,
-                            &vpl.its.wi,
-                            &vpl.its.to_local(&-d),
-                        );
-                        let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d));
-                        l_i += norm_vpl * emitted_radiance * bsdf_val * vpl.radiance / (dist * dist);
+                         if !its.mesh.bsdf.is_smooth() {
+                            let emitted_radiance = vpl.its.mesh.bsdf.eval(
+                                &vpl.its.uv,
+                                &vpl.its.wi,
+                                &vpl.its.to_local(&-d),
+                                Domain::SolidAngle,
+                            );
+                            let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d), Domain::SolidAngle);
+                            l_i += norm_vpl * emitted_radiance * bsdf_val * vpl.radiance / (dist * dist);
+                        }
                     }
                 }
             }

@@ -13,6 +13,8 @@ impl BSDF for BSDFBlend {
         d_in: &Vector3<f32>,
         sample: Point2<f32>,
     ) -> Option<SampledDirection> {
+        assert!(!self.bsdf1.is_smooth() && !self.bsdf2.is_smooth());
+        
         let sampled_dir = if sample.x < 0.5 {
             let scaled_sample = Point2::new(sample.x * 2.0, sample.y);
             self.bsdf1.sample(uv, d_in, scaled_sample)
@@ -22,11 +24,11 @@ impl BSDF for BSDFBlend {
         };
 
         if let Some(mut sampled_dir) = sampled_dir {
-            sampled_dir.pdf = self.pdf(uv, d_in, &sampled_dir.d);
+            sampled_dir.pdf = self.pdf(uv, d_in, &sampled_dir.d, Domain::SolidAngle);
             if sampled_dir.pdf.value() == 0.0 {
                 None
             } else {
-                sampled_dir.weight = self.eval(uv, d_in, &sampled_dir.d) / sampled_dir.pdf.value();
+                sampled_dir.weight = self.eval(uv, d_in, &sampled_dir.d, Domain::SolidAngle) / sampled_dir.pdf.value();
                 Some(sampled_dir)
             }
         } else {
@@ -34,9 +36,9 @@ impl BSDF for BSDFBlend {
         }
     }
 
-    fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
-        let pdf_1 = self.bsdf1.pdf(uv, d_in, d_out);
-        let pdf_2 = self.bsdf2.pdf(uv, d_in, d_out);
+    fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+        let pdf_1 = self.bsdf1.pdf(uv, d_in, d_out, domain);
+        let pdf_2 = self.bsdf2.pdf(uv, d_in, d_out, domain);
         if let (PDF::SolidAngle(pdf_1), PDF::SolidAngle(pdf_2)) = (pdf_1, pdf_2) {
             PDF::SolidAngle((pdf_1 + pdf_2) *0.5)
         } else {
@@ -44,8 +46,8 @@ impl BSDF for BSDFBlend {
         }
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
-        self.bsdf1.eval(uv, d_in, d_out) + self.bsdf2.eval(uv, d_in, d_out) 
+    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+        self.bsdf1.eval(uv, d_in, d_out, domain) + self.bsdf2.eval(uv, d_in, d_out, domain) 
     }
 
     fn is_smooth(&self) -> bool {

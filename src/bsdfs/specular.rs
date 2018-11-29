@@ -23,15 +23,15 @@ impl BSDF for BSDFSpecular {
         }
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, _: &Vector3<f32>, _: &Vector3<f32>) -> PDF {
+    fn pdf(&self, _uv: &Option<Vector2<f32>>, _: &Vector3<f32>, _: &Vector3<f32>, domain: Domain) -> PDF {
+        assert!(domain == Domain::Discrete);
         PDF::Discrete(1.0)
     }
 
-    fn eval(&self, _uv: &Option<Vector2<f32>>, _: &Vector3<f32>, _: &Vector3<f32>) -> Color {
-        // For now, we do not implement this function
-        // as we want to avoid to call this function
-        // and does not handle correctly the evaluation
-        unimplemented!()
+    fn eval(&self, uv: &Option<Vector2<f32>>, _: &Vector3<f32>, _: &Vector3<f32>, domain: Domain) -> Color {
+        assert!(domain == Domain::Discrete);
+        // TODO: Double check the HV is very close to the normal (or revert normal)
+        self.specular.color(uv)
     }
 
     fn is_smooth(&self) -> bool {

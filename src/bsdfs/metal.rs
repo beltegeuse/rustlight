@@ -49,7 +49,7 @@ impl BSDF for BSDFMetal {
         }
         // compute PDF of _wi_ for microfacet reflection
         let pdf = self.distribution.pdf(d_in, &wh) / (4.0 * d_in.dot(wh));
-        let weight = self.eval(uv, d_in, &d);
+        let weight = self.eval(uv, d_in, &d, Domain::SolidAngle);
         Some(SampledDirection {
             weight: weight / pdf,
             d,
@@ -57,7 +57,9 @@ impl BSDF for BSDFMetal {
         })
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+        assert!(domain == Domain::SolidAngle);
+
         if !vec3_same_hemisphere_vec3(d_out, d_in) {
             return PDF::SolidAngle(0.0);
         }
@@ -65,7 +67,9 @@ impl BSDF for BSDFMetal {
         PDF::SolidAngle(self.distribution.pdf(d_in, &wh) / (4.0 * d_in.dot(wh)))
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
+    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+        assert!(domain == Domain::SolidAngle);
+        
         let cos_theta_o = d_out.z;
         let cos_theta_i = d_in.z;
         if cos_theta_o <= 0.0 {

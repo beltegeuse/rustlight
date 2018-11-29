@@ -55,14 +55,14 @@ impl IntegratorMC for IntegratorPath {
                     // Compute the contribution of direct lighting
                     // FIXME: A bit waste full, need to detect before sampling the light...
                     if let PDF::SolidAngle(pdf_bsdf) =
-                        its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local)
+                        its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
                     {
                         // Compute MIS weights
                         let weight_light = mis_weight(light_pdf, pdf_bsdf);
                         if self.min_depth.map_or(true, |min| depth >= min) || weight_light > 0.0 {
                             l_i += weight_light
                                 * throughput
-                                * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local)
+                                * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
                                 * light_record.weight;
                         }
                     } else {

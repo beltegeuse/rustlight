@@ -110,17 +110,18 @@ impl DiffuseReconnection {
                     assert!(jacobian >= 0.0);
 
                     // Evaluate BSDF of diffuse reconnection
+                    assert!(!shift.its.mesh.bsdf.is_smooth());
                     let mut shift_bsdf_value =
                         shift
                             .its
                             .mesh
                             .bsdf
-                            .eval(&shift.its.uv, &shift.its.wi, &shift_d_out_local);
+                            .eval(&shift.its.uv, &shift.its.wi, &shift_d_out_local, Domain::SolidAngle);
                     let mut shift_bsdf_pdf = shift
                         .its
                         .mesh
                         .bsdf
-                        .pdf(&shift.its.uv, &shift.its.wi, &shift_d_out_local)
+                        .pdf(&shift.its.uv, &shift.its.wi, &shift_d_out_local, Domain::SolidAngle)
                         .value();
                     
                     shift_bsdf_value *= (jacobian / main_bsdf_pdf);

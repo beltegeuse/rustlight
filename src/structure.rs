@@ -17,6 +17,12 @@ pub enum PDF {
     Discrete(f32),
 }
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum Domain {
+    SolidAngle,
+    Discrete,
+}
+
 impl PDF {
     pub fn is_zero(&self) -> bool {
         match self {

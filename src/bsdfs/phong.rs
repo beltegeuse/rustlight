@@ -26,12 +26,12 @@ impl BSDF for BSDFPhong {
         if d_out.z <= 0.0 {
             None
         } else {
-            let pdf = self.pdf(uv, d_in, &d_out);
+            let pdf = self.pdf(uv, d_in, &d_out, Domain::SolidAngle);
             if pdf.is_zero() {
                 None
             } else {
                 Some(SampledDirection {
-                    weight: self.eval(uv, d_in, &d_out) / pdf.value(),
+                    weight: self.eval(uv, d_in, &d_out, Domain::SolidAngle) / pdf.value(),
                     d: d_out,
                     pdf,
                 })
@@ -39,7 +39,9 @@ impl BSDF for BSDFPhong {
         }
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> PDF {
+    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+        assert!(domain == Domain::SolidAngle);
+
         if d_in.z <= 0.0 {
             return PDF::SolidAngle(0.0);
         }
@@ -58,7 +60,9 @@ impl BSDF for BSDFPhong {
         }
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>) -> Color {
+    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+        assert!(domain == Domain::SolidAngle);
+        
         if d_in.z <= 0.0 {
             return Color::zero();
         }
