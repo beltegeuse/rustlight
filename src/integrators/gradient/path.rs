@@ -499,40 +499,41 @@ impl IntegratorGradientPath {
                         }
                         RayState::RecentlyConnected(mut s) => {
                             if main_pred_its.mesh.bsdf.is_smooth() {
-                                return ShiftResult::default();
-                            }
-                            let shift_d_in_global = (s.its.p - main.ray.o).normalize();
-                            let shift_d_in_local = main_pred_its.frame.to_local(shift_d_in_global);
-                            if shift_d_in_local.z <= 0.0 {
-                                // FIXME: Dead path as we do not deal with glass
                                 ShiftResult::default()
                             } else {
-                                // BSDF
-                                let shift_bsdf_pdf = f64::from(main_pred_its
-                                    .mesh
-                                    .bsdf
-                                    .pdf(&main_pred_its.uv, &shift_d_in_local, &main_sampled_bsdf.d, Domain::SolidAngle)
-                                    .value());
-                                let shift_bsdf_value = main_pred_its.mesh.bsdf.eval(
-                                    &main_pred_its.uv,
-                                    &shift_d_in_local,
-                                    &main_sampled_bsdf.d,
-                                    Domain::SolidAngle,
-                                );
-                                // Update main path
-                                let shift_pdf_pred = s.pdf;
-                                s.throughput *= &(shift_bsdf_value / (main_bsdf_pdf as f32));
-                                s.pdf *= shift_bsdf_pdf;
-                                // Compute and return
-                                let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)
-                                    .powi(MIS_POWER)
-                                    * (shift_bsdf_pdf.powi(MIS_POWER)
-                                        + main_light_pdf.powi(MIS_POWER));
-                                let shift_contrib = s.throughput * main_emitter_rad;
-                                ShiftResult {
-                                    weight_dem: shift_weight_dem,
-                                    contrib: shift_contrib,
-                                    state: RayState::Connected(s),
+                                let shift_d_in_global = (s.its.p - main.ray.o).normalize();
+                                let shift_d_in_local = main_pred_its.frame.to_local(shift_d_in_global);
+                                if shift_d_in_local.z <= 0.0 {
+                                    // FIXME: Dead path as we do not deal with glass
+                                    ShiftResult::default()
+                                } else {
+                                    // BSDF
+                                    let shift_bsdf_pdf = f64::from(main_pred_its
+                                        .mesh
+                                        .bsdf
+                                        .pdf(&main_pred_its.uv, &shift_d_in_local, &main_sampled_bsdf.d, Domain::SolidAngle)
+                                        .value());
+                                    let shift_bsdf_value = main_pred_its.mesh.bsdf.eval(
+                                        &main_pred_its.uv,
+                                        &shift_d_in_local,
+                                        &main_sampled_bsdf.d,
+                                        Domain::SolidAngle,
+                                    );
+                                    // Update main path
+                                    let shift_pdf_pred = s.pdf;
+                                    s.throughput *= &(shift_bsdf_value / (main_bsdf_pdf as f32));
+                                    s.pdf *= shift_bsdf_pdf;
+                                    // Compute and return
+                                    let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)
+                                        .powi(MIS_POWER)
+                                        * (shift_bsdf_pdf.powi(MIS_POWER)
+                                            + main_light_pdf.powi(MIS_POWER));
+                                    let shift_contrib = s.throughput * main_emitter_rad;
+                                    ShiftResult {
+                                        weight_dem: shift_weight_dem,
+                                        contrib: shift_contrib,
+                                        state: RayState::Connected(s),
+                                    }
                                 }
                             }
                         }
