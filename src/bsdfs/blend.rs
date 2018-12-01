@@ -50,6 +50,12 @@ impl BSDF for BSDFBlend {
         self.bsdf1.eval(uv, d_in, d_out, domain) + self.bsdf2.eval(uv, d_in, d_out, domain) 
     }
 
+    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+        // TODO: Use a more finer scheme when multiple component
+        // BSDF will be implemented
+        self.bsdf1.roughness(uv).min(self.bsdf2.roughness(uv))
+    }
+
     fn is_smooth(&self) -> bool {
         if self.bsdf1.is_smooth() || self.bsdf2.is_smooth() {
             panic!("is smooth on blend material");
