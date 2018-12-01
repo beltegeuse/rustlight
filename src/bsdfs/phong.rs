@@ -80,6 +80,10 @@ impl BSDF for BSDFPhong {
         }
     }
 
+    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+        (2.0 / (2.0 + self.exponent)).sqrt()
+    }
+
     fn is_smooth(&self) -> bool {
         false
     }

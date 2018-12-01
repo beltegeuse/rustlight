@@ -216,7 +216,8 @@ impl IntegratorGradientPath {
                 .collect()
         };
 
-        const MIS_POWER: i32 = 2;
+        // Use the balance heuristic for now
+        const MIS_POWER: i32 = 1;
 
         // For now, just replay the random numbers
         let mut depth: u32 = 1;
@@ -660,10 +661,35 @@ impl IntegratorGradientPath {
                                     }
                                 };
                                 jacobian = 1.0; // TODO: Always dirac
-                                // FIXME: Impossible to sample dirac in the current code
-                                // FIXME: As the code will crash if there is a dirac material
-                                // FIXME: Need to be able to evaluate dirac in this case
-                                ShiftResult::default()
+                                
+                                if !success {
+                                    ShiftResult::default()
+                                } else {
+                                    // Pre-mult with the Jacobian
+                                    s.throughput *= jacobian;
+                                    s.pdf *= f64::from(jacobian);
+                                    // Evaluate the new direction
+                                    s.throughput *= &s.its.mesh.bsdf.eval(&s.its.uv, &s.its.wi, &wo, Domain::Discrete);
+                                    s.pdf *= f64::from(s.its.mesh.bsdf.pdf(&s.its.uv, &s.its.wi, &wo, Domain::Discrete).value());
+                                    // Shoot a ray to compute the next intersection
+                                    let shift_d_out_global = s.its.frame.to_world(wo);
+                                    s.ray = Ray::new(s.its.p, shift_d_out_global);
+                                    let new_its = scene.trace(&s.ray);
+                                    if new_its.is_none() {
+                                        ShiftResult::default()
+                                    } else {
+                                        s.its = new_its.unwrap();
+                                        let shift_emitter_rad = if s.its.mesh.is_light() {
+                                            s.its.mesh.emission
+                                        } else {
+                                            Color::zero()
+                                        };
+                                        // FIXME: This case is a bit problematic as normally we need to turn off
+                                        // the MIS part of the light sampling. Need to think about a way
+                                        // to do it in a proper way....
+                                        ShiftResult::default()
+                                    }
+                                }
                             }
                         }
                     };

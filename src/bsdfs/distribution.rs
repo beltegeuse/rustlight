@@ -103,6 +103,7 @@ pub trait MicrofacetDistribution {
     fn d(&self, wh: &Vector3<f32>) -> f32;
     fn sample_wh(&self, wo: &Vector3<f32>, u: &Point2<f32>) -> Vector3<f32>;
     fn roughness_to_alpha(&self, roughness: f32) -> f32;
+    fn roughness(&self) -> f32;
     fn sample_visible_area(&self) -> bool;
     // The default functions
     fn g1(&self, w: &Vector3<f32>) -> f32 {
@@ -168,6 +169,13 @@ impl MicrofacetDistribution for TrowbridgeReitzDistribution {
             + 0.0171201 * x * x * x
             + 0.000640711 * x * x * x * x
     }
+    fn roughness(&self) -> f32 {
+        // TODO: Need to inverse the roughness to alpha
+        // but the current approximation is fine
+        // especially as this value is used for BSDF classification
+        0.5 * (self.alpha_x + self.alpha_y) 
+    }
+
     fn sample_wh(&self, wo: &Vector3<f32>, u: &Point2<f32>) -> Vector3<f32> {
         let mut wh: Vector3<f32>;
         if !self.sample_visible_area {

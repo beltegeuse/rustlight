@@ -81,6 +81,10 @@ impl BSDF for SubstratePBRTMaterial {
         bsdf.f(d_in, d_out, BxdfType::BsdfAll as u8) * d_out.z
     }
 
+    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+        unimplemented!()
+    }
+
     fn is_smooth(&self) -> bool {
         false
     }

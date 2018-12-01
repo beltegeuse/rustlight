@@ -97,9 +97,12 @@ pub trait BSDF: Send + Sync {
     fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF;
     /// eval the bsdf value : $fs(...)$
     fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color;
+    /// return the roughness of the material
+    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32;
     /// check if it is smooth
     //TODO: Replace this using flags
     fn is_smooth(&self) -> bool;
+    /// Used to automatically flip the normal vector
     fn is_twosided(&self) -> bool;
 }
 

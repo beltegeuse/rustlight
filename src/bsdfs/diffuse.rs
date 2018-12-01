@@ -52,6 +52,10 @@ impl BSDF for BSDFDiffuse {
         }
     }
 
+    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+        std::f32::INFINITY
+    }
+
     fn is_smooth(&self) -> bool {
         false
     }

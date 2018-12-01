@@ -34,6 +34,10 @@ impl BSDF for BSDFSpecular {
         self.specular.color(uv)
     }
 
+    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+        0.0
+    }
+
     fn is_smooth(&self) -> bool {
         true
     }

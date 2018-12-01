@@ -94,6 +94,10 @@ impl BSDF for BSDFMetal {
             / (4.0 * cos_theta_i) // * cos_theta_o
     }
 
+    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+        self.distribution.roughness()
+    }
+
     fn is_smooth(&self) -> bool {
         false
     }
