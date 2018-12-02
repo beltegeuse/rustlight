@@ -5,12 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "lldb-mi",
+            "name": "Launch",
+            "type": "lldb",
             "request": "launch",
-            "name": "Launch Program",
+            "program": "${workspaceRoot}/target/debug/rustlight",
             "target": "${workspaceRoot}/target/debug/rustlight",
             "cwd": "${workspaceRoot}",
-            "arguments": "-n 16 -o debug.pfm ./data/cbox_test.json light-explicit",
+            "args": ["-a","inf",
+                "-n","32", 
+                "-o","gpt.exr", 
+                "./data/cbox_specular.json", 
+                "gradient-path"],
         }
     ]
 }
