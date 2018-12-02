@@ -460,13 +460,25 @@ impl IntegratorGradientPath {
             }
 
             let main_weight_num = main_bsdf_pdf.powi(MIS_POWER);
-            let main_weight_dem = main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER);
             let main_contrib = main.throughput * main_emitter_rad;
 
             offsets = offsets
                 .into_iter()
                 .enumerate()
                 .map(|(i, offset)| {
+                    // Due to the shift mapping design choice
+                    // We do not use MIS when have hit the light
+                    // when the shift path is not reconnected
+                    let not_reconnected = match &offset {
+                        RayState::NotConnected(ref s) => true,
+                        _ => false,
+                    };
+                    let main_weight_dem = if not_reconnected {
+                        main_bsdf_pdf.powi(MIS_POWER)
+                    } else {
+                        main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER)
+                    };
+
                     struct ShiftResult<'a> {
                         pub weight_dem: f64,
                         pub contrib: Color,
@@ -614,11 +626,17 @@ impl IntegratorGradientPath {
                                     }
                                 }
                             } else {
+                                // The two BDSF are not both discrete BDSF
+                                // in this case, we need to kill the shift mapping
+                                // operation
+                                let shift_success = (!main_bsdf_rought && !shift_bsdf_rought);
+                                    
+
                                 // In this case, we need to continue to shift the offset path
                                 // we do that using half-vector copy
                                 // note that if the light is intersected, we add its contribution
                                 // NOTE: In this case, we have both of the path that are on a delta surface
-                                let (success, mut jacobian, wo) = {
+                                let (mut success, mut jacobian, wo) = {
                                     // Half vector copy
                                     let tan_space_main_wi = main_pred_its.wi;
                                     let tan_space_main_wo = main_sampled_bsdf.d;
@@ -661,6 +679,7 @@ impl IntegratorGradientPath {
                                     }
                                 };
                                 jacobian = 1.0; // TODO: Always dirac
+                                success &= shift_success; // TODO: Due to Rust lang return policy.   
                                 
                                 if !success {
                                     ShiftResult::default()
@@ -684,15 +703,17 @@ impl IntegratorGradientPath {
                                         } else {
                                             Color::zero()
                                         };
-                                        // FIXME: This case is a bit problematic as normally we need to turn off
-                                        // the MIS part of the light sampling. Need to think about a way
-                                        // to do it in a proper way....
-                                        ShiftResult::default()
+                                        ShiftResult {
+                                            weight_dem: s.pdf,
+                                            contrib: s.throughput * shift_emitter_rad,
+                                            state: RayState::NotConnected(s),
+                                        }
                                     }
                                 }
                             }
                         }
                     };
+
                     // Update the contributions
                     if self.min_depth.map_or(true, |min| depth >= min) {
                         //let weight = if shift_weight_dem == 0.0 { 1.0 } else { 0.5 };
