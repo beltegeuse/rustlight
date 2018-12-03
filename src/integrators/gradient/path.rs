@@ -348,7 +348,7 @@ impl IntegratorGradientPath {
                                         Color::zero()
                                     };
                                     let shift_d_out_local = s.its.frame.to_local(shift_light_record.d);
-                                    // BSDF
+                                    // BSDF evaluation
                                     let shift_light_pdf = f64::from(shift_light_record.pdf.value());
                                     let shift_bsdf_value = shift_hit_mesh.bsdf.eval(
                                         &s.its.uv,
@@ -377,8 +377,7 @@ impl IntegratorGradientPath {
                                     assert!(jacobian.is_finite());
                                     assert!(jacobian >= 0.0);
                                     // Bake the final results
-                                    let shift_weight_dem = (jacobian * (s.pdf / main.pdf))
-                                        .powi(MIS_POWER)
+                                    let shift_weight_dem = (jacobian * (s.pdf / main.pdf)).powi(MIS_POWER)
                                         * (shift_light_pdf.powi(MIS_POWER)
                                             + shift_bsdf_pdf.powi(MIS_POWER));
                                     let shift_contrib = (jacobian as f32)
@@ -466,23 +465,11 @@ impl IntegratorGradientPath {
                 .into_iter()
                 .enumerate()
                 .map(|(i, offset)| {
-                    // Due to the shift mapping design choice
-                    // We do not use MIS when have hit the light
-                    // when the shift path is not reconnected
-                    let not_reconnected = match &offset {
-                        RayState::NotConnected(ref s) => true,
-                        _ => false,
-                    };
-                    let main_weight_dem = if not_reconnected {
-                        main_bsdf_pdf.powi(MIS_POWER)
-                    } else {
-                        main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER)
-                    };
-
                     struct ShiftResult<'a> {
                         pub weight_dem: f64,
                         pub contrib: Color,
                         pub state: RayState<'a>,
+                        pub half_vector: bool,
                     };
                     impl<'a> Default for ShiftResult<'a> {
                         fn default() -> Self {
@@ -490,6 +477,7 @@ impl IntegratorGradientPath {
                                 weight_dem: 0.0,
                                 contrib: Color::zero(),
                                 state: RayState::Dead,
+                                half_vector: false,
                             }
                         }
                     };
@@ -508,6 +496,7 @@ impl IntegratorGradientPath {
                                 weight_dem: shift_weight_dem,
                                 contrib: shift_contrib,
                                 state: RayState::Connected(s),
+                                half_vector: false,
                             }
                         }
                         RayState::RecentlyConnected(mut s) => {
@@ -546,6 +535,7 @@ impl IntegratorGradientPath {
                                         weight_dem: shift_weight_dem,
                                         contrib: shift_contrib,
                                         state: RayState::Connected(s),
+                                        half_vector: false,
                                     }
                                 }
                             }
@@ -623,6 +613,7 @@ impl IntegratorGradientPath {
                                         weight_dem: shift_weight_dem,
                                         contrib: shift_contrib,
                                         state: RayState::RecentlyConnected(s),
+                                        half_vector: false,
                                     }
                                 }
                             } else {
@@ -630,8 +621,7 @@ impl IntegratorGradientPath {
                                 // in this case, we need to kill the shift mapping
                                 // operation
                                 let shift_success = (!main_bsdf_rought && !shift_bsdf_rought);
-                                    
-
+                                
                                 // In this case, we need to continue to shift the offset path
                                 // we do that using half-vector copy
                                 // note that if the light is intersected, we add its contribution
@@ -679,10 +669,12 @@ impl IntegratorGradientPath {
                                     }
                                 };
                                 jacobian = 1.0; // TODO: Always dirac
-                                success &= shift_success; // TODO: Due to Rust lang return policy.   
+                                success &= shift_success; // TODO: Due to Rust lang return policy. Check how to exist to closure with return
                                 
                                 if !success {
-                                    ShiftResult::default()
+                                    let mut result = ShiftResult::default();
+                                    result.half_vector = true;
+                                    result
                                 } else {
                                     // Pre-mult with the Jacobian
                                     s.throughput *= jacobian;
@@ -695,7 +687,9 @@ impl IntegratorGradientPath {
                                     s.ray = Ray::new(s.its.p, shift_d_out_global);
                                     let new_its = scene.trace(&s.ray);
                                     if new_its.is_none() {
-                                        ShiftResult::default()
+                                        let mut result = ShiftResult::default();
+                                        result.half_vector = true;
+                                        result
                                     } else {
                                         s.its = new_its.unwrap();
                                         let shift_emitter_rad = if s.its.mesh.is_light() {
@@ -707,6 +701,7 @@ impl IntegratorGradientPath {
                                             weight_dem: s.pdf,
                                             contrib: s.throughput * shift_emitter_rad,
                                             state: RayState::NotConnected(s),
+                                            half_vector: true,
                                         }
                                     }
                                 }
@@ -714,9 +709,17 @@ impl IntegratorGradientPath {
                         }
                     };
 
+                    // Due to the shift mapping design choice
+                    // We do not use MIS when have hit the light
+                    // when the shift path is not reconnected
+                    let main_weight_dem = if result.half_vector {
+                        main_bsdf_pdf.powi(MIS_POWER)
+                    } else {
+                        main_bsdf_pdf.powi(MIS_POWER) + main_light_pdf.powi(MIS_POWER)
+                    };
+
                     // Update the contributions
                     if self.min_depth.map_or(true, |min| depth >= min) {
-                        //let weight = if shift_weight_dem == 0.0 { 1.0 } else { 0.5 };
                         let weight =
                             (main_weight_num / (main_weight_dem + result.weight_dem)) as f32;
                         assert!(weight.is_finite());
