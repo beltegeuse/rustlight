@@ -1,11 +1,11 @@
+use crate::integrators::gradient::shiftmapping::{random_replay::RandomReplay, ShiftMapping};
+use crate::integrators::{gradient::*, *};
+use crate::paths::path::*;
+use crate::paths::vertex::*;
+use crate::structure::*;
 use cgmath::Point2;
-use integrators::gradient::shiftmapping::{random_replay::RandomReplay, ShiftMapping};
-use integrators::{gradient::*, *};
-use paths::path::*;
-use paths::vertex::*;
 use std::cell::RefCell;
 use std::rc::Rc;
-use structure::*;
 
 /// Path tracing system
 /// This structure store the rendering options
@@ -67,7 +67,8 @@ impl TechniqueGradientPathTracing {
                                     } else {
                                         0.0
                                     }
-                                }).sum();
+                                })
+                                .sum();
                             v / total
                         } else {
                             1.0
@@ -125,7 +126,7 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
                                 scene,
                                 &mut sampler,
-                                &mut shiftmapping
+                                &mut shiftmapping,
                             );
                             // Accumulate the values inside the buffer
                             let pos = Point2::new(ix, iy);
@@ -233,7 +234,8 @@ impl IntegratorGradientPathTracing {
             img_pos: Point2::new(0, 0), // FIXME
         };
 
-        let (base_contrib, base_path) = shiftmapping.base(&mut technique, Point2::new(ix, iy), scene, sampler);
+        let (base_contrib, base_path) =
+            shiftmapping.base(&mut technique, Point2::new(ix, iy), scene, sampler);
         let weight_survival = if let Some(min_survival) = self.min_survival {
             // TODO: Change the 0.1 hard coded to a more meaningful value
             let prob_survival = (base_contrib.luminance() / 0.1).min(1.0).max(min_survival);

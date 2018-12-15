@@ -1,13 +1,13 @@
+use crate::structure::*;
 use image::*;
 use serde::{Deserialize, Deserializer};
 use serde_json;
-use structure::*;
 
-use cgmath::{Point2, Vector2, Vector3, InnerSpace};
+use crate::tools::*;
+use cgmath::{InnerSpace, Point2, Vector2, Vector3};
 use image;
 use pbrt_rs;
 use std;
-use tools::*;
 
 pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
     -(wo) + n * 2.0 * wo.dot(n)
@@ -94,9 +94,21 @@ pub trait BSDF: Send + Sync {
         sample: Point2<f32>,
     ) -> Option<SampledDirection>;
     /// eval the bsdf pdf value in solid angle
-    fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF;
+    fn pdf(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> PDF;
     /// eval the bsdf value : $fs(...)$
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color;
+    fn eval(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> Color;
     /// return the roughness of the material
     fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32;
     /// check if it is smooth
@@ -114,13 +126,13 @@ pub mod pbrt;
 pub mod phong;
 pub mod specular;
 
-use bsdfs::blend::BSDFBlend;
-use bsdfs::diffuse::BSDFDiffuse;
-use bsdfs::distribution::TrowbridgeReitzDistribution;
-use bsdfs::metal::BSDFMetal;
-use bsdfs::pbrt::SubstratePBRTMaterial;
-use bsdfs::phong::BSDFPhong;
-use bsdfs::specular::BSDFSpecular;
+use crate::bsdfs::blend::BSDFBlend;
+use crate::bsdfs::diffuse::BSDFDiffuse;
+use crate::bsdfs::distribution::TrowbridgeReitzDistribution;
+use crate::bsdfs::metal::BSDFMetal;
+use crate::bsdfs::pbrt::SubstratePBRTMaterial;
+use crate::bsdfs::phong::BSDFPhong;
+use crate::bsdfs::specular::BSDFSpecular;
 
 /// Dispatch coded BSDF
 pub fn parse_bsdf(

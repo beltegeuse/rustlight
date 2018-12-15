@@ -1,16 +1,16 @@
-use bsdfs;
-use bsdfs::*;
-use camera::Camera;
+use crate::bsdfs;
+use crate::bsdfs::*;
+use crate::camera::Camera;
+use crate::geometry;
+use crate::math::{Distribution1D, Distribution1DConstruct};
+use crate::structure::*;
 use cgmath::*;
 use embree_rs;
-use geometry;
-use math::{Distribution1D, Distribution1DConstruct};
 use pbrt_rs;
 use serde_json;
 use std;
 use std::error::Error;
 use std::sync::Arc;
-use structure::*;
 
 /// Light sample representation
 pub struct LightSampling<'a> {
@@ -131,7 +131,8 @@ impl Scene {
                 _ => {
                     panic!("Ignore the type of mesh");
                 }
-            }).collect();
+            })
+            .collect();
         info!("Build the acceleration structure");
         let scene_embree = scene_embree.commit()?;
 

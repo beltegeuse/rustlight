@@ -80,44 +80,52 @@ fn main() {
                     .takes_value(true)
                     .index(1)
                     .help("JSON file description"),
-            ).arg(Arg::with_name("average").short("a").takes_value(true).help(
+            )
+            .arg(Arg::with_name("average").short("a").takes_value(true).help(
                 "average several pass of the integrator with a time limit ('inf' is possible)",
-            )).arg(
+            ))
+            .arg(
                 Arg::with_name("nbthreads")
                     .takes_value(true)
                     .short("t")
                     .default_value("auto")
                     .help("number of thread for the computation"),
-            ).arg(
+            )
+            .arg(
                 Arg::with_name("image_scale")
                     .takes_value(true)
                     .short("s")
                     .default_value("1.0")
                     .help("image scaling factor"),
-            ).arg(
+            )
+            .arg(
                 Arg::with_name("output")
                     .takes_value(true)
                     .short("o")
                     .help("output image file"),
-            ).arg(Arg::with_name("debug").short("d").help("debug output"))
+            )
+            .arg(Arg::with_name("debug").short("d").help("debug output"))
             .arg(
                 Arg::with_name("nbsamples")
                     .short("n")
                     .takes_value(true)
                     .help("integration technique"),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("path")
                     .about("path tracing")
                     .arg(&max_arg)
                     .arg(&min_arg),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("gradient-path")
                     .about("gradient path tracing")
                     .arg(&max_arg)
                     .arg(&min_arg)
                     .arg(&iterations_arg)
                     .arg(&recons_type_arg),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("gradient-path-explicit")
                     .about("gradient path tracing")
                     .arg(&max_arg)
@@ -130,7 +138,8 @@ fn main() {
                             .short("s")
                             .default_value("1.0"),
                     ),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("pssmlt")
                     .about("path tracing with MCMC sampling")
                     .arg(&max_arg)
@@ -141,7 +150,8 @@ fn main() {
                             .short("p")
                             .default_value("0.3"),
                     ),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("path-explicit")
                     .about("path tracing with explict light path construction")
                     .arg(&max_arg)
@@ -151,11 +161,13 @@ fn main() {
                             .short("s")
                             .default_value("all"),
                     ),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("light-explicit")
                     .about("light tracing with explict light path construction")
                     .arg(&max_arg),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("vpl")
                     .about("brute force virtual point light integrator")
                     .arg(&max_arg)
@@ -164,13 +176,15 @@ fn main() {
                             .takes_value(true)
                             .short("b")
                             .default_value("0.0"),
-                    ).arg(
+                    )
+                    .arg(
                         Arg::with_name("nb_vpl")
                             .takes_value(true)
                             .short("n")
                             .default_value("128"),
                     ),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("ao")
                     .about("ambiant occlusion")
                     .arg(
@@ -178,12 +192,14 @@ fn main() {
                             .takes_value(true)
                             .short("d")
                             .default_value("inf"),
-                    ).arg(
+                    )
+                    .arg(
                         Arg::with_name("normal-correction")
                             .takes_value(false)
                             .short("n"),
                     ),
-            ).subcommand(
+            )
+            .subcommand(
                 SubCommand::with_name("direct")
                     .about("direct lighting")
                     .arg(
@@ -191,13 +207,15 @@ fn main() {
                             .takes_value(true)
                             .short("b")
                             .default_value("1"),
-                    ).arg(
+                    )
+                    .arg(
                         Arg::with_name("light")
                             .takes_value(true)
                             .short("l")
                             .default_value("1"),
                     ),
-            ).get_matches();
+            )
+            .get_matches();
 
     /////////////// Setup logging system
     if matches.is_present("debug") {
@@ -254,14 +272,16 @@ fn main() {
                 nb_samples,
                 nb_threads,
                 imgout_path_str.to_string(),
-            ).expect("error when loading the scene")
+            )
+            .expect("error when loading the scene")
         }
         "pbrt" => rustlight::scene::Scene::pbrt(
             scene_path_str,
             nb_samples,
             nb_threads,
             imgout_path_str.to_string(),
-        ).expect("error when loading the scene"),
+        )
+        .expect("error when loading the scene"),
         _ => panic!("unsupported scene format: {}", scene_ext),
     };
 

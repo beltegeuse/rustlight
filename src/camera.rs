@@ -1,6 +1,6 @@
+use crate::structure::{Color, Ray};
 use cgmath::*;
 use std::f32;
-use structure::{Color, Ray};
 
 pub struct Camera {
     pub img: Vector2<u32>,

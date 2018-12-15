@@ -1,7 +1,7 @@
+use crate::integrators::Bitmap;
 use byteorder::{LittleEndian, WriteBytesExt};
 use cgmath::Point2;
 use image::{DynamicImage, GenericImage, PNG};
-use integrators::Bitmap;
 use openexr;
 use std;
 use std::fs::File;
@@ -50,7 +50,8 @@ pub fn save_exr(imgout_path_str: &str, img: &Bitmap, name: &str) {
             .add_channel("R", openexr::PixelType::FLOAT)
             .add_channel("G", openexr::PixelType::FLOAT)
             .add_channel("B", openexr::PixelType::FLOAT),
-    ).unwrap();
+    )
+    .unwrap();
 
     // Create a `FrameBuffer` that points at our pixel data and describes it as
     // RGB data.

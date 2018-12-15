@@ -1,9 +1,9 @@
+use crate::integrators::gradient::shiftmapping::*;
+use crate::samplers::Sampler;
+use crate::structure::*;
 use cgmath::{InnerSpace, Point2};
-use integrators::gradient::shiftmapping::*;
-use samplers::Sampler;
 use std::cell::RefCell;
 use std::rc::Rc;
-use structure::*;
 
 struct DiffuseReconnection {
     pub base_contrib: Color,
@@ -111,23 +111,28 @@ impl DiffuseReconnection {
 
                     // Evaluate BSDF of diffuse reconnection
                     assert!(!shift.its.mesh.bsdf.is_smooth());
-                    let mut shift_bsdf_value =
-                        shift
-                            .its
-                            .mesh
-                            .bsdf
-                            .eval(&shift.its.uv, &shift.its.wi, &shift_d_out_local, Domain::SolidAngle);
+                    let mut shift_bsdf_value = shift.its.mesh.bsdf.eval(
+                        &shift.its.uv,
+                        &shift.its.wi,
+                        &shift_d_out_local,
+                        Domain::SolidAngle,
+                    );
                     let mut shift_bsdf_pdf = shift
                         .its
                         .mesh
                         .bsdf
-                        .pdf(&shift.its.uv, &shift.its.wi, &shift_d_out_local, Domain::SolidAngle)
+                        .pdf(
+                            &shift.its.uv,
+                            &shift.its.wi,
+                            &shift_d_out_local,
+                            Domain::SolidAngle,
+                        )
                         .value();
-                    
-                    shift_bsdf_value *= (jacobian / main_bsdf_pdf);
+
+                    shift_bsdf_value *= jacobian / main_bsdf_pdf;
                     shift_bsdf_pdf *= jacobian;
 
-                    let ray = Ray::new(shift.its.p, shift_d_out_global);
+                    let _ray = Ray::new(shift.its.p, shift_d_out_global);
                     // FIXME: Lifetimes
                     // let (edge, new_vertex) = Edge::from_ray(
                     //     &ray,
@@ -139,7 +144,7 @@ impl DiffuseReconnection {
                     //     0,
                     // );
                 }
-                Vertex::Emitter(ref v) => {
+                Vertex::Emitter(ref _v) => {
                     // TODO: Do the explicit connection to the light
                     // TODO: The edge need to created but the contribution from the edge need to be 0
                 }
@@ -149,9 +154,8 @@ impl DiffuseReconnection {
     }
 
     // Generate the shift path
-    fn just_reconnected<'a, 'b>(&self, base: &Rc<VertexPtr<'b>>, shift: &Rc<VertexPtr<'a>>) {}
+    fn just_reconnected<'a, 'b>(&self, _base: &Rc<VertexPtr<'b>>, _shift: &Rc<VertexPtr<'a>>) {}
 
     // Generate the shift path
-    fn connected<'a, 'b>(&self, base: &Rc<VertexPtr<'b>>, shift: &Rc<VertexPtr<'a>>) {
-    }
+    fn connected<'a, 'b>(&self, _base: &Rc<VertexPtr<'b>>, _shift: &Rc<VertexPtr<'a>>) {}
 }

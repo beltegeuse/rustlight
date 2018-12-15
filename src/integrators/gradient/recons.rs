@@ -1,7 +1,7 @@
+use crate::integrators::gradient::*;
+use crate::Scale;
 use cgmath::Vector2;
-use integrators::gradient::*;
 use rayon::prelude::*;
-use Scale;
 
 pub struct BaggingPoissonReconstruction {
     pub iterations: usize,
@@ -183,9 +183,10 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                             if x > 0 {
                                 let pos_off = Point2::new(x - 1, y);
                                 let curr_weight = inv_or_1(
-                                    var_pos + averaged_variance
-                                        .get(pos_off, &gradient_x_variance_name)
-                                        .channel_max(),
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos_off, &gradient_x_variance_name)
+                                            .channel_max(),
                                 );
                                 c += (current.get(pos_off, &recons_name)
                                     + averaged_variance.get(pos_off, &gradient_x_name))
@@ -195,9 +196,10 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                             if x < img_size.x - 1 {
                                 let pos_off = Point2::new(x + 1, y);
                                 let curr_weight = inv_or_1(
-                                    var_pos + averaged_variance
-                                        .get(pos, &gradient_x_variance_name)
-                                        .channel_max(),
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos, &gradient_x_variance_name)
+                                            .channel_max(),
                                 );
                                 c += (current.get(pos_off, &recons_name)
                                     - averaged_variance.get(pos, &gradient_x_name))
@@ -207,9 +209,10 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                             if y > 0 {
                                 let pos_off = Point2::new(x, y - 1);
                                 let curr_weight = inv_or_1(
-                                    var_pos + averaged_variance
-                                        .get(pos_off, &gradient_y_variance_name)
-                                        .channel_max(),
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos_off, &gradient_y_variance_name)
+                                            .channel_max(),
                                 );
                                 c += (current.get(pos_off, &recons_name)
                                     + averaged_variance.get(pos_off, &gradient_y_name))
@@ -219,9 +222,10 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
                             if y < img_size.y - 1 {
                                 let pos_off = Point2::new(x, y + 1);
                                 let curr_weight = inv_or_1(
-                                    var_pos + averaged_variance
-                                        .get(pos, &gradient_y_variance_name)
-                                        .channel_max(),
+                                    var_pos
+                                        + averaged_variance
+                                            .get(pos, &gradient_y_variance_name)
+                                            .channel_max(),
                                 );
                                 c += (current.get(pos_off, &recons_name)
                                     - averaged_variance.get(pos, &gradient_y_name))

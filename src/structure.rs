@@ -1,13 +1,13 @@
+use crate::constants;
+use crate::geometry::Mesh;
+use crate::math::Frame;
+use crate::Scale;
 use cgmath::*;
-use constants;
 use embree_rs;
-use geometry::Mesh;
 use image::*;
-use math::Frame;
 use std;
 use std::ops::*;
 use std::sync::Arc;
-use Scale;
 
 /// PDF represented into different spaces
 #[derive(Clone)]
@@ -326,7 +326,8 @@ impl<'a> Intersection<'a> {
             embree_its.n_s.unwrap()
         };
         // TODO: Hack for now for make automatic twosided.
-        let (n_s, n_g) = if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && d.dot(n_s) <= 0.0 {
+        let (n_s, n_g) = if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && d.dot(n_s) <= 0.0
+        {
             (
                 Vector3::new(-n_s.x, -n_s.y, -n_s.z),
                 Vector3::new(-embree_its.n_g.x, -embree_its.n_g.y, -embree_its.n_g.z),

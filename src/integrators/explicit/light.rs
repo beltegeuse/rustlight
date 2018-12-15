@@ -1,12 +1,12 @@
+use crate::integrators::*;
+use crate::paths::path::*;
+use crate::paths::vertex::*;
+use crate::samplers;
+use crate::structure::*;
 use cgmath::InnerSpace;
 use cgmath::Point2;
-use integrators::*;
-use paths::path::*;
-use paths::vertex::*;
-use samplers;
 use std::cell::RefCell;
 use std::rc::Rc;
-use structure::*;
 
 pub struct IntegratorLightTracing {
     pub max_depth: Option<u32>,
@@ -65,7 +65,12 @@ impl TechniqueLightTracing {
                         // Compute BSDF for the splatting
                         let wo_local = v.its.frame.to_local(d);
                         let wi_global = v.its.frame.to_world(v.its.wi);
-                        let bsdf_value = v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &wo_local, Domain::SolidAngle);
+                        let bsdf_value = v.its.mesh.bsdf.eval(
+                            &v.its.uv,
+                            &v.its.wi,
+                            &wo_local,
+                            Domain::SolidAngle,
+                        );
                         let correction = (v.its.wi.z * d.dot(v.its.n_g))
                             / (wo_local.z * wi_global.dot(v.its.n_g));
                         // Accumulate the results

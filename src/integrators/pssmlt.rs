@@ -1,7 +1,7 @@
+use crate::integrators::*;
+use crate::samplers;
+use crate::structure::*;
 use cgmath::Point2;
-use integrators::*;
-use samplers;
-use structure::*;
 
 struct MCMCState {
     pub value: Color,
@@ -140,7 +140,8 @@ impl IntegratorPSSMLT {
                 let y = (sampler.next() * scene.camera.size().y as f32) as u32;
                 let c = self.integrator.compute_pixel((x, y), scene, &mut sampler);
                 (c.r + c.g + c.b) / 3.0
-            }).sum::<f32>()
+            })
+            .sum::<f32>()
             / (nb_samples as f32)
     }
 }

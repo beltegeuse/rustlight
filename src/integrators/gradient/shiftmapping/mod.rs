@@ -1,11 +1,11 @@
+use crate::integrators::gradient::explicit::TechniqueGradientPathTracing;
+use crate::paths::path::*;
+use crate::paths::vertex::*;
+use crate::samplers::Sampler;
+use crate::scene::Scene;
+use crate::structure::Color;
 use cgmath::Point2;
-use paths::path::*;
-use paths::vertex::*;
-use samplers::Sampler;
-use scene::Scene;
 use std::rc::Rc;
-use structure::Color;
-use integrators::gradient::explicit::TechniqueGradientPathTracing;
 
 /// Shift mapping definition
 pub struct ShiftValue {

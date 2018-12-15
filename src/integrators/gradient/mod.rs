@@ -1,10 +1,10 @@
+use crate::integrators::{generate_img_blocks, generate_pool, Bitmap, Integrator};
+use crate::scene::Scene;
+use crate::structure::Color;
+use crate::tools::StepRangeInt;
 use cgmath::{Point2, Vector2};
-use integrators::{generate_img_blocks, generate_pool, Bitmap, Integrator};
-use scene::Scene;
 use std::cmp;
 use std::time::Instant;
-use structure::Color;
-use tools::StepRangeInt;
 
 #[derive(Clone, Debug, Copy)]
 pub struct ColorGradient {
@@ -87,7 +87,12 @@ pub struct BufferIDGradient {
 pub fn generate_img_blocks_gradient(
     scene: &Scene,
     recons: &Box<PoissonReconstruction + Sync>,
-) -> (usize, Vec<String>, Vec<(BlockInfoGradient, Bitmap)>, BufferIDGradient) {
+) -> (
+    usize,
+    Vec<String>,
+    Vec<(BlockInfoGradient, Bitmap)>,
+    BufferIDGradient,
+) {
     // The buffers names are always:
     // ["very_direct", ("primal", "gradient_x", "gradient_y")+]
     let (nb_buffers, buffernames) = if let Some(number_buffers) = recons.need_variance_estimates() {

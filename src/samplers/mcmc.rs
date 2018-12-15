@@ -1,7 +1,7 @@
+use crate::samplers::*;
 use cgmath::Point2;
 use rand;
 use rand::distributions::{IndependentSample, Range};
-use samplers::*;
 
 pub trait Mutator: Send {
     fn mutate(&self, v: f32, r: f32) -> f32;

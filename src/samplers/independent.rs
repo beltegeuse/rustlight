@@ -1,7 +1,7 @@
+use crate::samplers::*;
 use cgmath::Point2;
 use rand;
 use rand::distributions::{IndependentSample, Range};
-use samplers::*;
 
 pub struct IndependentSampler {
     rnd: rand::StdRng,

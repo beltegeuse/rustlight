@@ -1,14 +1,14 @@
-use bsdfs;
+use crate::bsdfs;
+use crate::math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
+use crate::scene::LightSamplingPDF;
+use crate::structure::Color;
+use crate::tools::StepRangeInt;
 use cgmath::*;
 use embree_rs;
 use image;
-use math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
-use scene::LightSamplingPDF;
 use std;
 use std::sync::Arc;
-use structure::Color;
 use tobj;
-use tools::StepRangeInt;
 
 // FIXME: Support custom UV
 /// Read obj file format and build a list of meshes

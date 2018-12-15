@@ -1,5 +1,5 @@
-use bsdfs::distribution::*;
-use bsdfs::*;
+use crate::bsdfs::distribution::*;
+use crate::bsdfs::*;
 use cgmath::InnerSpace;
 
 pub struct BSDFMetal {
@@ -57,7 +57,13 @@ impl BSDF for BSDFMetal {
         })
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+    fn pdf(
+        &self,
+        _uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> PDF {
         assert!(domain == Domain::SolidAngle);
 
         if !vec3_same_hemisphere_vec3(d_out, d_in) {
@@ -67,9 +73,15 @@ impl BSDF for BSDFMetal {
         PDF::SolidAngle(self.distribution.pdf(d_in, &wh) / (4.0 * d_in.dot(wh)))
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+    fn eval(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> Color {
         assert!(domain == Domain::SolidAngle);
-        
+
         let cos_theta_o = d_out.z;
         let cos_theta_i = d_in.z;
         if cos_theta_o <= 0.0 {
@@ -94,7 +106,7 @@ impl BSDF for BSDFMetal {
             / (4.0 * cos_theta_i) // * cos_theta_o
     }
 
-    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+    fn roughness(&self, _uv: &Option<Vector2<f32>>) -> f32 {
         self.distribution.roughness()
     }
 

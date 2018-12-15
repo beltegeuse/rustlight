@@ -1,5 +1,5 @@
-use bsdfs::*;
-use math::cosine_sample_hemisphere;
+use crate::bsdfs::*;
+use crate::math::cosine_sample_hemisphere;
 use std;
 
 #[derive(Deserialize)]
@@ -26,7 +26,13 @@ impl BSDF for BSDFDiffuse {
         }
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+    fn pdf(
+        &self,
+        _uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> PDF {
         assert!(domain == Domain::SolidAngle);
 
         if d_in.z <= 0.0 {
@@ -39,9 +45,15 @@ impl BSDF for BSDFDiffuse {
         }
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+    fn eval(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> Color {
         assert!(domain == Domain::SolidAngle);
-        
+
         if d_in.z <= 0.0 {
             return Color::zero();
         }
@@ -52,7 +64,7 @@ impl BSDF for BSDFDiffuse {
         }
     }
 
-    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+    fn roughness(&self, _uv: &Option<Vector2<f32>>) -> f32 {
         std::f32::INFINITY
     }
 

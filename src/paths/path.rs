@@ -1,13 +1,13 @@
-use math::{cosine_sample_hemisphere, Frame};
-use paths::vertex::*;
-use samplers::*;
-use scene::*;
+use crate::math::{cosine_sample_hemisphere, Frame};
+use crate::paths::vertex::*;
+use crate::samplers::*;
+use crate::scene::*;
+use crate::structure::*;
+use crate::Scale;
 use std;
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
-use structure::*;
-use Scale;
 
 pub trait SamplingStrategy {
     fn sample<'a>(
@@ -228,7 +228,12 @@ impl SamplingStrategy for LightSamplingStrategy {
                     weight.b /= light_record.emitter.emission.b;
 
                     // Need to evaluate the BSDF
-                    weight *= &v.its.mesh.bsdf.eval(&v.its.uv, &v.its.wi, &d_out_local, Domain::SolidAngle);
+                    weight *= &v.its.mesh.bsdf.eval(
+                        &v.its.uv,
+                        &v.its.wi,
+                        &d_out_local,
+                        Domain::SolidAngle,
+                    );
 
                     (
                         Edge::from_vertex(
@@ -294,7 +299,8 @@ impl SamplingStrategy for LightSamplingStrategy {
                                     p: v.pos,
                                     n: v.n,
                                     dir: ray.d,
-                                }) {
+                                })
+                            {
                                 return Some(light_pdf);
                             }
                         }

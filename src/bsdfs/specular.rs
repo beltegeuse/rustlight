@@ -1,4 +1,4 @@
-use bsdfs::*;
+use crate::bsdfs::*;
 
 #[derive(Deserialize)]
 pub struct BSDFSpecular {
@@ -23,18 +23,30 @@ impl BSDF for BSDFSpecular {
         }
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, _: &Vector3<f32>, _: &Vector3<f32>, domain: Domain) -> PDF {
+    fn pdf(
+        &self,
+        _uv: &Option<Vector2<f32>>,
+        _: &Vector3<f32>,
+        _: &Vector3<f32>,
+        domain: Domain,
+    ) -> PDF {
         assert!(domain == Domain::Discrete);
         PDF::Discrete(1.0)
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, _: &Vector3<f32>, _: &Vector3<f32>, domain: Domain) -> Color {
+    fn eval(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        _: &Vector3<f32>,
+        _: &Vector3<f32>,
+        domain: Domain,
+    ) -> Color {
         assert!(domain == Domain::Discrete);
         // TODO: Double check the HV is very close to the normal (or revert normal)
         self.specular.color(uv)
     }
 
-    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+    fn roughness(&self, _uv: &Option<Vector2<f32>>) -> f32 {
         0.0
     }
 

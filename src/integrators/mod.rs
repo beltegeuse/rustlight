@@ -1,17 +1,17 @@
+use crate::samplers::*;
+use crate::scene::*;
+use crate::structure::Color;
+use crate::tools::{save, StepRangeInt};
+use crate::Scale;
 use cgmath::{Point2, Vector2};
 use pbr::ProgressBar;
 use rayon;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
-use samplers::*;
-use scene::*;
 use std;
 use std::cmp;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
-use structure::Color;
-use tools::{save, StepRangeInt};
-use Scale;
 
 //////////////// Helpers
 /// Image block
@@ -262,7 +262,8 @@ pub fn generate_pool(scene: &Scene) -> rayon::ThreadPool {
     match scene.nb_threads {
         None => rayon::ThreadPoolBuilder::new(),
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
-    }.build()
+    }
+    .build()
     .unwrap()
 }
 

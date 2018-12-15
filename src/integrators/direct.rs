@@ -1,6 +1,6 @@
+use crate::integrators::*;
+use crate::structure::*;
 use cgmath::*;
-use integrators::*;
-use structure::*;
 
 pub struct IntegratorDirect {
     pub nb_bsdf_samples: u32,
@@ -64,13 +64,19 @@ impl IntegratorMC for IntegratorDirect {
             {
                 // Compute the contribution of direct lighting
                 // FIXME: A bit waste full, need to detect before sampling the light...
-                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
+                if let PDF::SolidAngle(pdf_bsdf) =
+                    its.mesh
+                        .bsdf
+                        .pdf(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
                 {
                     // Compute MIS weights
                     let weight_light =
                         mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
                     l_i += &(weight_light
-                        * its.mesh.bsdf.eval(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
+                        * its
+                            .mesh
+                            .bsdf
+                            .eval(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
                         * weight_nb_light
                         * light_record.weight);
                 }

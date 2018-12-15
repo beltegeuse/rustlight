@@ -1,7 +1,7 @@
+use crate::integrators::*;
+use crate::math::*;
+use crate::structure::*;
 use cgmath::*;
-use integrators::*;
-use math::*;
-use structure::*;
 
 pub struct IntegratorAO {
     pub max_distance: Option<f32>,
@@ -44,11 +44,13 @@ impl IntegratorMC for IntegratorAO {
             None => Color::one(),
             Some(new_its) => match self.max_distance {
                 None => Color::zero(),
-                Some(d) => if new_its.dist > d {
-                    Color::one()
-                } else {
-                    Color::zero()
-                },
+                Some(d) => {
+                    if new_its.dist > d {
+                        Color::one()
+                    } else {
+                        Color::zero()
+                    }
+                }
             },
         }
     }

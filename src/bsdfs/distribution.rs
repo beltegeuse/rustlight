@@ -173,7 +173,7 @@ impl MicrofacetDistribution for TrowbridgeReitzDistribution {
         // TODO: Need to inverse the roughness to alpha
         // but the current approximation is fine
         // especially as this value is used for BSDF classification
-        0.5 * (self.alpha_x + self.alpha_y) 
+        0.5 * (self.alpha_x + self.alpha_y)
     }
 
     fn sample_wh(&self, wo: &Vector3<f32>, u: &Point2<f32>) -> Vector3<f32> {

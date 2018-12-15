@@ -1,7 +1,7 @@
-use integrators::gradient::*;
+use crate::integrators::gradient::*;
+use crate::tools;
+use crate::Scale;
 use std;
-use tools;
-use Scale;
 
 pub struct IntegratorGradientAverage {
     pub time_out: Option<usize>, //< Time out in seconds

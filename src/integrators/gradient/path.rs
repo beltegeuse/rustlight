@@ -1,8 +1,8 @@
+use crate::bsdfs::reflect_vector;
+use crate::integrators::gradient::*;
+use crate::integrators::*;
+use crate::structure::*;
 use cgmath::*;
-use integrators::gradient::*;
-use integrators::*;
-use structure::*;
-use bsdfs::reflect_vector;
 
 pub struct IntegratorGradientPath {
     pub max_depth: Option<u32>,
@@ -29,16 +29,20 @@ impl<'a> RayState<'a> {
     pub fn check_normal(self) -> RayState<'a> {
         // FIXME: Change how this works .... to avoid duplicated code
         match self {
-            RayState::NotConnected(e) => if e.its.cos_theta() <= 0.0 {
-                RayState::Dead
-            } else {
-                RayState::NotConnected(e)
-            },
-            RayState::RecentlyConnected(e) => if e.its.n_s.dot(e.ray.d) > 0.0 {
-                RayState::Dead
-            } else {
-                RayState::RecentlyConnected(e)
-            },
+            RayState::NotConnected(e) => {
+                if e.its.cos_theta() <= 0.0 {
+                    RayState::Dead
+                } else {
+                    RayState::NotConnected(e)
+                }
+            }
+            RayState::RecentlyConnected(e) => {
+                if e.its.n_s.dot(e.ray.d) > 0.0 {
+                    RayState::Dead
+                } else {
+                    RayState::RecentlyConnected(e)
+                }
+            }
             RayState::Connected(e) => {
                 // FIXME: Maybe not a good idea...
                 // FIXME: As the shift path may be not used anymore
@@ -92,7 +96,8 @@ impl IntegratorGradient for IntegratorGradientPath {
     }
 
     fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {
-        let (nb_buffers, buffernames, mut image_blocks, ids) = generate_img_blocks_gradient(scene, &self.recons);
+        let (nb_buffers, buffernames, mut image_blocks, ids) =
+            generate_img_blocks_gradient(scene, &self.recons);
 
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         let pool = generate_pool(scene);
@@ -252,17 +257,23 @@ impl IntegratorGradientPath {
                 let main_d_out_local = main.its.frame.to_local(main_light_record.d);
                 // Evaluate BSDF values and light values
                 let main_light_pdf = f64::from(main_light_record.pdf.value());
-                let main_bsdf_value =
-                    main.its
-                        .mesh
-                        .bsdf
-                        .eval(&main.its.uv, &main.its.wi, &main_d_out_local, Domain::SolidAngle); // f(...) * cos(...)
+                let main_bsdf_value = main.its.mesh.bsdf.eval(
+                    &main.its.uv,
+                    &main.its.wi,
+                    &main_d_out_local,
+                    Domain::SolidAngle,
+                ); // f(...) * cos(...)
                 let main_bsdf_pdf = if main_light_visible {
                     f64::from(
                         main.its
                             .mesh
                             .bsdf
-                            .pdf(&main.its.uv, &main.its.wi, &main_d_out_local, Domain::SolidAngle)
+                            .pdf(
+                                &main.its.uv,
+                                &main.its.wi,
+                                &main_d_out_local,
+                                Domain::SolidAngle,
+                            )
                             .value(),
                     )
                 } else {
@@ -309,7 +320,12 @@ impl IntegratorGradientPath {
                                         main.its
                                             .mesh
                                             .bsdf
-                                            .pdf(&s.its.uv, &shift_d_in_local, &main_d_out_local, Domain::SolidAngle)
+                                            .pdf(
+                                                &s.its.uv,
+                                                &shift_d_in_local,
+                                                &main_d_out_local,
+                                                Domain::SolidAngle,
+                                            )
                                             .value(),
                                     );
                                     let shift_bsdf_value = main.its.mesh.bsdf.eval(
@@ -347,7 +363,8 @@ impl IntegratorGradientPath {
                                     } else {
                                         Color::zero()
                                     };
-                                    let shift_d_out_local = s.its.frame.to_local(shift_light_record.d);
+                                    let shift_d_out_local =
+                                        s.its.frame.to_local(shift_light_record.d);
                                     // BSDF evaluation
                                     let shift_light_pdf = f64::from(shift_light_record.pdf.value());
                                     let shift_bsdf_value = shift_hit_mesh.bsdf.eval(
@@ -360,7 +377,12 @@ impl IntegratorGradientPath {
                                         f64::from(
                                             shift_hit_mesh
                                                 .bsdf
-                                                .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local, Domain::SolidAngle)
+                                                .pdf(
+                                                    &s.its.uv,
+                                                    &s.its.wi,
+                                                    &shift_d_out_local,
+                                                    Domain::SolidAngle,
+                                                )
                                                 .value(),
                                         )
                                     } else {
@@ -372,12 +394,14 @@ impl IntegratorGradientPath {
                                             * main_geom_dsquared)
                                             .abs()
                                             / (main_geom_cos_light
-                                                * (s.its.p - shift_light_record.p).magnitude2()).abs(),
+                                                * (s.its.p - shift_light_record.p).magnitude2())
+                                            .abs(),
                                     );
                                     assert!(jacobian.is_finite());
                                     assert!(jacobian >= 0.0);
                                     // Bake the final results
-                                    let shift_weight_dem = (jacobian * (s.pdf / main.pdf)).powi(MIS_POWER)
+                                    let shift_weight_dem = (jacobian * (s.pdf / main.pdf))
+                                        .powi(MIS_POWER)
                                         * (shift_light_pdf.powi(MIS_POWER)
                                             + shift_bsdf_pdf.powi(MIS_POWER));
                                     let shift_contrib = (jacobian as f32)
@@ -504,17 +528,25 @@ impl IntegratorGradientPath {
                                 ShiftResult::default()
                             } else {
                                 let shift_d_in_global = (s.its.p - main.ray.o).normalize();
-                                let shift_d_in_local = main_pred_its.frame.to_local(shift_d_in_global);
+                                let shift_d_in_local =
+                                    main_pred_its.frame.to_local(shift_d_in_global);
                                 if shift_d_in_local.z <= 0.0 {
                                     // FIXME: Dead path as we do not deal with glass
                                     ShiftResult::default()
                                 } else {
                                     // BSDF
-                                    let shift_bsdf_pdf = f64::from(main_pred_its
-                                        .mesh
-                                        .bsdf
-                                        .pdf(&main_pred_its.uv, &shift_d_in_local, &main_sampled_bsdf.d, Domain::SolidAngle)
-                                        .value());
+                                    let shift_bsdf_pdf = f64::from(
+                                        main_pred_its
+                                            .mesh
+                                            .bsdf
+                                            .pdf(
+                                                &main_pred_its.uv,
+                                                &shift_d_in_local,
+                                                &main_sampled_bsdf.d,
+                                                Domain::SolidAngle,
+                                            )
+                                            .value(),
+                                    );
                                     let shift_bsdf_value = main_pred_its.mesh.bsdf.eval(
                                         &main_pred_its.uv,
                                         &shift_d_in_local,
@@ -551,13 +583,16 @@ impl IntegratorGradientPath {
                                 } else {
                                     // Compute the ratio of geometry factors
                                     let shift_d_out_global = (main.its.p - s.its.p).normalize();
-                                    let shift_d_out_local = s.its.frame.to_local(shift_d_out_global);
-                                    let jacobian = f64::from((main.its.n_g.dot(-shift_d_out_global)
-                                        * main.its.dist.powi(2))
+                                    let shift_d_out_local =
+                                        s.its.frame.to_local(shift_d_out_global);
+                                    let jacobian = f64::from(
+                                        (main.its.n_g.dot(-shift_d_out_global)
+                                            * main.its.dist.powi(2))
                                         .abs()
-                                        / (main.its.n_g.dot(-main.ray.d)
-                                            * (s.its.p - main.its.p).magnitude2())
-                                            .abs());
+                                            / (main.its.n_g.dot(-main.ray.d)
+                                                * (s.its.p - main.its.p).magnitude2())
+                                            .abs(),
+                                    );
                                     assert!(jacobian.is_finite());
                                     assert!(jacobian >= 0.0);
                                     // BSDF
@@ -567,12 +602,18 @@ impl IntegratorGradientPath {
                                         &shift_d_out_local,
                                         Domain::SolidAngle, // Already checked that we are not on a smooth surface
                                     );
-                                    let shift_bsdf_pdf =
-                                        f64::from(s.its
+                                    let shift_bsdf_pdf = f64::from(
+                                        s.its
                                             .mesh
                                             .bsdf
-                                            .pdf(&s.its.uv, &s.its.wi, &shift_d_out_local, Domain::SolidAngle)
-                                            .value());
+                                            .pdf(
+                                                &s.its.uv,
+                                                &s.its.wi,
+                                                &shift_d_out_local,
+                                                Domain::SolidAngle,
+                                            )
+                                            .value(),
+                                    );
                                     // Update shift path
                                     let shift_pdf_pred = s.pdf;
                                     s.throughput *=
@@ -582,26 +623,25 @@ impl IntegratorGradientPath {
                                     // Two case:
                                     // - the main are on a emitter, need to do MIS
                                     // - the main are not on a emitter, just do a reconnection
-                                    let (shift_emitter_rad, shift_emitter_pdf) = if main_light_pdf
-                                        == 0.0
-                                    {
-                                        // The base path did not hit a light source
-                                        // FIXME: Do not use the trick of 0 PDF
-                                        (Color::zero(), 0.0)
-                                    } else {
-                                        let shift_emitter_pdf = scene
-                                            .direct_pdf(&LightSamplingPDF {
-                                                mesh: main_next_mesh,
-                                                o: s.its.p,
-                                                p: main.its.p,
-                                                n: main.its.n_g,
-                                                dir: shift_d_out_global,
-                                            })
-                                            .value();
-                                        // FIXME: We return without the cos as the light
-                                        // FIXME: does not change, does it true for non uniform light?
-                                        (main_emitter_rad, f64::from(shift_emitter_pdf))
-                                    };
+                                    let (shift_emitter_rad, shift_emitter_pdf) =
+                                        if main_light_pdf == 0.0 {
+                                            // The base path did not hit a light source
+                                            // FIXME: Do not use the trick of 0 PDF
+                                            (Color::zero(), 0.0)
+                                        } else {
+                                            let shift_emitter_pdf = scene
+                                                .direct_pdf(&LightSamplingPDF {
+                                                    mesh: main_next_mesh,
+                                                    o: s.its.p,
+                                                    p: main.its.p,
+                                                    n: main.its.n_g,
+                                                    dir: shift_d_out_global,
+                                                })
+                                                .value();
+                                            // FIXME: We return without the cos as the light
+                                            // FIXME: does not change, does it true for non uniform light?
+                                            (main_emitter_rad, f64::from(shift_emitter_pdf))
+                                        };
 
                                     // Return the shift path updated + MIS weights
                                     let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)
@@ -620,8 +660,8 @@ impl IntegratorGradientPath {
                                 // The two BDSF are not both discrete BDSF
                                 // in this case, we need to kill the shift mapping
                                 // operation
-                                let shift_success = (!main_bsdf_rought && !shift_bsdf_rought);
-                                
+                                let shift_success = !main_bsdf_rought && !shift_bsdf_rought;
+
                                 // In this case, we need to continue to shift the offset path
                                 // we do that using half-vector copy
                                 // note that if the light is intersected, we add its contribution
@@ -640,37 +680,60 @@ impl IntegratorGradientPath {
                                             // need to handle it properly
                                             (false, 1.0, Vector3::new(0.0, 0.0, 0.0))
                                         } else {
-                                            let tan_space_hv_main_unorm = if tan_space_main_wi.z < 0.0 {
+                                            let tan_space_hv_main_unorm = if tan_space_main_wi.z
+                                                < 0.0
+                                            {
                                                 -(tan_space_main_wi * main_eta + tan_space_main_wo)
                                             } else {
                                                 -(tan_space_main_wi + main_eta * tan_space_main_wo)
                                             };
-                                            let tan_space_hv_main = tan_space_hv_main_unorm.normalize();
-                                            let tan_space_shift_wo = reflect_vector(tan_space_shift_wi, tan_space_hv_main);
-                                            if tan_space_shift_wo.x == 0.0 && tan_space_shift_wo.y == 0.0 && tan_space_shift_wo.z == 0.0 {
-                                                (false, 1.0, Vector3::new(0.0,0.0,0.0))
+                                            let tan_space_hv_main =
+                                                tan_space_hv_main_unorm.normalize();
+                                            let tan_space_shift_wo = reflect_vector(
+                                                tan_space_shift_wi,
+                                                tan_space_hv_main,
+                                            );
+                                            if tan_space_shift_wo.x == 0.0
+                                                && tan_space_shift_wo.y == 0.0
+                                                && tan_space_shift_wo.z == 0.0
+                                            {
+                                                (false, 1.0, Vector3::new(0.0, 0.0, 0.0))
                                             } else {
-                                                let tan_space_hv_shift_unorm = if tan_space_shift_wi.z < 0.0 {
-                                                    -(tan_space_shift_wi * shift_eta + tan_space_shift_wo)
-                                                } else {
-                                                    -(tan_space_shift_wi + shift_eta * tan_space_shift_wo)
-                                                };
-                                                let lenght_sqr = tan_space_hv_shift_unorm.magnitude2() / (tan_space_hv_main_unorm.magnitude2());
-                                                let wo_dot_hv = tan_space_main_wo.dot(tan_space_hv_main) / tan_space_shift_wo.dot(tan_space_hv_main);
-                                                (true, lenght_sqr * wo_dot_hv.abs(), tan_space_shift_wo)
+                                                let tan_space_hv_shift_unorm =
+                                                    if tan_space_shift_wi.z < 0.0 {
+                                                        -(tan_space_shift_wi * shift_eta
+                                                            + tan_space_shift_wo)
+                                                    } else {
+                                                        -(tan_space_shift_wi
+                                                            + shift_eta * tan_space_shift_wo)
+                                                    };
+                                                let lenght_sqr = tan_space_hv_shift_unorm
+                                                    .magnitude2()
+                                                    / (tan_space_hv_main_unorm.magnitude2());
+                                                let wo_dot_hv = tan_space_main_wo
+                                                    .dot(tan_space_hv_main)
+                                                    / tan_space_shift_wo.dot(tan_space_hv_main);
+                                                (
+                                                    true,
+                                                    lenght_sqr * wo_dot_hv.abs(),
+                                                    tan_space_shift_wo,
+                                                )
                                             }
                                         }
                                     } else {
                                         // Reflexion
-                                        let tan_space_hv_main = (tan_space_main_wo + tan_space_main_wi).normalize();
-                                        let tan_space_shift_wo = reflect_vector(tan_space_shift_wi, tan_space_hv_main);
-                                        let wo_dot_h = tan_space_shift_wo.dot(tan_space_hv_main) / tan_space_main_wo.dot(tan_space_hv_main);
+                                        let tan_space_hv_main =
+                                            (tan_space_main_wo + tan_space_main_wi).normalize();
+                                        let tan_space_shift_wo =
+                                            reflect_vector(tan_space_shift_wi, tan_space_hv_main);
+                                        let wo_dot_h = tan_space_shift_wo.dot(tan_space_hv_main)
+                                            / tan_space_main_wo.dot(tan_space_hv_main);
                                         (true, wo_dot_h.abs(), tan_space_shift_wo)
                                     }
                                 };
                                 jacobian = 1.0; // TODO: Always dirac
                                 success &= shift_success; // TODO: Due to Rust lang return policy. Check how to exist to closure with return
-                                
+
                                 if !success {
                                     let mut result = ShiftResult::default();
                                     result.half_vector = true;
@@ -680,8 +743,19 @@ impl IntegratorGradientPath {
                                     s.throughput *= jacobian;
                                     s.pdf *= f64::from(jacobian);
                                     // Evaluate the new direction
-                                    s.throughput *= &s.its.mesh.bsdf.eval(&s.its.uv, &s.its.wi, &wo, Domain::Discrete);
-                                    s.pdf *= f64::from(s.its.mesh.bsdf.pdf(&s.its.uv, &s.its.wi, &wo, Domain::Discrete).value());
+                                    s.throughput *= &s.its.mesh.bsdf.eval(
+                                        &s.its.uv,
+                                        &s.its.wi,
+                                        &wo,
+                                        Domain::Discrete,
+                                    );
+                                    s.pdf *= f64::from(
+                                        s.its
+                                            .mesh
+                                            .bsdf
+                                            .pdf(&s.its.uv, &s.its.wi, &wo, Domain::Discrete)
+                                            .value(),
+                                    );
                                     // Shoot a ray to compute the next intersection
                                     let shift_d_out_global = s.its.frame.to_world(wo);
                                     s.ray = Ray::new(s.its.p, shift_d_out_global);
@@ -731,7 +805,8 @@ impl IntegratorGradientPath {
                     }
                     // Return the new state
                     result.state
-                }).collect::<Vec<RayState>>();
+                })
+                .collect::<Vec<RayState>>();
 
             // Russian roulette
             let rr_pdf = main.throughput.channel_max().min(0.95);

@@ -1,6 +1,6 @@
-use integrators::*;
+use crate::integrators::*;
+use crate::tools;
 use std;
-use tools;
 
 pub struct IntegratorAverage {
     pub time_out: Option<usize>, //< Time out in seconds

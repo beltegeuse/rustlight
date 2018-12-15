@@ -1,6 +1,6 @@
-use bsdfs::*;
+use crate::bsdfs::*;
+use crate::math::Frame;
 use cgmath::{InnerSpace, Vector3};
-use math::Frame;
 use std;
 
 #[derive(Deserialize)]
@@ -39,7 +39,13 @@ impl BSDF for BSDFPhong {
         }
     }
 
-    fn pdf(&self, _uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+    fn pdf(
+        &self,
+        _uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> PDF {
         assert!(domain == Domain::SolidAngle);
 
         if d_in.z <= 0.0 {
@@ -60,9 +66,15 @@ impl BSDF for BSDFPhong {
         }
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+    fn eval(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> Color {
         assert!(domain == Domain::SolidAngle);
-        
+
         if d_in.z <= 0.0 {
             return Color::zero();
         }
@@ -80,7 +92,7 @@ impl BSDF for BSDFPhong {
         }
     }
 
-    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+    fn roughness(&self, _uv: &Option<Vector2<f32>>) -> f32 {
         (2.0 / (2.0 + self.exponent)).sqrt()
     }
 

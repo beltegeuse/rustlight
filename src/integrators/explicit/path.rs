@@ -1,10 +1,10 @@
+use crate::integrators::*;
+use crate::paths::path::*;
+use crate::paths::vertex::*;
+use crate::structure::*;
 use cgmath::Point2;
-use integrators::*;
-use paths::path::*;
-use paths::vertex::*;
 use std::cell::RefCell;
 use std::rc::Rc;
-use structure::*;
 
 /// This structure store the rendering options
 /// That the user have given through the command line
@@ -95,7 +95,8 @@ impl TechniquePathTracing {
                                             } else {
                                                 0.0
                                             }
-                                        }).sum();
+                                        })
+                                        .sum();
                                     v / total
                                 } else {
                                     1.0

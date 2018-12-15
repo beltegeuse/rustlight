@@ -1,12 +1,12 @@
 // This code is from pbrt_rs
-use bsdfs::distribution::*;
-use bsdfs::*;
+use crate::bsdfs::distribution::*;
+use crate::bsdfs::*;
+use crate::math::cosine_sample_hemisphere;
+use crate::structure::Color;
 use cgmath::{InnerSpace, Point2, Vector3};
-use math::cosine_sample_hemisphere;
 use std;
 use std::f32::consts::*;
 use std::sync::Arc;
-use structure::Color;
 
 pub struct SubstratePBRTMaterial {
     pub kd: BSDFColor,
@@ -20,9 +20,9 @@ impl SubstratePBRTMaterial {
         let mut bxdfs: Vec<Box<Bxdf + Send + Sync>> = Vec::new();
         let d = self.kd.color(uv);
         let s = self.ks.color(uv);
-        let mut roughu = self.u_roughness;
-        let mut roughv = self.v_roughness;
-        assert!(roughu != 0.0 || roughv != 0.0 );
+        let roughu = self.u_roughness;
+        let roughv = self.v_roughness;
+        assert!(roughu != 0.0 || roughv != 0.0);
 
         if !d.is_zero() || !s.is_zero() {
             if self.remap_roughness {
@@ -69,19 +69,31 @@ impl BSDF for SubstratePBRTMaterial {
         }
     }
 
-    fn pdf(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> PDF {
+    fn pdf(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> PDF {
         assert!(domain == Domain::SolidAngle);
         let bsdf = self.construct(uv);
         PDF::SolidAngle(bsdf.pdf(d_in, d_out, BxdfType::BsdfAll as u8))
     }
 
-    fn eval(&self, uv: &Option<Vector2<f32>>, d_in: &Vector3<f32>, d_out: &Vector3<f32>, domain: Domain) -> Color {
+    fn eval(
+        &self,
+        uv: &Option<Vector2<f32>>,
+        d_in: &Vector3<f32>,
+        d_out: &Vector3<f32>,
+        domain: Domain,
+    ) -> Color {
         assert!(domain == Domain::SolidAngle);
         let bsdf = self.construct(uv);
         bsdf.f(d_in, d_out, BxdfType::BsdfAll as u8) * d_out.z
     }
 
-    fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {
+    fn roughness(&self, _uv: &Option<Vector2<f32>>) -> f32 {
         unimplemented!()
     }
 

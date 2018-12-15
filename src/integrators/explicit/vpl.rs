@@ -1,11 +1,11 @@
+use crate::integrators::*;
+use crate::paths::path::*;
+use crate::paths::vertex::*;
+use crate::samplers;
+use crate::structure::*;
 use cgmath::{InnerSpace, Point2, Point3, Vector3};
-use integrators::*;
-use paths::path::*;
-use paths::vertex::*;
-use samplers;
 use std::cell::RefCell;
 use std::rc::Rc;
-use structure::*;
 
 pub struct IntegratorVPL {
     pub nb_vpl: usize,
@@ -206,7 +206,12 @@ impl IntegratorVPL {
 
                         let emitted_radiance = vpl.emitted_radiance * vpl.n.dot(-d).max(0.0);
                         if !its.mesh.bsdf.is_smooth() {
-                            let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d), Domain::SolidAngle);
+                            let bsdf_val = its.mesh.bsdf.eval(
+                                &its.uv,
+                                &its.wi,
+                                &its.to_local(&d),
+                                Domain::SolidAngle,
+                            );
                             l_i += norm_vpl * emitted_radiance * bsdf_val / (dist * dist);
                         }
                     }
@@ -217,15 +222,21 @@ impl IntegratorVPL {
                         let dist = d.magnitude();
                         d /= dist;
 
-                         if !its.mesh.bsdf.is_smooth() {
+                        if !its.mesh.bsdf.is_smooth() {
                             let emitted_radiance = vpl.its.mesh.bsdf.eval(
                                 &vpl.its.uv,
                                 &vpl.its.wi,
                                 &vpl.its.to_local(&-d),
                                 Domain::SolidAngle,
                             );
-                            let bsdf_val = its.mesh.bsdf.eval(&its.uv, &its.wi, &its.to_local(&d), Domain::SolidAngle);
-                            l_i += norm_vpl * emitted_radiance * bsdf_val * vpl.radiance / (dist * dist);
+                            let bsdf_val = its.mesh.bsdf.eval(
+                                &its.uv,
+                                &its.wi,
+                                &its.to_local(&d),
+                                Domain::SolidAngle,
+                            );
+                            l_i += norm_vpl * emitted_radiance * bsdf_val * vpl.radiance
+                                / (dist * dist);
                         }
                     }
                 }

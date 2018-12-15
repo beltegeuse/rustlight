@@ -1,10 +1,10 @@
+use crate::integrators::gradient::shiftmapping::*;
+use crate::paths::path::*;
+use crate::paths::vertex::*;
+use crate::samplers::Sampler;
+use crate::scene::Scene;
+use crate::structure::Color;
 use cgmath::Point2;
-use integrators::gradient::shiftmapping::*;
-use paths::path::*;
-use paths::vertex::*;
-use samplers::Sampler;
-use scene::Scene;
-use structure::Color;
 
 // This special random number replay
 // can capture the underlying sampler

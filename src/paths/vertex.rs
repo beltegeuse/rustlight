@@ -1,10 +1,10 @@
+use crate::geometry::Mesh;
+use crate::scene::*;
+use crate::structure::*;
 use cgmath::*;
-use geometry::Mesh;
-use scene::*;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
-use structure::*;
 
 #[derive(Clone)]
 pub struct Edge<'a> {
