@@ -2,6 +2,7 @@ use crate::integrators::Bitmap;
 use byteorder::{LittleEndian, WriteBytesExt};
 use cgmath::Point2;
 use image::{DynamicImage, GenericImage, PNG};
+#[cfg(feature = "openexr")]
 use openexr;
 use std;
 use std::fs::File;
@@ -28,6 +29,11 @@ pub fn save(imgout_path_str: &str, img: &Bitmap, name: &str) {
     }
 }
 
+#[cfg(not(feature = "openexr"))]
+pub fn save_exr(imgout_path_str: &str, img: &Bitmap, name: &str) {
+    panic!("Rustlight wasn't built with OpenExr support.");
+}
+#[cfg(feature = "openexr")]
 pub fn save_exr(imgout_path_str: &str, img: &Bitmap, name: &str) {
     // Pixel data for floating point RGB image.
     let mut pixel_data = vec![];

@@ -10,6 +10,7 @@ extern crate embree_rs;
 // For the image (LDR) export and loading
 extern crate image;
 // For the image (HDR) export and loading
+#[cfg(feature = "openexr")]
 extern crate openexr;
 // For logging propose
 #[macro_use]
@@ -28,6 +29,7 @@ extern crate tobj;
 // For print a progress bar
 extern crate pbr;
 // For loading other type of scene format
+#[cfg(feature = "pbrt")]
 extern crate pbrt_rs;
 
 mod constants {

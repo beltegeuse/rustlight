@@ -6,6 +6,7 @@ use crate::math::{Distribution1D, Distribution1DConstruct};
 use crate::structure::*;
 use cgmath::*;
 use embree_rs;
+#[cfg(feature = "pbrt")]
 use pbrt_rs;
 use serde_json;
 use std;
@@ -67,6 +68,16 @@ impl Scene {
         self.nb_samples
     }
 
+    #[cfg(not(feature = "pbrt"))]
+    pub fn pbrt(
+        filename: &str,
+        nb_samples: usize,
+        nb_threads: Option<usize>,
+        output_img_path: String,
+    ) -> Result<Scene, Box<Error>> {
+        panic!("Rustlight wasn't compiled with pbrt file support.")
+    }
+    #[cfg(feature = "pbrt")]
     pub fn pbrt(
         filename: &str,
         nb_samples: usize,
