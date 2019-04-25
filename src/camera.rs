@@ -122,4 +122,11 @@ impl Camera {
     pub fn position(&self) -> Point3<f32> {
         self.to_world.transform_point(Point3::new(0.0, 0.0, 0.0))
     }
+
+    pub fn print_info(&self) {
+        let pix = Point2::new(self.img.x as f32 * 0.5 + 0.5, self.img.y as f32 * 0.5 + 0.5);
+        let view_dir = self.generate(pix).d;
+        info!(" - Position: {:?}", self.position());
+        info!(" - View direction: {:?}", view_dir);
+    }
 }

@@ -306,16 +306,22 @@ impl Scene {
                 let img: Vector2<u32> = serde_json::from_value(camera_json["img"].clone())?;
                 let m: Vec<f32> = serde_json::from_value(camera_json["matrix"].clone())?;
 
+                //let matrix = Matrix4::new(
+                //    m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14],
+                //    m[3], m[7], m[11], m[15],
+                //);
                 let matrix = Matrix4::new(
-                    m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14],
-                    m[3], m[7], m[11], m[15],
+                    m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11],
+                    m[12], m[13], m[14], m[15],
                 );
+
                 info!("m: {:?}", matrix);
                 Camera::new(img, fov, matrix)
             } else {
                 panic!("The camera is not set!");
             }
         };
+        camera.print_info();
 
         // Define a default scene
         Ok(Scene {

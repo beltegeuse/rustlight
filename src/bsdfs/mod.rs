@@ -149,129 +149,125 @@ pub fn parse_bsdf(
     Ok(new_bsdf)
 }
 
-#[cfg(pbrt)]
-mod pbrt {
-    pub fn bsdf_texture_match(
-        v: &pbrt_rs::Param,
-        scene_info: &pbrt_rs::Scene,
-    ) -> Option<BSDFColor> {
-        match v {
-            pbrt_rs::Param::Float(ref v) => {
-                if v.len() != 1 {
-                    panic!("Impossible to build textureColor with: {:?}", v);
-                }
-                let v = v[0];
-                Some(BSDFColor::UniformColor(Color::new(v, v, v)))
+#[cfg(feature = "pbrt")]
+fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option<BSDFColor> {
+    match v {
+        pbrt_rs::Param::Float(ref v) => {
+            if v.len() != 1 {
+                panic!("Impossible to build textureColor with: {:?}", v);
             }
-            pbrt_rs::Param::RGB(r, g, b) => Some(BSDFColor::UniformColor(Color::new(*r, *g, *b))),
-            pbrt_rs::Param::Name(ref name) => {
-                if let Some(texture) = scene_info.textures.get(name) {
-                    Some(BSDFColor::TextureColor(Texture {
-                        img: image::open(&texture.filename).expect("Impossible to load the image"),
-                    }))
-                } else {
-                    warn!("Impossible to found an texture with name: {}", name);
-                    None
-                }
-            }
-            _ => None,
+            let v = v[0];
+            Some(BSDFColor::UniformColor(Color::new(v, v, v)))
         }
-    }
-
-    macro_rules! default_color {
-        ($texture: expr, $default:expr) => {{
-            if let Some(v) = $texture {
-                v
+        pbrt_rs::Param::RGB(r, g, b) => Some(BSDFColor::UniformColor(Color::new(*r, *g, *b))),
+        pbrt_rs::Param::Name(ref name) => {
+            if let Some(texture) = scene_info.textures.get(name) {
+                Some(BSDFColor::TextureColor(Texture {
+                    img: image::open(&texture.filename).expect("Impossible to load the image"),
+                }))
             } else {
-                BSDFColor::UniformColor($default)
+                warn!("Impossible to found an texture with name: {}", name);
+                None
             }
-        }};
-    }
-
-    pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF + Sync + Send> {
-        let bsdf: Option<Box<BSDF + Sync + Send>> = match bsdf {
-            pbrt_rs::BSDF::Matte(ref v) => {
-                if let Some(diffuse) = bsdf_texture_match(&v.kd, scene_info) {
-                    Some(Box::new(BSDFDiffuse { diffuse }))
-                } else {
-                    None
-                }
-            }
-            pbrt_rs::BSDF::Metal(ref v) => {
-                let eta = bsdf_texture_match(&v.eta, scene_info).unwrap();
-                let k = bsdf_texture_match(&v.k, scene_info).unwrap();
-                let (u_roughness, v_roughness) = if let (Some(ref u_rough), Some(ref v_rough)) =
-                    (v.u_roughness.as_ref(), v.v_roughness.as_ref())
-                {
-                    (
-                        bsdf_texture_match(u_rough, scene_info).unwrap(),
-                        bsdf_texture_match(v_rough, scene_info).unwrap(),
-                    )
-                } else {
-                    (
-                        bsdf_texture_match(&v.roughness, scene_info).unwrap(),
-                        bsdf_texture_match(&v.roughness, scene_info).unwrap(),
-                    )
-                };
-                // FIXME: be able to load float textures?
-                let (u_roughness, v_roughness) =
-                    (u_roughness.color(&None).r, v_roughness.color(&None).r);
-                assert!(u_roughness != 0.0);
-                assert!(v_roughness != 0.0);
-                // FIXME: remap
-                Some(Box::new(BSDFMetal {
-                    r: BSDFColor::UniformColor(Color::value(1.0)),
-                    distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
-                    k,
-                    eta_i: BSDFColor::UniformColor(Color::one()),
-                    eta_t: eta,
-                }))
-            }
-            pbrt_rs::BSDF::Mirror(ref v) => {
-                let specular = bsdf_texture_match(&v.kr, scene_info).unwrap();
-                Some(Box::new(BSDFSpecular { specular }))
-            }
-            pbrt_rs::BSDF::Substrate(ref v) => {
-                let kd = bsdf_texture_match(&v.kd, scene_info).unwrap();
-                let ks = bsdf_texture_match(&v.ks, scene_info).unwrap();
-                let u_roughness = bsdf_texture_match(&v.u_roughness, scene_info).unwrap();
-                let v_roughness = bsdf_texture_match(&v.v_roughness, scene_info).unwrap();
-                // FIXME: be able to load float textures?
-                let (u_roughness, v_roughness) =
-                    (u_roughness.color(&None).r, v_roughness.color(&None).r);
-                assert!(u_roughness != 0.0);
-                assert!(v_roughness != 0.0);
-
-                let metal = Box::new(BSDFMetal {
-                    r: BSDFColor::UniformColor(Color::value(1.0)),
-                    distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
-                    k: ks,
-                    eta_i: BSDFColor::UniformColor(Color::one()),
-                    eta_t: BSDFColor::UniformColor(Color::one()),
-                });
-                let diffuse = Box::new(BSDFDiffuse { diffuse: kd });
-                Some(Box::new(BSDFBlend {
-                    bsdf1: metal,
-                    bsdf2: diffuse,
-                }))
-
-                // Some(Box::new(SubstratePBRTMaterial {
-                //     kd,
-                //     ks,
-                //     u_roughness,
-                //     v_roughness,
-                //     remap_roughness: false,
-                // }))
-            }
-            _ => None,
-        };
-
-        if let Some(bsdf) = bsdf {
-            bsdf
-        } else {
-            Box::new(BSDFDiffuse {
-                diffuse: BSDFColor::UniformColor(Color::value(0.8)),
-            })
         }
+        _ => None,
+    }
+}
+
+macro_rules! default_color {
+    ($texture: expr, $default:expr) => {{
+        if let Some(v) = $texture {
+            v
+        } else {
+            BSDFColor::UniformColor($default)
+        }
+    }};
+}
+
+#[cfg(feature = "pbrt")]
+pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF + Sync + Send> {
+    let bsdf: Option<Box<BSDF + Sync + Send>> = match bsdf {
+        pbrt_rs::BSDF::Matte(ref v) => {
+            if let Some(diffuse) = bsdf_texture_match(&v.kd, scene_info) {
+                Some(Box::new(BSDFDiffuse { diffuse }))
+            } else {
+                None
+            }
+        }
+        pbrt_rs::BSDF::Metal(ref v) => {
+            let eta = bsdf_texture_match(&v.eta, scene_info).unwrap();
+            let k = bsdf_texture_match(&v.k, scene_info).unwrap();
+            let (u_roughness, v_roughness) = if let (Some(ref u_rough), Some(ref v_rough)) =
+                (v.u_roughness.as_ref(), v.v_roughness.as_ref())
+            {
+                (
+                    bsdf_texture_match(u_rough, scene_info).unwrap(),
+                    bsdf_texture_match(v_rough, scene_info).unwrap(),
+                )
+            } else {
+                (
+                    bsdf_texture_match(&v.roughness, scene_info).unwrap(),
+                    bsdf_texture_match(&v.roughness, scene_info).unwrap(),
+                )
+            };
+            // FIXME: be able to load float textures?
+            let (u_roughness, v_roughness) =
+                (u_roughness.color(&None).r, v_roughness.color(&None).r);
+            assert!(u_roughness != 0.0);
+            assert!(v_roughness != 0.0);
+            // FIXME: remap
+            Some(Box::new(BSDFMetal {
+                r: BSDFColor::UniformColor(Color::value(1.0)),
+                distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
+                k,
+                eta_i: BSDFColor::UniformColor(Color::one()),
+                eta_t: eta,
+            }))
+        }
+        pbrt_rs::BSDF::Mirror(ref v) => {
+            let specular = bsdf_texture_match(&v.kr, scene_info).unwrap();
+            Some(Box::new(BSDFSpecular { specular }))
+        }
+        pbrt_rs::BSDF::Substrate(ref v) => {
+            let kd = bsdf_texture_match(&v.kd, scene_info).unwrap();
+            let ks = bsdf_texture_match(&v.ks, scene_info).unwrap();
+            let u_roughness = bsdf_texture_match(&v.u_roughness, scene_info).unwrap();
+            let v_roughness = bsdf_texture_match(&v.v_roughness, scene_info).unwrap();
+            // FIXME: be able to load float textures?
+            let (u_roughness, v_roughness) =
+                (u_roughness.color(&None).r, v_roughness.color(&None).r);
+            assert!(u_roughness != 0.0);
+            assert!(v_roughness != 0.0);
+
+            let metal = Box::new(BSDFMetal {
+                r: BSDFColor::UniformColor(Color::value(1.0)),
+                distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
+                k: ks,
+                eta_i: BSDFColor::UniformColor(Color::one()),
+                eta_t: BSDFColor::UniformColor(Color::one()),
+            });
+            let diffuse = Box::new(BSDFDiffuse { diffuse: kd });
+            Some(Box::new(BSDFBlend {
+                bsdf1: metal,
+                bsdf2: diffuse,
+            }))
+
+            // Some(Box::new(SubstratePBRTMaterial {
+            //     kd,
+            //     ks,
+            //     u_roughness,
+            //     v_roughness,
+            //     remap_roughness: false,
+            // }))
+        }
+        _ => None,
+    };
+
+    if let Some(bsdf) = bsdf {
+        bsdf
+    } else {
+        Box::new(BSDFDiffuse {
+            diffuse: BSDFColor::UniformColor(Color::value(0.8)),
+        })
     }
 }
