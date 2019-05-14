@@ -5,6 +5,7 @@ use cgmath::*;
 pub struct IntegratorPath {
     pub max_depth: Option<u32>,
     pub min_depth: Option<u32>,
+    pub next_event_estimation: bool,
 }
 
 impl Integrator for IntegratorPath {
@@ -42,7 +43,7 @@ impl IntegratorMC for IntegratorPath {
             // Explict connect to the light source.
             // We do this operation only and only if we know that
             // the BSDF is not totally specular.
-            if !its.mesh.bsdf.is_smooth() {
+            if !its.mesh.bsdf.is_smooth() && self.next_event_estimation {
                 let light_record =
                     scene.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
                 let light_pdf = match light_record.pdf {
@@ -107,14 +108,18 @@ impl IntegratorMC for IntegratorPath {
 
             // Check that we have intersected a light or not
             if its.mesh.is_light() && its.cos_theta() > 0.0 {
-                let weight_bsdf = match sampled_bsdf.pdf {
-                    PDF::SolidAngle(v) => {
-                        // Know the the light is intersectable so have a solid angle PDF
-                        let light_pdf = scene.direct_pdf(&LightSamplingPDF::new(&ray, &its));
-                        mis_weight(v, light_pdf.value())
+                let weight_bsdf = if self.next_event_estimation {
+                    match sampled_bsdf.pdf {
+                        PDF::SolidAngle(v) => {
+                            // Know the the light is intersectable so have a solid angle PDF
+                            let light_pdf = scene.direct_pdf(&LightSamplingPDF::new(&ray, &its));
+                            mis_weight(v, light_pdf.value())
+                        }
+                        PDF::Discrete(_v) => 1.0,
+                        _ => panic!("Unsupported type."),
                     }
-                    PDF::Discrete(_v) => 1.0,
-                    _ => panic!("Unsupported type."),
+                } else {
+                    1.0
                 };
                 if self.min_depth.map_or(true, |min| depth >= min) || weight_bsdf > 0.0 {
                     l_i += throughput * its.mesh.emission * weight_bsdf;

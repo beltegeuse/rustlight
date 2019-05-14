@@ -115,7 +115,12 @@ fn main() {
                 SubCommand::with_name("path")
                     .about("path tracing")
                     .arg(&max_arg)
-                    .arg(&min_arg),
+                    .arg(&min_arg)
+                    .arg(
+                        Arg::with_name("primitive")
+                        .short("p")
+                        .help("do not use next event estimation")
+                    ),
             )
             .subcommand(
                 SubCommand::with_name("gradient-path")
@@ -398,11 +403,13 @@ fn main() {
             ))
         }
         ("path", Some(m)) => {
+            let primitive = m.is_present("primitive");
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
             IntegratorType::Primal(Box::new(rustlight::integrators::path::IntegratorPath {
                 max_depth,
                 min_depth,
+                next_event_estimation: !primitive,
             }))
         }
         ("pssmlt", Some(m)) => {
@@ -415,6 +422,7 @@ fn main() {
                 integrator: Box::new(rustlight::integrators::path::IntegratorPath {
                     max_depth,
                     min_depth,
+                    next_event_estimation: true,
                 }),
             }))
         }
