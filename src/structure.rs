@@ -4,11 +4,11 @@ use crate::math::Frame;
 use crate::Scale;
 use cgmath::*;
 use embree_rs;
-use image::*;
+#[cfg(feature = "image")]
+use image::Pixel;
 use std;
 use std::ops::*;
 use std::sync::Arc;
-
 /// PDF represented into different spaces
 #[derive(Clone)]
 pub enum PDF {
@@ -68,8 +68,10 @@ impl Color {
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
     }
-    pub fn to_rgba(&self) -> Rgba<u8> {
-        Rgba::from_channels(
+
+    #[cfg(feature = "image")]
+    pub fn to_rgba(&self) -> image::Rgba<u8> {
+        image::Rgba::from_channels(
             (self.r.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             (self.g.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,

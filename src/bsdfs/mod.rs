@@ -1,11 +1,13 @@
 use crate::structure::*;
-use image::*;
 use serde::{Deserialize, Deserializer};
 use serde_json;
 
 use crate::tools::*;
 use cgmath::{InnerSpace, Point2, Vector2, Vector3};
+#[cfg(feature = "image")]
 use image;
+#[cfg(feature = "image")]
+use image::GenericImage;
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
 use std;
@@ -17,11 +19,30 @@ pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
 // Texture or uniform color buffers
 #[derive(Deserialize)]
 pub struct Texture {
+    #[cfg(feature = "image")]
     #[serde(deserialize_with = "deserialize_from_str")]
-    pub img: DynamicImage,
+    pub img: image::DynamicImage,
 }
 
 impl Texture {
+    #[cfg(not(feature = "image"))]
+    pub fn load(path: &str) -> Texture {
+        panic!("Impossible to load textures. No support for textures");
+    }
+    #[cfg(feature = "image")]
+    pub fn load(path: &str) -> Texture {
+        Texture {
+            img: image::open(path).expect("Impossible to load the image"),
+        }
+    }
+
+    // Access to the texture
+    #[cfg(not(feature = "image"))]
+    pub fn pixel(&self, mut uv: Vector2<f32>) -> Color {
+        panic!("No support for textures");
+        return Color::zero();
+    }
+    #[cfg(feature = "image")]
     pub fn pixel(&self, mut uv: Vector2<f32>) -> Color {
         uv.x = uv.x.modulo(1.0);
         uv.y = uv.y.modulo(1.0);
@@ -38,12 +59,13 @@ impl Texture {
     }
 }
 
-fn deserialize_from_str<'de, D>(deserializer: D) -> Result<DynamicImage, D::Error>
+#[cfg(feature = "image")]
+fn deserialize_from_str<'de, D>(deserializer: D) -> Result<image::DynamicImage, D::Error>
 where
     D: Deserializer<'de>,
 {
     let _s: String = Deserialize::deserialize(deserializer)?;
-    let _img = DynamicImage::new_rgb8(1, 1);
+    let _img = image::DynamicImage::new_rgb8(1, 1);
     unimplemented!();
     // Ok(_img)
 }
@@ -162,9 +184,7 @@ fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option
         pbrt_rs::Param::RGB(r, g, b) => Some(BSDFColor::UniformColor(Color::new(*r, *g, *b))),
         pbrt_rs::Param::Name(ref name) => {
             if let Some(texture) = scene_info.textures.get(name) {
-                Some(BSDFColor::TextureColor(Texture {
-                    img: image::open(&texture.filename).expect("Impossible to load the image"),
-                }))
+                Some(BSDFColor::TextureColor(Texture::load(&texture.filename)))
             } else {
                 warn!("Impossible to found an texture with name: {}", name);
                 None

@@ -8,6 +8,7 @@ extern crate cgmath;
 // For fast intersection
 extern crate embree_rs;
 // For the image (LDR) export and loading
+#[cfg(feature = "image")]
 extern crate image;
 // For the image (HDR) export and loading
 #[cfg(feature = "openexr")]

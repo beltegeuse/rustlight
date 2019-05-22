@@ -1,6 +1,7 @@
 use crate::integrators::Bitmap;
 use byteorder::{LittleEndian, WriteBytesExt};
 use cgmath::Point2;
+#[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, PNG};
 #[cfg(feature = "openexr")]
 use openexr;
@@ -82,6 +83,11 @@ pub fn save_pfm(imgout_path_str: &str, img: &Bitmap, name: &str) {
     }
 }
 
+#[cfg(not(feature = "image"))]
+pub fn save_png(imgout_path_str: &str, img: &Bitmap, name: &str) {
+    panic!("Rustlight wasn't built with Image support.");
+}
+#[cfg(feature = "image")]
 pub fn save_png(imgout_path_str: &str, img: &Bitmap, name: &str) {
     // The image that we will render
     let mut image_ldr = DynamicImage::new_rgb8(img.size.x, img.size.y);

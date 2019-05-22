@@ -5,6 +5,7 @@ use crate::structure::Color;
 use crate::tools::StepRangeInt;
 use cgmath::*;
 use embree_rs;
+#[cfg(feature = "image")]
 use image;
 use std;
 use std::sync::Arc;
@@ -63,13 +64,13 @@ pub fn load_obj(
             let mat = &materials[id];
             if !mat.diffuse_texture.is_empty() {
                 let path_texture = wk.join(&mat.diffuse_texture);
-                info!("Read texture: {:?}", path_texture);
-                let img = image::open(path_texture).expect("Impossible to load the image");
                 meshes.push(Box::new(Mesh::new(
                     m.name,
                     trimesh,
                     Box::new(bsdfs::diffuse::BSDFDiffuse {
-                        diffuse: bsdfs::BSDFColor::TextureColor(bsdfs::Texture { img }),
+                        diffuse: bsdfs::BSDFColor::TextureColor(bsdfs::Texture::load(
+                            path_texture.to_str().unwrap(),
+                        )),
                     }),
                 )));
             } else {
