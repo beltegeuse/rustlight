@@ -1,6 +1,7 @@
 use crate::constants;
 use crate::geometry::Mesh;
 use crate::math::Frame;
+use crate::tools::*;
 use crate::Scale;
 use cgmath::*;
 use embree_rs;
@@ -9,6 +10,9 @@ use image::Pixel;
 use std;
 use std::ops::*;
 use std::sync::Arc;
+use std::fs::File;
+use std::io::{Read,BufReader};
+use std::path::Path;
 /// PDF represented into different spaces
 #[derive(Clone)]
 pub enum PDF {
@@ -267,6 +271,99 @@ impl<'a> Add<&'a Color> for Color {
             r: self.r + other.r,
             g: self.g + other.g,
             b: self.b + other.b,
+        }
+    }
+}
+
+struct Texture {
+    pub dim: Vector2<i32>,
+    pub colors: Vec<Color>,
+}
+impl Texture {
+    // Get the pixel value at the given position
+    pub fn pixel(&self, mut uv: Vector2<f32>) -> Color {
+        uv.x = uv.x.modulo(1.0);
+        uv.y = uv.y.modulo(1.0);
+        let (x, y) = (uv.x * self.dim.x as f32, uv.y * self.dim.y as f32);
+        let i = self.dim.x as f32 * y + x;
+        self.colors[i as usize]
+    }
+    // Load images
+    pub fn read_pfm(filename: &str) -> Self {
+        let f = File::open(Path::new(filename)).unwrap();
+        let f = BufReader::new(f);
+        // Check the flag
+        {
+            let mut header_str = String::new();
+            f.read_line(&mut header_str);
+            if header_str != "PF\n" {
+                panic!("Wrong PF flag encounter");
+            }
+        } 
+        // Check the dim
+        let dim = {
+            let mut img_dim_y = String::new();
+            f.read_line(&mut img_dim_y);
+            let mut img_dim_x = String::new();
+            f.read_line(&mut img_dim_x);
+            Vector2::new(img_dim_x.parse::<f32>().unwrap(), 
+                         img_dim_y.parse::<f32>().unwrap())
+        };
+
+        let pix = vec![Color::zero(); dim.x * dim.y];
+        for y in 0..dim.y {
+            for x in 0..dim.x {
+                // TODO: Becarefull of the non good order
+                unimplemented!();
+            }
+        }
+    }
+    #[cfg(not(feature = "openexr"))]
+    pub fn read_exr(filename: &str) -> Self {
+        panic!("Rustlight wasn't built with OpenEXR support");
+        Texture::default()
+    }
+    #[cfg(feature = "openexr")]
+    pub fn read_exr(filename: &str) -> Self {
+        panic!("Rustlight wasn't built with OpenEXR support");
+        Texture::default()
+    }
+    #[cfg(not(feature = "image"))]
+    pub fn read_ldr_image(filename: &str) -> Self {
+        panic!("Rustlight wasn't built with image support");
+        Texture::default()
+    }
+    #[cfg(not(feature = "image"))]
+    pub fn read_ldr_image(filename: &str) -> Self {
+    }
+    
+    pub fn read(filename: &str) -> Self {
+        let ext = match std::path::Path::new(filename).extension() {
+            None => panic!("No file extension provided"),
+            Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
+        };
+        match ext {
+            "pfm" => {
+                Texture::read_pfm(filename)
+            }
+            "exr" => {
+                Texture::read_exr(filename)
+            }
+            _ => {
+                // Try the default implementation support
+                Texture::read_ldr_image(filename)
+            }
+        }
+
+    }
+
+}
+// By default, create a black image
+impl Default for Texture {
+    fn default() -> Self {
+        Self {
+            dim: Vector2::new(1, 1),
+            colors: vec![Color::zero()],
         }
     }
 }

@@ -10,15 +10,16 @@ doc = false
 
 [features]
 # No default features are enable by default
-default = []
+default = ["image", "embree-rs", "pbrt_rs"]
 pbrt = ["pbrt_rs"]
+embree = ["embree-rs"]
 
 [dependencies]
 image = { version =  "0.18.0", optional = true }
 rayon = "1.0.0"
 rand = "0.4.2"
 tobj = "*"
-embree-rs = { git = "https://github.com/beltegeuse/embree-rs" }
+embree-rs = { git = "https://github.com/beltegeuse/embree-rs", optional = true }
 serde = "1.0"
 serde_derive = "1.0" 
 serde_json = "1.0"
