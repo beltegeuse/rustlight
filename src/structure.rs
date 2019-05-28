@@ -3,7 +3,7 @@ use crate::geometry::Mesh;
 use crate::math::Frame;
 use crate::tools::*;
 use crate::Scale;
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use cgmath::{InnerSpace, Point2, Point3, Vector2, Vector3};
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, Pixel, PNG};
@@ -326,9 +326,22 @@ impl Bitmap {
     pub fn pixel_uv(&self, mut uv: Vector2<f32>) -> Color {
         uv.x = uv.x.modulo(1.0);
         uv.y = uv.y.modulo(1.0);
-        let (x, y) = (uv.x * self.size.x as f32, uv.y * self.size.y as f32);
-        let i = self.size.x as f32 * y + x;
-        self.colors[i as usize]
+        let (x, y) = (
+            (uv.x * self.size.x as f32) as usize,
+            (uv.y * self.size.y as f32) as usize,
+        );
+        let i = self.size.x as usize * y + x;
+        if i >= self.colors.len() {
+            warn!(
+                "Exceed UV coordinates: {:?} | {:?} | {:?}",
+                uv,
+                self.size,
+                (x, y)
+            );
+            Color::default()
+        } else {
+            self.colors[i]
+        }
     }
     pub fn pixel(&self, p: Point2<u32>) -> Color {
         assert!(p.x < self.size.x);
@@ -338,7 +351,7 @@ impl Bitmap {
 
     // Save functions
     #[cfg(not(feature = "image"))]
-    pub fn save_ldr_image(&self, imgout_path_str: &str) {
+    pub fn save_ldr_image(&self, _imgout_path_str: &str) {
         panic!("Rustlight wasn't built with Image support.");
     }
     #[cfg(feature = "image")]
@@ -358,7 +371,7 @@ impl Bitmap {
     }
 
     #[cfg(not(feature = "openexr"))]
-    pub fn save_exr(&self, imgout_path_str: &str) {
+    pub fn save_exr(&self, _imgout_path_str: &str) {
         panic!("Rustlight wasn't built with OpenExr support.");
     }
     #[cfg(feature = "openexr")]
@@ -452,35 +465,81 @@ impl Bitmap {
             )
         };
 
-        let pix = vec![Color::zero(); (size.x * size.y) as usize];
+        let mut colors = vec![Color::zero(); (size.x * size.y) as usize];
         for y in 0..size.y {
             for x in 0..size.x {
-                // TODO: Becarefull of the non good order
-                unimplemented!();
+                let r = f.read_f32::<LittleEndian>().unwrap();
+                let g = f.read_f32::<LittleEndian>().unwrap();
+                let b = f.read_f32::<LittleEndian>().unwrap();
+                //
+                let p = Point2::new(x, size.y - y - 1);
+                colors[(p.y * size.x + p.x) as usize] = Color::new(r, g, b);
             }
         }
 
-        Bitmap::default()
+        Bitmap { size, colors }
     }
     #[cfg(not(feature = "openexr"))]
-    pub fn read_exr(filename: &str) -> Self {
+    pub fn read_exr(_filename: &str) -> Self {
         panic!("Rustlight wasn't built with OpenEXR support");
         Bitmap::default()
     }
     #[cfg(feature = "openexr")]
     pub fn read_exr(filename: &str) -> Self {
-        panic!("Rustlight wasn't built with OpenEXR support");
-        Bitmap::default()
+        // Open the EXR file.
+        let mut file = std::fs::File::open(filename).unwrap();
+        let mut input_file = openexr::InputFile::new(&mut file).unwrap();
+
+        // Get the image dimensions, so we know how large of a buffer to make.
+        let (width, height) = input_file.header().data_dimensions();
+        let size = Vector2::new(width, height);
+
+        // Buffer to read pixel data into.
+        let mut pixel_data = vec![(0.0f32, 0.0f32, 0.0f32); (width * height) as usize];
+
+        // New scope because `FrameBuffer` mutably borrows `pixel_data`, so we need
+        // it to go out of scope before we can access our `pixel_data` again.
+        {
+            // Create `FrameBufferMut` that points at our pixel data and describes
+            // it as RGB data.
+            let mut fb = openexr::FrameBufferMut::new(width, height);
+            fb.insert_channels(&[("R", 0.0), ("G", 0.0), ("B", 0.0)], &mut pixel_data);
+
+            // Read pixel data from the file.
+            input_file.read_pixels(&mut fb).unwrap();
+        }
+
+        let colors = pixel_data
+            .into_iter()
+            .map(|v| Color::new(v.0, v.1, v.2))
+            .collect::<Vec<Color>>();
+        Bitmap { size, colors }
     }
     #[cfg(not(feature = "image"))]
-    pub fn read_ldr_image(filename: &str) -> Self {
+    pub fn read_ldr_image(_filename: &str) -> Self {
         panic!("Rustlight wasn't built with image support");
         Bitmap::default()
     }
     #[cfg(feature = "image")]
     pub fn read_ldr_image(filename: &str) -> Self {
-        panic!("Rustlight wasn't built with image support");
-        Bitmap::default()
+        // The image that we will render
+        let image_ldr = image::open(filename)
+            .unwrap_or_else(|_| panic!("Impossible to read image: {}", filename));
+        let image_ldr = image_ldr.to_rgb();
+        let size = Vector2::new(image_ldr.width(), image_ldr.height());
+        let mut colors = vec![Color::zero(); (size.x * size.y) as usize];
+        for x in 0..size.x {
+            for y in 0..size.y {
+                let p = image_ldr.get_pixel(x, y);
+                colors[(y * size.x + x) as usize] = Color::new(
+                    f32::from(p[0]) / 255.0,
+                    f32::from(p[1]) / 255.0,
+                    f32::from(p[2]) / 255.0,
+                );
+            }
+        }
+
+        Bitmap { size, colors }
     }
 
     pub fn read(filename: &str) -> Self {

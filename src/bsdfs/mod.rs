@@ -4,10 +4,6 @@ use serde_json;
 
 use crate::tools::*;
 use cgmath::{InnerSpace, Point2, Vector2, Vector3};
-#[cfg(feature = "image")]
-use image;
-#[cfg(feature = "image")]
-use image::GenericImage;
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
 use std;
@@ -19,55 +15,30 @@ pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
 // Texture or uniform color buffers
 #[derive(Deserialize)]
 pub struct Texture {
-    #[cfg(feature = "image")]
     #[serde(deserialize_with = "deserialize_from_str")]
-    pub img: image::DynamicImage,
+    pub img: Bitmap,
 }
 
 impl Texture {
-    #[cfg(not(feature = "image"))]
-    pub fn load(path: &str) -> Texture {
-        panic!("Impossible to load textures. No support for textures");
-    }
-    #[cfg(feature = "image")]
     pub fn load(path: &str) -> Texture {
         Texture {
-            img: image::open(path).expect("Impossible to load the image"),
+            img: Bitmap::read(path),
         }
     }
-
     // Access to the texture
-    #[cfg(not(feature = "image"))]
-    pub fn pixel(&self, mut uv: Vector2<f32>) -> Color {
-        panic!("No support for textures");
-        return Color::zero();
-    }
-    #[cfg(feature = "image")]
-    pub fn pixel(&self, mut uv: Vector2<f32>) -> Color {
-        uv.x = uv.x.modulo(1.0);
-        uv.y = uv.y.modulo(1.0);
-
-        let dim = self.img.dimensions();
-        let (x, y) = (uv.x * dim.0 as f32, uv.y * dim.1 as f32);
-        let pix = self.img.get_pixel(x as u32, y as u32);
-        assert!(pix.data[3] == 255); // Just check that there is no alpha
-        Color::new(
-            f32::from(pix.data[0]) / 255.0,
-            f32::from(pix.data[1]) / 255.0,
-            f32::from(pix.data[2]) / 255.0,
-        )
+    pub fn pixel(&self, uv: Vector2<f32>) -> Color {
+        self.img.pixel_uv(uv)
     }
 }
 
 #[cfg(feature = "image")]
-fn deserialize_from_str<'de, D>(deserializer: D) -> Result<image::DynamicImage, D::Error>
+fn deserialize_from_str<'de, D>(deserializer: D) -> Result<Bitmap, D::Error>
 where
     D: Deserializer<'de>,
 {
     let _s: String = Deserialize::deserialize(deserializer)?;
-    let _img = image::DynamicImage::new_rgb8(1, 1);
     unimplemented!();
-    // Ok(_img)
+    Ok(Bitmap::default())
 }
 
 #[derive(Deserialize)]
