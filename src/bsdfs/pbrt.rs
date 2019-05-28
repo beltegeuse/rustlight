@@ -310,7 +310,7 @@ impl Bsdf {
             // }
             // println!("Overall f = {:?}, pdf = {:?}, ratio = {:?}", f, *pdf, ratio);
 
-            return f;
+            f
         } else {
             panic!("CHECK_NOTNULL(bxdf)");
         }

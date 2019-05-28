@@ -1,5 +1,10 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
+#![allow(dead_code)]
+#![allow(clippy::float_cmp)]
+#![allow(clippy::excessive_precision)]
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::many_single_char_names)]
 
 // For getting low machine information
 extern crate byteorder;

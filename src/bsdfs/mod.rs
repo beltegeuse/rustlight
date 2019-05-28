@@ -194,15 +194,16 @@ fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option
     }
 }
 
-macro_rules! default_color {
-    ($texture: expr, $default:expr) => {{
-        if let Some(v) = $texture {
-            v
-        } else {
-            BSDFColor::UniformColor($default)
-        }
-    }};
-}
+// Debug macro for color
+// macro_rules! default_color {
+//     ($texture: expr, $default:expr) => {{
+//         if let Some(v) = $texture {
+//             v
+//         } else {
+//             BSDFColor::UniformColor($default)
+//         }
+//     }};
+// }
 
 #[cfg(feature = "pbrt")]
 pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF + Sync + Send> {

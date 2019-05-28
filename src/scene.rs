@@ -86,7 +86,7 @@ impl Scene {
     ) -> Result<Scene, Box<Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
-        let working_dir = std::path::Path::new(filename.clone()).parent().unwrap();
+        let working_dir = std::path::Path::new(filename).parent().unwrap();
         pbrt_rs::read_pbrt_file(filename, &working_dir, &mut scene_info, &mut state);
 
         // Allocate embree
@@ -139,9 +139,6 @@ impl Scene {
                     // FIXME FIXME
                     Box::new(geometry::Mesh::new("noname".to_string(), trimesh, bsdf))
                 }
-                _ => {
-                    panic!("Ignore the type of mesh");
-                }
             })
             .collect();
         info!("Build the acceleration structure");
@@ -187,7 +184,6 @@ impl Scene {
                         info!("camera matrix: {:?}", mat);
                         Camera::new(scene_info.image_size, cam.fov, mat)
                     }
-                    _ => panic!("Unsupported camera type"),
                 }
             } else {
                 panic!("The camera is not set!");
@@ -196,7 +192,7 @@ impl Scene {
 
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
-            camera: camera,
+            camera,
             embree_scene: scene_embree,
             meshes,
             emitters,

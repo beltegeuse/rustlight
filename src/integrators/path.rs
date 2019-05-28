@@ -1,6 +1,5 @@
 use crate::integrators::*;
 use crate::structure::*;
-use cgmath::*;
 
 pub struct IntegratorPath {
     pub max_depth: Option<u32>,
@@ -9,7 +8,7 @@ pub struct IntegratorPath {
 }
 
 impl Integrator for IntegratorPath {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         compute_mc(self, scene)
     }
 }

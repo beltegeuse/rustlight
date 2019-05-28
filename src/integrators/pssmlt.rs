@@ -30,7 +30,7 @@ pub struct IntegratorPSSMLT {
     pub integrator: Box<IntegratorMC>,
 }
 impl Integrator for IntegratorPSSMLT {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         ///////////// Define the closure
         let sample = |s: &mut Sampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
@@ -61,7 +61,7 @@ impl Integrator for IntegratorPSSMLT {
         let start = Instant::now();
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
         let buffer_names = vec!["primal".to_string()];
-        let img = Mutex::new(Bitmap::new(
+        let img = Mutex::new(BufferCollection::new(
             Point2::new(0, 0),
             *scene.camera.size(),
             &buffer_names,
@@ -78,9 +78,9 @@ impl Integrator for IntegratorPSSMLT {
                 }
                 s.accept();
 
-                let mut my_img: Bitmap =
-                    Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
-                (0..nb_samples_per_chains).into_iter().for_each(|_| {
+                let mut my_img: BufferCollection =
+                    BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
+                (0..nb_samples_per_chains).for_each(|_| {
                     // Choose randomly between large and small perturbation
                     s.large_step = s.rand() < self.large_prob;
                     let mut proposed_state = sample(s);
@@ -116,7 +116,7 @@ impl Integrator for IntegratorPSSMLT {
             });
         });
 
-        let mut img: Bitmap = img.into_inner().unwrap();
+        let mut img: BufferCollection = img.into_inner().unwrap();
         let elapsed = start.elapsed();
         info!("Elapsed: {:?}", elapsed,);
 
@@ -134,7 +134,6 @@ impl IntegratorPSSMLT {
 
         let mut sampler = samplers::independent::IndependentSampler::default();
         (0..nb_samples)
-            .into_iter()
             .map(|_i| {
                 let x = (sampler.next() * scene.camera.size().x as f32) as u32;
                 let y = (sampler.next() * scene.camera.size().y as f32) as u32;

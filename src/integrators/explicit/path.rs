@@ -139,7 +139,7 @@ impl TechniquePathTracing {
 }
 
 impl Integrator for IntegratorPathTracing {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         compute_mc(self, scene)
     }
 }

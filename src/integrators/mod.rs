@@ -1,7 +1,7 @@
 use crate::samplers::*;
 use crate::scene::*;
-use crate::structure::Color;
-use crate::tools::{save, StepRangeInt};
+use crate::structure::{Bitmap, Color};
+use crate::tools::StepRangeInt;
 use crate::Scale;
 use cgmath::{Point2, Vector2};
 use pbr::ProgressBar;
@@ -16,17 +16,17 @@ use std::time::Instant;
 //////////////// Helpers
 /// Image block
 /// for easy paralelisation over the thread
-pub struct Bitmap {
+pub struct BufferCollection {
     pub pos: Point2<u32>,
     pub size: Vector2<u32>,
-    pub values: HashMap<String, Vec<Color>>,
+    pub values: HashMap<String, Bitmap>,
 }
-unsafe impl Send for Bitmap {}
+unsafe impl Send for BufferCollection {}
 
-impl Bitmap {
+impl BufferCollection {
     /// Create a new Bitmap
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<String>) -> Bitmap {
-        let mut bitmap = Bitmap {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<String>) -> BufferCollection {
+        let mut bitmap = BufferCollection {
             pos,
             size,
             values: HashMap::new(),
@@ -37,8 +37,12 @@ impl Bitmap {
         }
         bitmap
     }
-    pub fn copy(pos: Point2<u32>, size: Vector2<u32>, other: &Bitmap) -> Bitmap {
-        let mut bitmap = Bitmap {
+    pub fn copy(
+        pos: Point2<u32>,
+        size: Vector2<u32>,
+        other: &BufferCollection,
+    ) -> BufferCollection {
+        let mut bitmap = BufferCollection {
             pos,
             size,
             values: HashMap::new(),
@@ -56,21 +60,23 @@ impl Bitmap {
         };
         let mut trunc_name = name.to_string();
         trunc_name.truncate(name.len() - output_ext.len() - 1);
-        for key in self.values.keys() {
+        for (key, value) in self.values.iter() {
             let new_name = format!("{}_{}.{}", trunc_name, key, output_ext);
-            save(new_name.as_str(), self, key);
+            value.save(new_name.as_str());
         }
     }
 
     /// Register a name for a particular buffer
     pub fn register(&mut self, name: String) {
-        self.values.insert(
-            name,
-            vec![Color::default(); (self.size.x * self.size.y) as usize],
-        );
+        self.values.insert(name, Bitmap::new(self.size));
     }
 
-    pub fn register_mean_variance(&mut self, base_name: &str, o: &Bitmap, buffers: &Vec<String>) {
+    pub fn register_mean_variance(
+        &mut self,
+        base_name: &str,
+        o: &BufferCollection,
+        buffers: &Vec<String>,
+    ) {
         // Create buffers
         let mean_name = format!("{}_mean", base_name);
         let variance_name = format!("{}_variance", base_name);
@@ -100,20 +106,18 @@ impl Bitmap {
         }
     }
 
-    pub fn accumulate_bitmap_buffer(&mut self, o: &Bitmap, name_org: &str, name_dest: &str) {
-        let pixels = self.values.get_mut(name_dest).unwrap();
-        let other_pixels = &o.values[name_org];
-        for y in 0..o.size.y {
-            for x in 0..o.size.x {
-                let p = Point2::new(o.pos.x + x, o.pos.y + y);
-                let index = (p.y * self.size.x + p.x) as usize;
-                let index_other = (y * o.size.x + x) as usize;
-                pixels[index] += other_pixels[index_other];
-            }
-        }
+    pub fn accumulate_bitmap_buffer(
+        &mut self,
+        o: &BufferCollection,
+        name_org: &str,
+        name_dest: &str,
+    ) {
+        let bitmap = self.values.get_mut(name_dest).unwrap();
+        let other_bitmap = &o.values[name_org];
+        bitmap.accumulate_bitmap(&other_bitmap, o.pos);
     }
 
-    pub fn accumulate_bitmap(&mut self, o: &Bitmap) {
+    pub fn accumulate_bitmap(&mut self, o: &BufferCollection) {
         // This is special, it does not allowed to write twice the same pixels
         // This function is only when we
         for keys in o.values.keys() {
@@ -122,10 +126,7 @@ impl Bitmap {
     }
 
     pub fn accumulate(&mut self, p: Point2<u32>, f: Color, name: &str) {
-        assert!(p.x < self.size.x);
-        assert!(p.y < self.size.y);
-        let index = (p.y * self.size.x + p.x) as usize;
-        self.values.get_mut(name).unwrap()[index] += f;
+        self.values.get_mut(name).unwrap().accumulate(p, f);
     }
 
     pub fn accumulate_safe(&mut self, p: Point2<i32>, f: Color, name: &str) {
@@ -147,47 +148,42 @@ impl Bitmap {
     }
 
     pub fn get(&self, p: Point2<u32>, name: &str) -> Color {
-        assert!(p.x < self.size.x);
-        assert!(p.y < self.size.y);
-        self.values[name][(p.y * self.size.x + p.x) as usize]
+        self.values[name].pixel(p)
     }
 
     pub fn reset(&mut self) {
         for val in self.values.values_mut() {
-            val.iter_mut().for_each(|x| *x = Color::default());
+            val.clear();
         }
     }
 
     pub fn average_pixel(&self, name: &str) -> Color {
-        let mut s = Color::default();
-        self.values[name].iter().for_each(|x| s += x);
-        s.scale(1.0 / self.values[name].len() as f32);
-        s
+        self.values[name].average()
     }
 
     pub fn scale_buffer(&mut self, f: f32, name: &str) {
-        self.values
-            .get_mut(name)
-            .unwrap()
-            .iter_mut()
-            .for_each(|x| x.scale(f));
+        self.values.get_mut(name).unwrap().scale(f);
+    }
+
+    pub fn save(&self, name: &str, filename: &str) {
+        self.values[name].save(filename);
     }
 }
 
-impl Scale<f32> for Bitmap {
+impl Scale<f32> for BufferCollection {
     fn scale(&mut self, f: f32) {
         assert!(f > 0.0);
         for val in self.values.values_mut() {
-            val.iter_mut().for_each(|v| v.scale(f));
+            val.scale(f);
         }
     }
 }
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
-        Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
+        BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
 
@@ -195,11 +191,11 @@ pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(&self, pix: (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color;
 }
 
-pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<Bitmap> {
-    let mut image_blocks: Vec<Bitmap> = Vec::new();
+pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<BufferCollection> {
+    let mut image_blocks: Vec<BufferCollection> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
-            let mut block = Bitmap::new(
+            let block = BufferCollection::new(
                 Point2 {
                     x: ix as u32,
                     y: iy as u32,
@@ -216,7 +212,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<Bitm
     image_blocks
 }
 
-pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitmap {
+pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> BufferCollection {
     // Here we can to the classical parallelisation
     assert_ne!(scene.nb_samples(), 0);
     let buffernames = vec!["primal".to_string()];
@@ -251,7 +247,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Bitma
     });
 
     // Fill the image
-    let mut image = Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
+    let mut image = BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
     for im_block in &image_blocks {
         image.accumulate_bitmap(im_block);
     }

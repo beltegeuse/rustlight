@@ -1,4 +1,4 @@
-use crate::integrators::{generate_img_blocks, generate_pool, Bitmap, Integrator};
+use crate::integrators::{generate_img_blocks, generate_pool, BufferCollection, Integrator};
 use crate::scene::Scene;
 use crate::structure::Color;
 use crate::tools::StepRangeInt;
@@ -43,10 +43,10 @@ pub static GRADIENT_DIRECTION: [GradientDirection; 4] = [
 ];
 
 pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, scene: &Scene) -> Bitmap;
+    fn compute_gradients(&mut self, scene: &Scene) -> BufferCollection;
     fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync>;
 
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         // Rendering the gradient informations
         info!("Rendering...");
         let start = Instant::now();
@@ -66,7 +66,7 @@ pub trait IntegratorGradient: Integrator {
 }
 
 pub trait PoissonReconstruction {
-    fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap;
+    fn reconstruct(&self, scene: &Scene, est: &BufferCollection) -> BufferCollection;
     fn need_variance_estimates(&self) -> Option<usize>;
 }
 
@@ -90,7 +90,7 @@ pub fn generate_img_blocks_gradient(
 ) -> (
     usize,
     Vec<String>,
-    Vec<(BlockInfoGradient, Bitmap)>,
+    Vec<(BlockInfoGradient, BufferCollection)>,
     BufferIDGradient,
 ) {
     // The buffers names are always:
@@ -132,7 +132,7 @@ pub fn generate_img_blocks_gradient(
                 x: (scene.camera.size().x - pos_off.x) as u32,
                 y: (scene.camera.size().y - pos_off.y) as u32,
             };
-            let mut block = Bitmap::new(
+            let mut block = BufferCollection::new(
                 pos_off,
                 Vector2 {
                     x: cmp::min(desired_size.x, max_size.x),

@@ -3,17 +3,20 @@ use crate::geometry::Mesh;
 use crate::math::Frame;
 use crate::tools::*;
 use crate::Scale;
-use cgmath::*;
-use embree_rs;
+use byteorder::{LittleEndian, WriteBytesExt};
+use cgmath::{InnerSpace, Point2, Point3, Vector2, Vector3};
 #[cfg(feature = "image")]
-use image::Pixel;
+use image::{DynamicImage, GenericImage, Pixel, PNG};
+#[cfg(feature = "openexr")]
+use openexr;
 use std;
-use std::ops::*;
-use std::sync::Arc;
 use std::fs::File;
-use std::io::{Read,BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::ops::*;
 use std::path::Path;
-/// PDF represented into different spaces
+use std::sync::Arc;
+
+
 #[derive(Clone)]
 pub enum PDF {
     SolidAngle(f32),
@@ -275,83 +278,222 @@ impl<'a> Add<&'a Color> for Color {
     }
 }
 
-struct Texture {
-    pub dim: Vector2<i32>,
+pub struct Bitmap {
+    pub size: Vector2<u32>,
     pub colors: Vec<Color>,
 }
-impl Texture {
+impl Bitmap {
+    pub fn new(size: Vector2<u32>) -> Bitmap {
+        Bitmap {
+            size,
+            colors: vec![Color::default(); (size.x * size.y) as usize],
+        }
+    }
+    pub fn clear(&mut self) {
+        self.colors.iter_mut().for_each(|x| *x = Color::default());
+    }
+    pub fn accumulate(&mut self, p: Point2<u32>, f: Color) {
+        assert!(p.x < self.size.x);
+        assert!(p.y < self.size.y);
+        let index = (p.y * self.size.x + p.x) as usize;
+        self.colors[index] += f;
+    }
+    /**
+     * pos: Position where to splat the buffer
+     */
+    pub fn accumulate_bitmap(&mut self, o: &Bitmap, pos: Point2<u32>) {
+        for y in 0..o.size.y {
+            for x in 0..o.size.x {
+                let p = Point2::new(pos.x + x, pos.y + y);
+                let index = (p.y * self.size.x + p.x) as usize;
+                let index_other = (y * o.size.x + x) as usize;
+                self.colors[index] += o.colors[index_other];
+            }
+        }
+    }
+    pub fn scale(&mut self, v: f32) {
+        self.colors.iter_mut().for_each(|x| x.scale(v));
+    }
+    pub fn average(&self) -> Color {
+        let mut s = Color::default();
+        self.colors.iter().for_each(|x| s += x);
+        s.scale(1.0 / self.colors.len() as f32);
+        s
+    }
+
+
     // Get the pixel value at the given position
-    pub fn pixel(&self, mut uv: Vector2<f32>) -> Color {
+    pub fn pixel_uv(&self, mut uv: Vector2<f32>) -> Color {
         uv.x = uv.x.modulo(1.0);
         uv.y = uv.y.modulo(1.0);
-        let (x, y) = (uv.x * self.dim.x as f32, uv.y * self.dim.y as f32);
-        let i = self.dim.x as f32 * y + x;
+        let (x, y) = (uv.x * self.size.x as f32, uv.y * self.size.y as f32);
+        let i = self.size.x as f32 * y + x;
         self.colors[i as usize]
     }
+    pub fn pixel(&self, p: Point2<u32>) -> Color {
+        assert!(p.x < self.size.x);
+        assert!(p.y < self.size.y);
+        self.colors[(p.y * self.size.x + p.x) as usize]
+    }
+
+    // Save functions
+    #[cfg(not(feature = "image"))]
+    pub fn save_ldr_image(&self, imgout_path_str: &str) {
+        panic!("Rustlight wasn't built with Image support.");
+    }
+    #[cfg(feature = "image")]
+    pub fn save_ldr_image(&self, imgout_path_str: &str) {
+        // The image that we will render
+        let mut image_ldr = DynamicImage::new_rgb8(self.size.x, self.size.y);
+        for x in 0..self.size.x {
+            for y in 0..self.size.y {
+                let p = Point2::new(x, y);
+                image_ldr.put_pixel(x, y, self.pixel(p).to_rgba())
+            }
+        }
+        let mut fout = File::create(imgout_path_str).unwrap();
+        image_ldr
+            .save(&mut fout, PNG)
+            .expect("failed to write img into file");
+    }
+
+    #[cfg(not(feature = "openexr"))]
+    pub fn save_exr(&self, imgout_path_str: &str) {
+        panic!("Rustlight wasn't built with OpenExr support.");
+    }
+    #[cfg(feature = "openexr")]
+    pub fn save_exr(&self, imgout_path_str: &str) {
+        // Pixel data for floating point RGB image.
+        let mut pixel_data = vec![];
+        pixel_data.reserve((self.size.x * self.size.y) as usize);
+        for y in 0..self.size.y {
+            for x in 0..self.size.x {
+                let p = Point2::new(x, y);
+                let c = self.pixel(p);
+                pixel_data.push((c.r, c.g, c.b));
+            }
+        }
+
+        // Create a file to write to.  The `Header` determines the properties of the
+        // file, like resolution and what channels it has.
+        let mut file = std::fs::File::create(Path::new(imgout_path_str)).unwrap();
+        let mut output_file = openexr::ScanlineOutputFile::new(
+            &mut file,
+            openexr::Header::new()
+                .set_resolution(self.size.x, self.size.y)
+                .add_channel("R", openexr::PixelType::FLOAT)
+                .add_channel("G", openexr::PixelType::FLOAT)
+                .add_channel("B", openexr::PixelType::FLOAT),
+        )
+        .unwrap();
+
+        // Create a `FrameBuffer` that points at our pixel data and describes it as
+        // RGB data.
+        let mut fb = openexr::FrameBuffer::new(self.size.x, self.size.y);
+        fb.insert_channels(&["R", "G", "B"], &pixel_data);
+
+        // Write pixel data to the file.
+        output_file.write_pixels(&fb).unwrap();
+    }
+    pub fn save(&self, imgout_path_str: &str) {
+        let output_ext = match std::path::Path::new(imgout_path_str).extension() {
+            None => panic!("No file extension provided"),
+            Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
+        };
+        match output_ext {
+            "pfm" => {
+                self.save_pfm(imgout_path_str);
+            }
+            "png" => {
+                self.save_ldr_image(imgout_path_str);
+            }
+            "exr" => {
+                self.save_exr(imgout_path_str);
+            }
+            _ => panic!("Unknow output file extension"),
+        }
+    }
+
+    pub fn save_pfm(&self, imgout_path_str: &str) {
+        let mut file = File::create(Path::new(imgout_path_str)).unwrap();
+        let header = format!("PF\n{} {}\n-1.0\n", self.size.x, self.size.y);
+        file.write_all(header.as_bytes()).unwrap();
+        for y in 0..self.size.y {
+            for x in 0..self.size.x {
+                let p = self.pixel(Point2::new(x, self.size.y - y - 1));
+                file.write_f32::<LittleEndian>(p.r.abs()).unwrap();
+                file.write_f32::<LittleEndian>(p.g.abs()).unwrap();
+                file.write_f32::<LittleEndian>(p.b.abs()).unwrap();
+            }
+        }
+    }
+
     // Load images
     pub fn read_pfm(filename: &str) -> Self {
         let f = File::open(Path::new(filename)).unwrap();
-        let f = BufReader::new(f);
+        let mut f = BufReader::new(f);
         // Check the flag
         {
             let mut header_str = String::new();
-            f.read_line(&mut header_str);
+            f.read_line(&mut header_str).unwrap();
             if header_str != "PF\n" {
                 panic!("Wrong PF flag encounter");
             }
-        } 
+        }
         // Check the dim
-        let dim = {
+        let size = {
             let mut img_dim_y = String::new();
-            f.read_line(&mut img_dim_y);
+            f.read_line(&mut img_dim_y).unwrap();
             let mut img_dim_x = String::new();
-            f.read_line(&mut img_dim_x);
-            Vector2::new(img_dim_x.parse::<f32>().unwrap(), 
-                         img_dim_y.parse::<f32>().unwrap())
+            f.read_line(&mut img_dim_x).unwrap();
+            Vector2::new(
+                img_dim_x.parse::<u32>().unwrap(),
+                img_dim_y.parse::<u32>().unwrap(),
+            )
         };
 
-        let pix = vec![Color::zero(); dim.x * dim.y];
-        for y in 0..dim.y {
-            for x in 0..dim.x {
+        let pix = vec![Color::zero(); (size.x * size.y) as usize];
+        for y in 0..size.y {
+            for x in 0..size.x {
                 // TODO: Becarefull of the non good order
                 unimplemented!();
             }
         }
+
+        Bitmap::default()
     }
     #[cfg(not(feature = "openexr"))]
     pub fn read_exr(filename: &str) -> Self {
         panic!("Rustlight wasn't built with OpenEXR support");
-        Texture::default()
+        Bitmap::default()
     }
     #[cfg(feature = "openexr")]
     pub fn read_exr(filename: &str) -> Self {
         panic!("Rustlight wasn't built with OpenEXR support");
-        Texture::default()
+        Bitmap::default()
     }
     #[cfg(not(feature = "image"))]
     pub fn read_ldr_image(filename: &str) -> Self {
         panic!("Rustlight wasn't built with image support");
-        Texture::default()
+        Bitmap::default()
     }
-    #[cfg(not(feature = "image"))]
+    #[cfg(feature = "image")]
     pub fn read_ldr_image(filename: &str) -> Self {
+        panic!("Rustlight wasn't built with image support");
+        Bitmap::default()
     }
-    
+
     pub fn read(filename: &str) -> Self {
         let ext = match std::path::Path::new(filename).extension() {
             None => panic!("No file extension provided"),
             Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
         };
         match ext {
-            "pfm" => {
-                Texture::read_pfm(filename)
-            }
-            "exr" => {
-                Texture::read_exr(filename)
-            }
+            "pfm" => Bitmap::read_pfm(filename),
+            "exr" => Bitmap::read_exr(filename),
             _ => {
                 // Try the default implementation support
-                Texture::read_ldr_image(filename)
+                Bitmap::read_ldr_image(filename)
             }
         }
 
@@ -359,10 +501,10 @@ impl Texture {
 
 }
 // By default, create a black image
-impl Default for Texture {
+impl Default for Bitmap {
     fn default() -> Self {
-        Self {
-            dim: Vector2::new(1, 1),
+        Bitmap {
+            size: Vector2::new(1, 1),
             colors: vec![Color::zero()],
         }
     }

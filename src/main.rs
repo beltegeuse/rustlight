@@ -1,3 +1,8 @@
+#![cfg_attr(feature = "clippy", feature(plugin))]
+#![cfg_attr(feature = "clippy", plugin(clippy))]
+#![allow(dead_code)]
+#![allow(clippy::float_cmp)]
+
 extern crate cgmath;
 #[macro_use]
 extern crate clap;
@@ -9,7 +14,7 @@ extern crate rustlight;
 
 use clap::{App, Arg, SubCommand};
 use rustlight::integrators::gradient::IntegratorGradient;
-use rustlight::integrators::{Bitmap, Integrator};
+use rustlight::integrators::{BufferCollection, Integrator};
 use rustlight::scene::Scene;
 use std::time::Instant;
 
@@ -30,7 +35,7 @@ enum IntegratorType {
     Gradient(Box<IntegratorGradient>),
 }
 impl IntegratorType {
-    fn compute(self, scene: &Scene) -> Bitmap {
+    fn compute(self, scene: &Scene) -> BufferCollection {
         info!("Run Integrator...");
         let start = Instant::now();
 
@@ -118,8 +123,8 @@ fn main() {
                     .arg(&min_arg)
                     .arg(
                         Arg::with_name("primitive")
-                        .short("p")
-                        .help("do not use next event estimation")
+                            .short("p")
+                            .help("do not use next event estimation"),
                     ),
             )
             .subcommand(
@@ -444,7 +449,7 @@ fn main() {
     };
     let int = if matches.is_present("average") {
         let time_out = match_infinity(matches.value_of("average").unwrap());
-        let int = match int {
+        match int {
             IntegratorType::Gradient(v) => IntegratorType::Primal(Box::new(
                 rustlight::integrators::gradient::avg::IntegratorGradientAverage {
                     time_out,
@@ -459,13 +464,12 @@ fn main() {
                     integrator: v,
                 }))
             }
-        };
-        int
+        }
     } else {
         int
     };
     let img = int.compute(&scene);
 
     // Save the image
-    rustlight::tools::save(imgout_path_str, &img, "primal");
+    img.save("primal", imgout_path_str);
 }

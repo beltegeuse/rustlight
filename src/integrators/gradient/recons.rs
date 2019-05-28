@@ -12,7 +12,7 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
         Some(self.nb_buffers)
     }
 
-    fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap {
+    fn reconstruct(&self, scene: &Scene, est: &BufferCollection) -> BufferCollection {
         let img_size = est.size;
 
         // Generate several reconstruction and average it
@@ -21,7 +21,7 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
             panic!("Impossible to do bagging with less than two buffers");
         }
 
-        let mut image_recons = Bitmap::new(Point2::new(0, 0), img_size, &Vec::new());
+        let mut image_recons = BufferCollection::new(Point2::new(0, 0), img_size, &Vec::new());
         let mut buffernames = Vec::new();
         for n_recons in 0..self.nb_buffers {
             // Construct the buffer id
@@ -46,7 +46,7 @@ impl PoissonReconstruction for BaggingPoissonReconstruction {
         }
 
         // Average the different results
-        let mut image_avg = Bitmap::new(Point2::new(0, 0), img_size, &Vec::new());
+        let mut image_avg = BufferCollection::new(Point2::new(0, 0), img_size, &Vec::new());
         // Using the median or min or max
         // let real_primal_name = "primal".to_string();
         // image_avg.register(real_primal_name.clone());
@@ -99,8 +99,12 @@ impl WeightedPoissonReconstruction {
         self
     }
 
-    fn generate_average_variance_bitmap(&self, est: &Bitmap, img_size: Vector2<u32>) -> Bitmap {
-        let mut averaged_variance = Bitmap::new(Point2::new(0, 0), img_size, &Vec::new());
+    fn generate_average_variance_bitmap(
+        &self,
+        est: &BufferCollection,
+        img_size: Vector2<u32>,
+    ) -> BufferCollection {
+        let mut averaged_variance = BufferCollection::new(Point2::new(0, 0), img_size, &Vec::new());
         let buffernames = vec![
             String::from("primal"),
             String::from("gradient_x"),
@@ -131,7 +135,7 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
         }
     }
 
-    fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap {
+    fn reconstruct(&self, scene: &Scene, est: &BufferCollection) -> BufferCollection {
         let inv_or_1 = |v| if v == 0.0 { 1.0 } else { 1.0 / v };
 
         // Reconstruction (image-space covariate, uniform reconstruction)
@@ -154,7 +158,7 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
 
         // 1) Init
         let buffernames = vec![recons_name.to_string()];
-        let mut current = Bitmap::new(Point2::new(0, 0), img_size, &buffernames);
+        let mut current = BufferCollection::new(Point2::new(0, 0), img_size, &buffernames);
         current.accumulate_bitmap_buffer(&averaged_variance, &primal_name, &recons_name);
 
         // Generate the buffer names
@@ -247,8 +251,8 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
 
         // Export the reconstruction
         let real_primal_name = String::from("primal");
-        let mut image: Bitmap =
-            Bitmap::new(Point2::new(0, 0), img_size, &vec![real_primal_name.clone()]);
+        let mut image: BufferCollection =
+            BufferCollection::new(Point2::new(0, 0), img_size, &vec![real_primal_name.clone()]);
         image.accumulate_bitmap_buffer(&current, &recons_name, &real_primal_name);
         image.accumulate_bitmap_buffer(&est, &very_direct_name, &real_primal_name);
         image
@@ -263,11 +267,11 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
         None
     }
 
-    fn reconstruct(&self, scene: &Scene, est: &Bitmap) -> Bitmap {
+    fn reconstruct(&self, scene: &Scene, est: &BufferCollection) -> BufferCollection {
         // Reconstruction (image-space covariate, uniform reconstruction)
         let img_size = est.size;
         let buffernames = vec!["recons".to_string()];
-        let mut current = Bitmap::new(Point2::new(0, 0), img_size, &buffernames);
+        let mut current = BufferCollection::new(Point2::new(0, 0), img_size, &buffernames);
         let mut image_blocks = generate_img_blocks(scene, &buffernames);
 
         // Define names of buffers so we do not need to reallocate them
@@ -334,8 +338,8 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
             }
         });
         // Export the reconstruction
-        let mut image: Bitmap =
-            Bitmap::new(Point2::new(0, 0), img_size, &vec![String::from("primal")]);
+        let mut image: BufferCollection =
+            BufferCollection::new(Point2::new(0, 0), img_size, &vec![String::from("primal")]);
         image.accumulate_bitmap_buffer(&current, &recons_name, &primal_name);
         image.accumulate_bitmap_buffer(&est, &very_direct_name, &primal_name);
         image

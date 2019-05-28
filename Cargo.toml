@@ -10,7 +10,7 @@ doc = false
 
 [features]
 # No default features are enable by default
-default = ["image", "embree-rs", "pbrt_rs"]
+default = ["image", "embree-rs", "pbrt"]
 pbrt = ["pbrt_rs"]
 embree = ["embree-rs"]
 

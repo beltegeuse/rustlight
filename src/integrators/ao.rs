@@ -1,7 +1,6 @@
 use crate::integrators::*;
 use crate::math::*;
 use crate::structure::*;
-use cgmath::*;
 
 pub struct IntegratorAO {
     pub max_distance: Option<f32>,
@@ -9,7 +8,7 @@ pub struct IntegratorAO {
 }
 
 impl Integrator for IntegratorAO {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         compute_mc(self, scene)
     }
 }

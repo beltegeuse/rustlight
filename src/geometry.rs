@@ -5,8 +5,6 @@ use crate::structure::Color;
 use crate::tools::StepRangeInt;
 use cgmath::*;
 use embree_rs;
-#[cfg(feature = "image")]
-use image;
 use std;
 use std::sync::Arc;
 use tobj;
@@ -19,7 +17,7 @@ pub fn load_obj(
     device: &embree_rs::Device,
     scene: &mut embree_rs::SceneConstruct,
     file_name: &std::path::Path,
-) -> Result<Vec<Box<Mesh>>, tobj::LoadError> {
+) -> Result<Vec<Mesh>, tobj::LoadError> {
     println!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name)?;
     let wk = file_name.parent().unwrap();
@@ -64,7 +62,7 @@ pub fn load_obj(
             let mat = &materials[id];
             if !mat.diffuse_texture.is_empty() {
                 let path_texture = wk.join(&mat.diffuse_texture);
-                meshes.push(Box::new(Mesh::new(
+                meshes.push(Mesh::new(
                     m.name,
                     trimesh,
                     Box::new(bsdfs::diffuse::BSDFDiffuse {
@@ -72,25 +70,25 @@ pub fn load_obj(
                             path_texture.to_str().unwrap(),
                         )),
                     }),
-                )));
+                ));
             } else {
                 let diffuse_color = Color::new(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
-                meshes.push(Box::new(Mesh::new(
+                meshes.push(Mesh::new(
                     m.name,
                     trimesh,
                     Box::new(bsdfs::diffuse::BSDFDiffuse {
                         diffuse: bsdfs::BSDFColor::UniformColor(diffuse_color),
                     }),
-                )));
+                ));
             }
         } else {
-            meshes.push(Box::new(Mesh::new(
+            meshes.push(Mesh::new(
                 m.name,
                 trimesh,
                 Box::new(bsdfs::diffuse::BSDFDiffuse {
                     diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
                 }),
-            )));
+            ));
         }
     }
     Ok(meshes)

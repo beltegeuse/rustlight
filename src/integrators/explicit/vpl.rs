@@ -110,7 +110,7 @@ impl TechniqueVPL {
 }
 
 impl Integrator for IntegratorVPL {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         info!("Generating the VPL...");
         let buffernames = vec![String::from("primal")];
         let mut sampler = samplers::independent::IndependentSampler::default();
@@ -164,7 +164,8 @@ impl Integrator for IntegratorVPL {
         });
 
         // Fill the image
-        let mut image = Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
+        let mut image =
+            BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
         for im_block in &image_blocks {
             image.accumulate_bitmap(im_block);
         }

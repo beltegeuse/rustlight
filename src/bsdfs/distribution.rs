@@ -133,9 +133,9 @@ pub struct TrowbridgeReitzDistribution {
 impl TrowbridgeReitzDistribution {
     pub fn new(alpha_x: f32, alpha_y: f32, sample_visible_area: bool) -> Self {
         TrowbridgeReitzDistribution {
-            alpha_x: alpha_x,
-            alpha_y: alpha_y,
-            sample_visible_area: sample_visible_area,
+            alpha_x,
+            alpha_y,
+            sample_visible_area,
         }
     }
 }
@@ -163,11 +163,11 @@ impl MicrofacetDistribution for TrowbridgeReitzDistribution {
             roughness = limit;
         }
         let x: f32 = roughness.ln(); // natural (base e) logarithm
-        1.62142
-            + 0.819955 * x
-            + 0.1734 * x * x
-            + 0.0171201 * x * x * x
-            + 0.000640711 * x * x * x * x
+        1.621_42
+            + 0.819_955 * x
+            + 0.173_4 * x * x
+            + 0.017_120_1 * x * x * x
+            + 0.000_640_711 * x * x * x * x
     }
     fn roughness(&self) -> f32 {
         // TODO: Need to inverse the roughness to alpha
@@ -237,7 +237,7 @@ fn trowbridge_reitz_sample_11(
     // special case (normal incidence)
     if cos_theta > 0.9999 {
         let r: f32 = (u1 / (1.0 - u1)).sqrt();
-        let phi: f32 = 6.28318530718 * u2;
+        let phi: f32 = 6.283_185_307_18 * u2;
         *slope_x = r * phi.cos();
         *slope_y = r * phi.sin();
         return;

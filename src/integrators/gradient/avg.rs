@@ -1,5 +1,4 @@
 use crate::integrators::gradient::*;
-use crate::tools;
 use crate::Scale;
 use std;
 
@@ -10,7 +9,7 @@ pub struct IntegratorGradientAverage {
 }
 
 impl Integrator for IntegratorGradientAverage {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         // Get the output file type
         let output_ext = match std::path::Path::new(&scene.output_img_path).extension() {
             None => panic!("No file extension provided"),
@@ -21,7 +20,7 @@ impl Integrator for IntegratorGradientAverage {
         info!("Base output name: {:?}", base_output_img_path);
 
         // Other values
-        let mut bitmap: Option<Bitmap> = None;
+        let mut bitmap: Option<BufferCollection> = None;
         let mut iteration = 1;
         let start = Instant::now();
 
@@ -45,7 +44,7 @@ impl Integrator for IntegratorGradientAverage {
             info!("Reconstruction time: {:?}", elapsed_recons);
             // Save the bitmap for the current iteration
             let imgout_path_str = format!("{}_{}.{}", base_output_img_path, iteration, output_ext);
-            tools::save(imgout_path_str.as_str(), &recons_img, "primal");
+            recons_img.save("primal", imgout_path_str.as_str());
 
             // Check the time elapsed when we started the rendering...
             let elapsed = start.elapsed();
@@ -65,7 +64,7 @@ impl Integrator for IntegratorGradientAverage {
 
         if bitmap.is_none() {
             let buffernames = vec![String::from("primal")];
-            Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
+            BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
         } else {
             info!("Do the final reconstruction");
             self.integrator

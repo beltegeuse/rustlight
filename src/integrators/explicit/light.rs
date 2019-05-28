@@ -51,7 +51,7 @@ impl TechniqueLightTracing {
         &self,
         scene: &'a Scene,
         vertex: &Rc<VertexPtr<'a>>,
-        bitmap: &mut Bitmap,
+        bitmap: &mut BufferCollection,
         flux: Color,
     ) {
         match *vertex.borrow() {
@@ -120,7 +120,7 @@ impl TechniqueLightTracing {
 }
 
 impl Integrator for IntegratorLightTracing {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         // Number of samples that the system will trace
         let nb_threads = rayon::current_num_threads();
         let nb_jobs = nb_threads * 4;
@@ -134,7 +134,7 @@ impl Integrator for IntegratorLightTracing {
 
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
         let buffer_names = vec![String::from("primal")];
-        let img = Mutex::new(Bitmap::new(
+        let img = Mutex::new(BufferCollection::new(
             Point2::new(0, 0),
             *scene.camera.size(),
             &buffer_names,
@@ -143,9 +143,9 @@ impl Integrator for IntegratorLightTracing {
         let pool = generate_pool(scene);
         pool.install(|| {
             samplers.par_iter_mut().for_each(|s| {
-                let mut my_img: Bitmap =
-                    Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
-                (0..nb_samples).into_iter().for_each(|_| {
+                let mut my_img: BufferCollection =
+                    BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
+                (0..nb_samples).for_each(|_| {
                     // The sampling strategies
                     let samplings: Vec<Box<SamplingStrategy>> =
                         vec![Box::new(DirectionalSamplingStrategy {})];
@@ -167,7 +167,7 @@ impl Integrator for IntegratorLightTracing {
             });
         });
 
-        let mut img: Bitmap = img.into_inner().unwrap();
+        let mut img: BufferCollection = img.into_inner().unwrap();
         img.scale(1.0 / nb_jobs as f32);
         img.scale((scene.camera.img.x * scene.camera.img.y) as f32);
         img

@@ -1,6 +1,5 @@
 use crate::integrators::*;
 use crate::structure::*;
-use cgmath::*;
 
 pub struct IntegratorDirect {
     pub nb_bsdf_samples: u32,
@@ -8,7 +7,7 @@ pub struct IntegratorDirect {
 }
 
 impl Integrator for IntegratorDirect {
-    fn compute(&mut self, scene: &Scene) -> Bitmap {
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
         compute_mc(self, scene)
     }
 }

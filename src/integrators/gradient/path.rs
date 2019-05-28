@@ -95,7 +95,7 @@ impl IntegratorGradient for IntegratorGradientPath {
         &self.recons
     }
 
-    fn compute_gradients(&mut self, scene: &Scene) -> Bitmap {
+    fn compute_gradients(&mut self, scene: &Scene) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
             generate_img_blocks_gradient(scene, &self.recons);
 
@@ -193,7 +193,8 @@ impl IntegratorGradient for IntegratorGradientPath {
         });
 
         // Fill the image & do the reconstruct
-        let mut image = Bitmap::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
+        let mut image =
+            BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
         for (_, im_block) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }

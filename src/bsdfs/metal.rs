@@ -21,7 +21,7 @@ pub fn fr_conductor(cos_theta_i: f32, eta_i: Color, eta_t: Color, k: Color) -> C
     let eta_2: Color = eta * eta;
     let eta_k2: Color = eta_k * eta_k;
     let t0: Color = eta_2 - eta_k2 - Color::value(sin_theta_i2);
-    let a2_plus_b2: Color = (t0 * t0 + eta_2 * eta_k2 * Color::value(4 as f32)).sqrt();
+    let a2_plus_b2: Color = (t0 * t0 + eta_2 * eta_k2 * Color::value(4_f32)).sqrt();
     let t1: Color = a2_plus_b2 + Color::value(cos_theta_i2);
     let a: Color = ((a2_plus_b2 + t0) * 0.5 as f32).sqrt();
     let t2: Color = a * 2.0 as f32 * cos_theta_i;
