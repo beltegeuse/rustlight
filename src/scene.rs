@@ -147,9 +147,9 @@ impl Scene {
         // Assign materials and emissions
         for (i, shape) in scene_info.shapes.iter().enumerate() {
             match shape.emission {
-                Some(pbrt_rs::Param::RGB(r, g, b)) => {
-                    info!("assign emission: RGB({},{},{})", r, g, b);
-                    meshes[i].emission = Color::new(r, g, b)
+                Some(pbrt_rs::Param::RGB(ref rgb)) => {
+                    info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
+                    meshes[i].emission = Color::new(rgb.r, rgb.g, rgb.b)
                 }
                 None => {}
                 _ => warn!("unsupported emission profile: {:?}", shape.emission),

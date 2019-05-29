@@ -2,7 +2,6 @@ use crate::structure::*;
 use serde::{Deserialize, Deserializer};
 use serde_json;
 
-use crate::tools::*;
 use cgmath::{InnerSpace, Point2, Vector2, Vector3};
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
@@ -38,7 +37,6 @@ where
 {
     let _s: String = Deserialize::deserialize(deserializer)?;
     unimplemented!();
-    Ok(Bitmap::default())
 }
 
 #[derive(Deserialize)]
@@ -124,7 +122,6 @@ use crate::bsdfs::blend::BSDFBlend;
 use crate::bsdfs::diffuse::BSDFDiffuse;
 use crate::bsdfs::distribution::TrowbridgeReitzDistribution;
 use crate::bsdfs::metal::BSDFMetal;
-use crate::bsdfs::pbrt::SubstratePBRTMaterial;
 use crate::bsdfs::phong::BSDFPhong;
 use crate::bsdfs::specular::BSDFSpecular;
 
@@ -152,7 +149,9 @@ fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option
             let v = v[0];
             Some(BSDFColor::UniformColor(Color::new(v, v, v)))
         }
-        pbrt_rs::Param::RGB(r, g, b) => Some(BSDFColor::UniformColor(Color::new(*r, *g, *b))),
+        pbrt_rs::Param::RGB(ref rgb) => {
+            Some(BSDFColor::UniformColor(Color::new(rgb.r, rgb.g, rgb.b)))
+        }
         pbrt_rs::Param::Name(ref name) => {
             if let Some(texture) = scene_info.textures.get(name) {
                 Some(BSDFColor::TextureColor(Texture::load(&texture.filename)))

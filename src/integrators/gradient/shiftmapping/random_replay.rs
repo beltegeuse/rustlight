@@ -1,6 +1,4 @@
 use crate::integrators::gradient::shiftmapping::*;
-use crate::paths::path::*;
-use crate::paths::vertex::*;
 use crate::samplers::Sampler;
 use crate::scene::Scene;
 use crate::structure::Color;

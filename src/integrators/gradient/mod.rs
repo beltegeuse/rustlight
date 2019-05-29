@@ -132,7 +132,7 @@ pub fn generate_img_blocks_gradient(
                 x: (scene.camera.size().x - pos_off.x) as u32,
                 y: (scene.camera.size().y - pos_off.y) as u32,
             };
-            let mut block = BufferCollection::new(
+            let block = BufferCollection::new(
                 pos_off,
                 Vector2 {
                     x: cmp::min(desired_size.x, max_size.x),

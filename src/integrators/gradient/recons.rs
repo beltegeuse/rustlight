@@ -111,7 +111,7 @@ impl WeightedPoissonReconstruction {
             String::from("gradient_y"),
         ];
         for buffer in buffernames {
-            let mut selected_names = match self.buffers_id.as_ref() {
+            let selected_names = match self.buffers_id.as_ref() {
                 None => {
                     let nb_buffers = self.need_variance_estimates().unwrap();
                     (0..nb_buffers)

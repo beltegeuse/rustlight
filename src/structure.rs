@@ -11,7 +11,7 @@ use image::{DynamicImage, GenericImage, Pixel, PNG};
 use openexr;
 use std;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::ops::*;
 use std::path::Path;
 use std::sync::Arc;
@@ -482,7 +482,6 @@ impl Bitmap {
     #[cfg(not(feature = "openexr"))]
     pub fn read_exr(_filename: &str) -> Self {
         panic!("Rustlight wasn't built with OpenEXR support");
-        Bitmap::default()
     }
     #[cfg(feature = "openexr")]
     pub fn read_exr(filename: &str) -> Self {

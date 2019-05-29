@@ -227,7 +227,7 @@ impl Bsdf {
         for i in 0..n_bxdfs {
             let matches: bool = self.bxdfs[i].matches_flags(bsdf_flags);
             if matches && count == 0 {
-                count -= 1_i8;
+                // count -= 1_i8;
                 bxdf = self.bxdfs.get(i);
                 bxdf_index = i;
                 break;
