@@ -23,7 +23,7 @@ impl IntegratorMC for IntegratorPath {
         // Check if we have a intersection with the primary ray
         let mut its = match scene.trace(&ray) {
             Some(x) => x,
-            None => return l_i,
+            None => return throughput * scene.enviroment_luminance(ray.d),
         };
 
         let mut depth: u32 = 1;
@@ -102,7 +102,11 @@ impl IntegratorMC for IntegratorPath {
             ray = Ray::new(its.p, d_out_global);
             its = match scene.trace(&ray) {
                 Some(x) => x,
-                None => return l_i,
+                None => {
+                    // TODO: Need to implement the MIS for this case
+                    l_i += throughput * scene.enviroment_luminance(ray.d);
+                    return l_i;
+                }
             };
 
             // Check that we have intersected a light or not

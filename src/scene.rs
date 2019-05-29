@@ -49,6 +49,20 @@ impl<'a> LightSamplingPDF<'a> {
     }
 }
 
+pub struct EnvironmentLight {
+    pub luminance: Color,
+    world_radius: f32,
+}
+impl EnvironmentLight {
+    pub fn emitted_luminance(&self, d: Vector3<f32>) -> Color {
+        self.luminance
+    }
+    pub fn power(&self) -> f32 {
+        std::f32::consts::PI * self.world_radius.powi(2) * self.luminance.luminance()
+    }
+
+}
+
 /// Scene representation
 pub struct Scene {
     /// Main camera
@@ -61,6 +75,7 @@ pub struct Scene {
     pub emitters: Vec<Arc<geometry::Mesh>>,
     emitters_cdf: Distribution1D,
     embree_scene: embree_rs::Scene,
+    emitter_environment: Option<EnvironmentLight>,
 }
 
 impl Scene {
@@ -200,6 +215,7 @@ impl Scene {
             nb_samples,
             nb_threads,
             output_img_path,
+            emitter_environment: None,
         })
     }
 
@@ -329,6 +345,7 @@ impl Scene {
             nb_samples,
             nb_threads,
             output_img_path,
+            emitter_environment: None,
         })
     }
 
@@ -402,6 +419,7 @@ impl Scene {
         let id_light = self.emitters_cdf.sample(v);
         (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
     }
+
     pub fn random_sample_emitter_position(
         &self,
         v1: f32,
@@ -411,5 +429,12 @@ impl Scene {
         let (pdf_sel, emitter) = self.random_select_emitter(v1);
         let sampled_pos = emitter.sample(v2, uv);
         (emitter, PDF::Area(pdf_sel * sampled_pos.pdf), sampled_pos)
+    }
+
+    pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {
+        match self.emitter_environment {
+            None => Color::zero(),
+            Some(ref env) => env.emitted_luminance(d),
+        }
     }
 }

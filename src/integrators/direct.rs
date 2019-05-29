@@ -20,7 +20,7 @@ impl IntegratorMC for IntegratorDirect {
         // Do the intersection for the first path
         let its = match scene.trace(&ray) {
             Some(its) => its,
-            None => return l_i,
+            None => return scene.enviroment_luminance(ray.d),
         };
 
         // FIXME: Will not work with glass
@@ -93,7 +93,7 @@ impl IntegratorMC for IntegratorDirect {
                 let ray = Ray::new(its.p, d_out_world);
                 let next_its = match scene.trace(&ray) {
                     Some(x) => x,
-                    None => continue,
+                    None => continue, // FIXME: Need to implement MIS for BSDF
                 };
 
                 // Check that we have intersected a light or not
