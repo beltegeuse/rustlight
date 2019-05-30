@@ -93,7 +93,12 @@ impl IntegratorMC for IntegratorDirect {
                 let ray = Ray::new(its.p, d_out_world);
                 let next_its = match scene.trace(&ray) {
                     Some(x) => x,
-                    None => continue, // FIXME: Need to implement MIS for BSDF
+                    None => {
+                        l_i += sampled_bsdf.weight
+                            * scene.enviroment_luminance(ray.d)
+                            * weight_nb_bsdf;
+                        continue;
+                    } // FIXME: Need to implement MIS for BSDF
                 };
 
                 // Check that we have intersected a light or not

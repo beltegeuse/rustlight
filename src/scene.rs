@@ -205,6 +205,30 @@ impl Scene {
             }
         };
 
+        let mut emitter_environment = None;
+        {
+            for l in scene_info.lights {
+                match l {
+                    pbrt_rs::Light::Infinite(ref infinite) => {
+                        match infinite.luminance {
+                            pbrt_rs::Param::RGB(ref rgb) => {
+                                emitter_environment = Some(EnvironmentLight {
+                                    luminance: Color::new(rgb.r, rgb.g, rgb.b),
+                                    world_radius: 1.0, // TODO: Add the correct radius
+                                });
+                            }
+                            _ => {
+                                warn!("Unsupported luminance field: {:?}", infinite.luminance);
+                            }
+                        }
+                    }
+                    _ => {
+                        warn!("Igoring light type: {:?}", l);
+                    }
+                }
+            }
+        };
+
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
             camera,
@@ -215,7 +239,7 @@ impl Scene {
             nb_samples,
             nb_threads,
             output_img_path,
-            emitter_environment: None,
+            emitter_environment,
         })
     }
 
@@ -359,7 +383,6 @@ impl Scene {
             }
         }
     }
-
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
         !self
