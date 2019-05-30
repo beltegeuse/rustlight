@@ -1,6 +1,6 @@
 use crate::bsdfs;
 use crate::math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
-use crate::scene::LightSamplingPDF;
+use crate::emitter::*;
 use crate::structure::Color;
 use crate::tools::StepRangeInt;
 use cgmath::*;
@@ -94,6 +94,12 @@ pub fn load_obj(
     Ok(meshes)
 }
 
+pub struct SampledPosition {
+    pub p: Point3<f32>,
+    pub n: Vector3<f32>,
+    pub pdf: f32,
+}
+
 /// (Triangle) Mesh information
 pub struct Mesh {
     pub name: String,
@@ -102,12 +108,7 @@ pub struct Mesh {
     pub emission: Color,
     pub cdf: Distribution1D,
 }
-
-pub struct SampledPosition {
-    pub p: Point3<f32>,
-    pub n: Vector3<f32>,
-    pub pdf: f32,
-}
+unsafe impl Send for Mesh {}
 
 impl Mesh {
     pub fn new(
@@ -139,9 +140,6 @@ impl Mesh {
 
     pub fn pdf(&self) -> f32 {
         1.0 / (self.cdf.normalization)
-    }
-    pub fn flux(&self) -> Color {
-        self.cdf.normalization * self.emission * std::f32::consts::PI
     }
 
     // FIXME: reuse random number
@@ -176,9 +174,10 @@ impl Mesh {
     pub fn is_light(&self) -> bool {
         !self.emission.is_zero()
     }
+}
 
-    /// PDF value when we intersect the light
-    pub fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> f32 {
+impl Emitter for Mesh {
+    fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> f32 {
         let cos_light = light_sampling.n.dot(-light_sampling.dir).max(0.0);
         if cos_light == 0.0 {
             0.0
@@ -186,5 +185,9 @@ impl Mesh {
             let geom_inv = (light_sampling.p - light_sampling.o).magnitude2() / cos_light;
             self.pdf() * geom_inv
         }
+    }
+
+    fn flux(&self) -> Color {
+        self.cdf.normalization * self.emission * std::f32::consts::PI
     }
 }

@@ -57,3 +57,4 @@ pub mod samplers;
 pub mod scene;
 pub mod structure;
 pub mod tools;
+pub mod emitter;

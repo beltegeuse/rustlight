@@ -44,6 +44,12 @@ impl PDF {
     }
 }
 
+pub struct SampledPosition {
+    pub p: Point3<f32>,
+    pub n: Vector3<f32>,
+    pub pdf: f32,
+}
+
 /// Pixel color representation
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
 pub struct Color {

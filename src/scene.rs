@@ -4,6 +4,7 @@ use crate::camera::Camera;
 use crate::geometry;
 use crate::math::{Distribution1D, Distribution1DConstruct};
 use crate::structure::*;
+use crate::emitter::*;
 use cgmath::*;
 use embree_rs;
 #[cfg(feature = "pbrt")]
@@ -11,57 +12,6 @@ use pbrt_rs;
 use serde_json;
 use std;
 use std::error::Error;
-use std::sync::Arc;
-
-/// Light sample representation
-pub struct LightSampling<'a> {
-    pub emitter: &'a Arc<geometry::Mesh>,
-    pub pdf: PDF,
-    pub p: Point3<f32>,
-    pub n: Vector3<f32>,
-    pub d: Vector3<f32>,
-    pub weight: Color,
-}
-
-impl<'a> LightSampling<'a> {
-    pub fn is_valid(&'a self) -> bool {
-        !self.pdf.is_zero()
-    }
-}
-
-pub struct LightSamplingPDF<'a> {
-    pub mesh: &'a Arc<geometry::Mesh>,
-    pub o: Point3<f32>,
-    pub p: Point3<f32>,
-    pub n: Vector3<f32>,
-    pub dir: Vector3<f32>,
-}
-
-impl<'a> LightSamplingPDF<'a> {
-    pub fn new(ray: &Ray, its: &'a Intersection) -> LightSamplingPDF<'a> {
-        LightSamplingPDF {
-            mesh: &its.mesh,
-            o: ray.o,
-            p: its.p,
-            n: its.n_g, // FIXME: Geometrical normal?
-            dir: ray.d,
-        }
-    }
-}
-
-pub struct EnvironmentLight {
-    pub luminance: Color,
-    world_radius: f32,
-}
-impl EnvironmentLight {
-    pub fn emitted_luminance(&self, d: Vector3<f32>) -> Color {
-        self.luminance
-    }
-    pub fn power(&self) -> f32 {
-        std::f32::consts::PI * self.world_radius.powi(2) * self.luminance.luminance()
-    }
-
-}
 
 /// Scene representation
 pub struct Scene {
@@ -71,11 +21,11 @@ pub struct Scene {
     pub nb_threads: Option<usize>,
     pub output_img_path: String,
     // Geometry information
-    pub meshes: Vec<Arc<geometry::Mesh>>,
-    pub emitters: Vec<Arc<geometry::Mesh>>,
+    pub meshes: Vec<geometry::Mesh>,
+    pub emitters: Vec<Emitter>,
     emitters_cdf: Distribution1D,
     embree_scene: embree_rs::Scene,
-    emitter_environment: Option<EnvironmentLight>,
+    emitter_environment: Option<usize>, // ID from the emitters
 }
 
 impl Scene {
@@ -173,17 +123,52 @@ impl Scene {
 
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
-        // Update the list of lights & construct the CDF
-        let emitters = meshes
+        // Update the list of lights
+        let mut emitters = meshes
             .iter()
             .filter(|m| !m.emission.is_zero())
-            .cloned()
+            .map(|m| Emitter::Mesh(m.clone()))
             .collect::<Vec<_>>();
+
+        // Check if there is other emitter type 
+        let mut emitter_environment = None;
+        {
+            let mut have_env = false;
+            for l in scene_info.lights {
+                match l {
+                    pbrt_rs::Light::Infinite(ref infinite) => {
+                        match infinite.luminance {
+                            pbrt_rs::Param::RGB(ref rgb) => {
+                                if have_env {
+                                    panic!("Multiple env map is NOT supported");
+                                }
+                                emitters.push(Emitter::Environment(EnvironmentLight {
+                                    luminance: Color::new(rgb.r, rgb.g, rgb.b),
+                                    world_radius: 1.0, // TODO: Add the correct radius
+                                }));
+                                emitter_environment = Some(emitters.len() - 1);
+                                have_env = true;
+                            }
+                            _ => {
+                                warn!("Unsupported luminance field: {:?}", infinite.luminance);
+                            }
+                        }
+                    }
+                    _ => {
+                        warn!("Igoring light type: {:?}", l);
+                    }
+                }
+            }
+        };
+
         let emitters_cdf = {
             let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
             emitters
                 .iter()
-                .map(|e| e.flux())
+                .map(|e| match e {
+                    Emitter::Environment(ref env) => env.flux(), 
+                    Emitter::Mesh(ref e) => e.flux(),
+                })
                 .for_each(|f| cdf_construct.add(f.channel_max()));
             cdf_construct.normalize()
         };
@@ -205,29 +190,6 @@ impl Scene {
             }
         };
 
-        let mut emitter_environment = None;
-        {
-            for l in scene_info.lights {
-                match l {
-                    pbrt_rs::Light::Infinite(ref infinite) => {
-                        match infinite.luminance {
-                            pbrt_rs::Param::RGB(ref rgb) => {
-                                emitter_environment = Some(EnvironmentLight {
-                                    luminance: Color::new(rgb.r, rgb.g, rgb.b),
-                                    world_radius: 1.0, // TODO: Add the correct radius
-                                });
-                            }
-                            _ => {
-                                warn!("Unsupported luminance field: {:?}", infinite.luminance);
-                            }
-                        }
-                    }
-                    _ => {
-                        warn!("Igoring light type: {:?}", l);
-                    }
-                }
-            }
-        };
 
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
@@ -320,13 +282,16 @@ impl Scene {
         let emitters = meshes
             .iter()
             .filter(|m| !m.emission.is_zero())
-            .cloned()
+            .map(|m| Emitter::Mesh(m.clone()))
             .collect::<Vec<_>>();
         let emitters_cdf = {
             let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
             emitters
                 .iter()
-                .map(|e| e.flux())
+                .map(|e| match e {
+                    Emitter::Environment(ref env) => env.flux(), 
+                    Emitter::Mesh(ref e) => e.flux(),
+                })
                 .for_each(|f| cdf_construct.add(f.channel_max()));
             cdf_construct.normalize()
         };
@@ -394,7 +359,12 @@ impl Scene {
         let emitter_id = self
             .emitters
             .iter()
-            .position(|m| Arc::ptr_eq(light_sampling.mesh, m))
+            .position({|m| 
+                match m {
+                    Emitter::Mesh(ref m) => Arc::ptr_eq(light_sampling.mesh, m),
+                    _ => false
+                }
+            })
             .unwrap();
         // FIXME: As for now, we only support surface light, the PDF measure is always SA
         PDF::SolidAngle(
@@ -410,6 +380,14 @@ impl Scene {
     ) -> LightSampling {
         // Select the point on the light
         let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
+        let emitter = match emitter {
+            Emitter::Mesh(ref emitter) => {
+                emitter
+            }
+            _ => {
+                panic!("Sample position is not supported")
+            }
+        };
         let sampled_pos = emitter.sample(r, uv);
 
         // Compute the distance
@@ -438,7 +416,7 @@ impl Scene {
             weight: emission,
         }
     }
-    pub fn random_select_emitter(&self, v: f32) -> (f32, &Arc<geometry::Mesh>) {
+    pub fn random_select_emitter(&self, v: f32) -> (f32, &Emitter) {
         let id_light = self.emitters_cdf.sample(v);
         (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
     }
@@ -450,14 +428,28 @@ impl Scene {
         uv: Point2<f32>,
     ) -> (&Arc<geometry::Mesh>, PDF, geometry::SampledPosition) {
         let (pdf_sel, emitter) = self.random_select_emitter(v1);
-        let sampled_pos = emitter.sample(v2, uv);
-        (emitter, PDF::Area(pdf_sel * sampled_pos.pdf), sampled_pos)
+        match emitter {
+            Emitter::Mesh(ref emitter) => {
+                let sampled_pos = emitter.sample(v2, uv);
+                (emitter, PDF::Area(pdf_sel * sampled_pos.pdf), sampled_pos)
+            }
+            _ => {
+                panic!("random sample position is not supported")
+            }
+        }
+        
     }
 
     pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {
         match self.emitter_environment {
             None => Color::zero(),
-            Some(ref env) => env.emitted_luminance(d),
+            Some(id) => {
+                if let Emitter::Environment(ref env) = self.emitters[id] {
+                    env.emitted_luminance(d)
+                } else {
+                    panic!("Wrong ID for the env emitter");
+                }
+            }
         }
     }
 }
