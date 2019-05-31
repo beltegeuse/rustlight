@@ -3,6 +3,7 @@ use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers;
 use crate::structure::*;
+use crate::emitter::*;
 use cgmath::InnerSpace;
 use cgmath::Point2;
 use std::cell::RefCell;

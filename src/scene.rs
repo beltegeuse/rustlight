@@ -22,7 +22,7 @@ pub struct Scene {
     pub output_img_path: String,
     // Geometry information
     pub meshes: Vec<geometry::Mesh>,
-    pub emitters: Vec<Emitter>,
+    pub emitters: Vec<Box<dyn Emitter>>,
     emitters_cdf: Distribution1D,
     embree_scene: embree_rs::Scene,
     emitter_environment: Option<usize>, // ID from the emitters
@@ -282,7 +282,7 @@ impl Scene {
         let emitters = meshes
             .iter()
             .filter(|m| !m.emission.is_zero())
-            .map(|m| Emitter::Mesh(m.clone()))
+            .cloned()
             .collect::<Vec<_>>();
         let emitters_cdf = {
             let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
@@ -360,16 +360,10 @@ impl Scene {
             .emitters
             .iter()
             .position({|m| 
-                match m {
-                    Emitter::Mesh(ref m) => Arc::ptr_eq(light_sampling.mesh, m),
-                    _ => false
-                }
+                m as *const _ == light_sampling.emitter as *const _    
             })
             .unwrap();
-        // FIXME: As for now, we only support surface light, the PDF measure is always SA
-        PDF::SolidAngle(
-            light_sampling.mesh.direct_pdf(&light_sampling) * self.emitters_cdf.pdf(emitter_id),
-        )
+        light_sampling.emitter.direct_pdf(&light_sampling) * self.emitters_cdf.pdf(emitter_id)
     }
     pub fn sample_light(
         &self,
@@ -380,43 +374,11 @@ impl Scene {
     ) -> LightSampling {
         // Select the point on the light
         let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
-        let emitter = match emitter {
-            Emitter::Mesh(ref emitter) => {
-                emitter
-            }
-            _ => {
-                panic!("Sample position is not supported")
-            }
-        };
-        let sampled_pos = emitter.sample(r, uv);
-
-        // Compute the distance
-        let mut d: Vector3<f32> = sampled_pos.p - p;
-        let dist = d.magnitude();
-        d /= dist;
-
-        // Compute the geometry
-        let cos_light = sampled_pos.n.dot(-d).max(0.0);
-        let pdf = if cos_light == 0.0 {
-            PDF::SolidAngle(0.0)
-        } else {
-            PDF::SolidAngle((pdf_sel * sampled_pos.pdf * dist * dist) / cos_light)
-        };
-        let emission = if pdf.is_zero() {
-            Color::zero()
-        } else {
-            emitter.emission / pdf.value()
-        };
-        LightSampling {
-            emitter,
-            pdf,
-            p: sampled_pos.p,
-            n: sampled_pos.n,
-            d,
-            weight: emission,
-        }
+        let mut res = emitter.sample_direct(p, r, uv);
+        res.pdf = res.pdf * pdf_sel;
+        res
     }
-    pub fn random_select_emitter(&self, v: f32) -> (f32, &Emitter) {
+    pub fn random_select_emitter(&self, v: f32) -> (f32, &dyn Emitter) {
         let id_light = self.emitters_cdf.sample(v);
         (self.emitters_cdf.pdf(id_light), &self.emitters[id_light])
     }
@@ -426,29 +388,18 @@ impl Scene {
         v1: f32,
         v2: f32,
         uv: Point2<f32>,
-    ) -> (&Arc<geometry::Mesh>, PDF, geometry::SampledPosition) {
+    ) -> (&dyn Emitter, PDF, SampledPosition) {
         let (pdf_sel, emitter) = self.random_select_emitter(v1);
-        match emitter {
-            Emitter::Mesh(ref emitter) => {
-                let sampled_pos = emitter.sample(v2, uv);
-                (emitter, PDF::Area(pdf_sel * sampled_pos.pdf), sampled_pos)
-            }
-            _ => {
-                panic!("random sample position is not supported")
-            }
-        }
-        
+        let (pdf, sampled_pos) = emitter.sample_position(v2, uv);
+        (emitter, pdf * pdf_sel, sampled_pos)
     }
 
     pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {
         match self.emitter_environment {
             None => Color::zero(),
             Some(id) => {
-                if let Emitter::Environment(ref env) = self.emitters[id] {
-                    env.emitted_luminance(d)
-                } else {
-                    panic!("Wrong ID for the env emitter");
-                }
+                // TODO: Not very safe as the type of light can be different
+                self.emitters[id].emitted_luminance(d)
             }
         }
     }

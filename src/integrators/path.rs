@@ -1,5 +1,6 @@
 use crate::integrators::*;
 use crate::structure::*;
+use crate::emitter::*;
 
 pub struct IntegratorPath {
     pub max_depth: Option<u32>,

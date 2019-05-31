@@ -44,6 +44,17 @@ impl PDF {
     }
 }
 
+impl Mul<f32> for PDF {
+    type Output = PDF;
+    fn mul(self, other: f32) -> PDF {
+        match self {
+            PDF::Area(v) => PDF::Area(v * other),
+            PDF::Discrete(v) => PDF::Discrete(v * other),
+            PDF::SolidAngle(v) => PDF::SolidAngle(v * other),  
+        }
+    }
+}
+
 pub struct SampledPosition {
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
@@ -612,7 +623,7 @@ pub struct Intersection<'a> {
     /// Textures coordinates
     pub uv: Option<Vector2<f32>>,
     /// Mesh which we have intersected
-    pub mesh: &'a Arc<Mesh>,
+    pub mesh: &'a Mesh,
     /// Frame from the intersection point
     pub frame: Frame,
     /// Incomming direction in the local coordinates
@@ -623,7 +634,7 @@ impl<'a> Intersection<'a> {
     pub fn new(
         embree_its: &embree_rs::Intersection,
         d: Vector3<f32>,
-        mesh: &'a Arc<Mesh>,
+        mesh: &'a Mesh,
     ) -> Intersection<'a> {
         let n_s = if embree_its.n_s.is_none() {
             embree_its.n_g

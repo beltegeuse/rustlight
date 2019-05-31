@@ -2,6 +2,7 @@ use crate::bsdfs::reflect_vector;
 use crate::integrators::gradient::*;
 use crate::integrators::*;
 use crate::structure::*;
+use crate::emitter::*;
 use cgmath::*;
 
 pub struct IntegratorGradientPath {

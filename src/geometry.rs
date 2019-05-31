@@ -1,7 +1,6 @@
 use crate::bsdfs;
 use crate::math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
-use crate::emitter::*;
-use crate::structure::Color;
+use crate::structure::*;
 use crate::tools::StepRangeInt;
 use cgmath::*;
 use embree_rs;
@@ -94,10 +93,61 @@ pub fn load_obj(
     Ok(meshes)
 }
 
-pub struct SampledPosition {
-    pub p: Point3<f32>,
-    pub n: Vector3<f32>,
-    pub pdf: f32,
+pub struct AABB {
+    pub min: Vector3<f32>,
+    pub max: Vector3<f32>,
+}
+impl Default for AABB {
+    fn default() -> Self {
+        Self {
+            min: Vector3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX),
+            max: Vector3::new(std::f32::MIN, std::f32::MIN, std::f32::MIN),
+        }
+    }
+}
+impl AABB {
+    pub fn center(&self) -> Vector3<f32> {
+        (self.min + self.max) * 0.5
+    }
+    pub fn surface_area(&self) -> f32 {
+        let d = self.max - self.min;
+        2.0 * (d.x * d.y + d.y + d.z + d.z * d.x)
+    }
+    pub fn merge_point(self, p: Vector3<f32>) -> AABB {
+        AABB {
+            min: Vector3::new(
+                self.min.x.min(p.x),
+                self.min.y.min(p.y),
+                self.min.z.min(p.z),
+            ),
+            max: Vector3::new(
+                self.max.x.max(p.x),
+                self.max.y.max(p.y),
+                self.max.z.max(p.z),
+            ),
+        }
+    }
+    pub fn merge_aabb(self, b: AABB) -> AABB {
+        AABB {
+            min: Vector3::new(
+                self.min.x.min(b.min.x),
+                self.min.y.min(b.min.y),
+                self.min.z.min(b.min.z),
+            ),
+            max: Vector3::new(
+                self.max.x.max(b.max.x),
+                self.max.y.max(b.max.y),
+                self.max.z.max(b.max.z),
+            ),
+        }
+    }
+}
+
+pub struct Triangle {
+    pub p1: Vector3<f32>,
+    pub e1: Vector3<f32>,
+    pub e2: Vector3<f32>,
+    pub aabb: AABB,
 }
 
 /// (Triangle) Mesh information
@@ -109,6 +159,7 @@ pub struct Mesh {
     pub cdf: Distribution1D,
 }
 unsafe impl Send for Mesh {}
+unsafe impl Sync for Mesh {}
 
 impl Mesh {
     pub fn new(
@@ -173,21 +224,5 @@ impl Mesh {
 
     pub fn is_light(&self) -> bool {
         !self.emission.is_zero()
-    }
-}
-
-impl Emitter for Mesh {
-    fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> f32 {
-        let cos_light = light_sampling.n.dot(-light_sampling.dir).max(0.0);
-        if cos_light == 0.0 {
-            0.0
-        } else {
-            let geom_inv = (light_sampling.p - light_sampling.o).magnitude2() / cos_light;
-            self.pdf() * geom_inv
-        }
-    }
-
-    fn flux(&self) -> Color {
-        self.cdf.normalization * self.emission * std::f32::consts::PI
     }
 }
