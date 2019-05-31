@@ -31,6 +31,13 @@ pub fn cosine_sample_hemisphere(u: Point2<f32>) -> Vector3<f32> {
     Vector3 { x: d.x, y: d.y, z }
 }
 
+pub fn sample_uniform_sphere(u: Point2<f32>) -> Vector3<f32> {
+    let z = 1.0 - 2.0 * u.x;
+    let r = (1.0 - z * z).max(0.0).sqrt();
+    let phi = 2.0 * std::f32::consts::PI * u.y;
+    Vector3::new(r * phi.cos(), r * phi.sin(), z)
+}
+
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
 #[derive(Clone)]

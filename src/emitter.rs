@@ -1,5 +1,6 @@
 use crate::geometry::Mesh;
 use crate::structure::*;
+use crate::math::sample_uniform_sphere;
 use cgmath::*;
 
 pub struct LightSampling<'a> {
@@ -37,7 +38,7 @@ impl<'a> LightSamplingPDF<'a> {
 }
 
 pub trait Emitter: Send + Sync {
-    fn sample_position(&self, s: f32, uv: Point2<f32>) -> (PDF, SampledPosition);
+    fn sample_position(&self, s: f32, uv: Point2<f32>) -> SampledPosition;
     fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF;
     fn sample_direct(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling;
     fn flux(&self) -> Color;
@@ -47,15 +48,23 @@ pub trait Emitter: Send + Sync {
 pub struct EnvironmentLight {
     pub luminance: Color,
     pub world_radius: f32,
+	pub world_position: Point3<f32>,
 }
 impl Emitter for EnvironmentLight {
-    fn sample_position(&self, s: f32, uv: Point2<f32>) -> (PDF, SampledPosition) {
-        unimplemented!();
+    fn sample_position(&self, s: f32, uv: Point2<f32>) -> SampledPosition {
+        // TODO: Check this function
+		let d = sample_uniform_sphere(uv);
+		let pdf = 1.0 / (self.world_radius * self.world_radius * std::f32::consts::PI * 4.0);
+		SampledPosition {
+			p: self.world_position + d * self.world_radius,
+			n: -d,
+			pdf: PDF::Area(pdf),
+		}
     }
     fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
         unimplemented!();
     }
-    fn sample_direct(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
+    fn sample_direct(&self, p: &Point3<f32>, _r: f32, uv: Point2<f32>) -> LightSampling {
         unimplemented!();
     }
     fn flux(&self) -> Color {
@@ -89,17 +98,27 @@ impl Emitter for Mesh {
         let sampled_pos = self.sample(r, uv);
 
         // Compute the distance
-        let mut d: Vector3<f32> = sampled_pos.p - p;
+		let mut d: Vector3<f32> = sampled_pos.p - p;
         let dist = d.magnitude();
         d /= dist;
 
         // Compute the geometry
-        let cos_light = sampled_pos.n.dot(-d).max(0.0);
-        let pdf = if cos_light == 0.0 {
-            PDF::SolidAngle(0.0)
-        } else {
-            PDF::SolidAngle((sampled_pos.pdf * dist * dist) / cos_light)
-        };
+        let pdf = match sampled_pos.pdf {
+			PDF::Area(v) => {
+				let cos_light = sampled_pos.n.dot(-d).max(0.0);
+				if cos_light == 0.0 {
+					PDF::SolidAngle(0.0)
+				} else {
+					// FIXME: Make the conversion as a method
+					PDF::SolidAngle((sampled_pos.pdf.value() * dist * dist) / cos_light)
+				}
+			},
+			PDF::SolidAngle(v) => PDF::SolidAngle(v),
+			PDF::Discrete(v) => {
+				panic!("Discrete pdf is not handled yet")
+			}
+		};
+		
         let emission = if pdf.is_zero() {
             Color::zero()
         } else {
@@ -115,8 +134,7 @@ impl Emitter for Mesh {
         }
     }
 
-    fn sample_position(&self, s: f32, uv: Point2<f32>) -> (PDF, SampledPosition) {
-        let sampled_pos = self.sample(s, uv);
-        (PDF::Area(sampled_pos.pdf), sampled_pos)
+    fn sample_position(&self, s: f32, uv: Point2<f32>) -> SampledPosition {
+        self.sample(s, uv)
     }
 }

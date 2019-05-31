@@ -40,7 +40,7 @@ impl<'a> Technique<'a> for TechniqueVPL {
         scene: &'a Scene,
         sampler: &mut Sampler,
     ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
-        let (emitter, pdf, sampled_point) =
+        let (emitter, sampled_point) =
             scene.random_sample_emitter_position(sampler.next(), sampler.next(), sampler.next2d());
         let emitter_vertex = Rc::new(RefCell::new(Vertex::Emitter(EmitterVertex {
             pos: sampled_point.p,
@@ -49,7 +49,7 @@ impl<'a> Technique<'a> for TechniqueVPL {
             edge_in: None,
             edge_out: None,
         })));
-        self.pdf_vertex = Some(pdf); // Capture the pdf for later evaluation
+        self.pdf_vertex = Some(sampled_point.pdf); // Capture the pdf for later evaluation
         vec![(emitter_vertex, Color::one())]
     }
 

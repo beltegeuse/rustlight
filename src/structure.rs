@@ -57,7 +57,7 @@ impl Mul<f32> for PDF {
 pub struct SampledPosition {
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
-    pub pdf: f32,
+    pub pdf: PDF,
 }
 
 /// Pixel color representation

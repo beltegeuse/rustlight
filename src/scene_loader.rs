@@ -130,28 +130,6 @@ impl SceneLoader for JSONSceneLoader {
         info!("Build vectors and Discrete CDF");
         let meshes = meshes.into_iter().map(|e| Arc::from(e)).collect::<Vec<_>>();
 
-        // Update the list of lights & construct the CDF
-        let emitters = meshes
-            .iter()
-            .filter(|m| !m.emission.is_zero())
-            .map(|m| {
-                let m: Arc<dyn Emitter> = m.clone();
-                m
-            })
-            .collect::<Vec<_>>();
-        let emitters_cdf = {
-            let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
-            emitters
-                .iter()
-                .map(|e| e.flux())
-                .for_each(|f| cdf_construct.add(f.channel_max()));
-            cdf_construct.normalize()
-        };
-        info!(
-            "CDF lights: {:?} norm: {:?}",
-            emitters_cdf.cdf, emitters_cdf.normalization
-        );
-
         // Read the camera config
         let camera = {
             if let Some(camera_json) = v.get("camera") {
@@ -177,17 +155,19 @@ impl SceneLoader for JSONSceneLoader {
         camera.print_info();
 
         // Define a default scene
-        Ok(Scene {
+        let mut scene = Scene {
             camera,
             embree_scene: scene_embree,
             meshes,
-            emitters,
-            emitters_cdf,
+            emitters: vec![],
+            emitters_cdf: None,
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment: None,
-        })
+        };
+        scene.configure();
+        Ok(scene)
     }
 }
 
@@ -268,15 +248,8 @@ impl SceneLoader for PBRTSceneLoader {
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
         // Update the list of lights
-        let mut emitters = meshes
-            .iter()
-            .filter(|m| !m.emission.is_zero())
-            .map(|m| {
-                let m: Arc<dyn Emitter> = m.clone();
-                m
-            })
-            .collect::<Vec<_>>();
-
+        let mut emitters = vec![];
+        
         // Check if there is other emitter type
         let mut emitter_environment = None;
         {
@@ -289,15 +262,11 @@ impl SceneLoader for PBRTSceneLoader {
                                 if have_env {
                                     panic!("Multiple env map is NOT supported");
                                 }
-                                let envmap: Arc<EnvironmentLight> = Arc::new(EnvironmentLight {
+                                emitter_environment = Some(Arc::new(EnvironmentLight {
                                     luminance: Color::new(rgb.r, rgb.g, rgb.b),
                                     world_radius: 1.0, // TODO: Add the correct radius
-                                });
-                                {
-                                    let envmap: Arc<dyn Emitter> = envmap.clone();
-                                    emitters.push(envmap);
-                                }
-                                emitter_environment = Some(envmap);
+                                    world_position: Point3::new(0.0, 0.0, 0.0), // TODO: 
+                                }));
                                 have_env = true;
                             }
                             _ => {
@@ -311,18 +280,6 @@ impl SceneLoader for PBRTSceneLoader {
                 }
             }
         };
-
-        let emitters_cdf = {
-            let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
-            emitters
-                .iter()
-                .map(|e| e.flux())
-                .for_each(|f| cdf_construct.add(f.channel_max()));
-            cdf_construct.normalize()
-        };
-        if emitters_cdf.normalization == 0.0 {
-            warn!("no light attached to the scene. Only AO will works");
-        }
 
         let camera = {
             if let Some(camera) = scene_info.cameras.get(0) {
@@ -343,8 +300,8 @@ impl SceneLoader for PBRTSceneLoader {
             camera,
             embree_scene: scene_embree,
             meshes,
-            emitters,
-            emitters_cdf,
+            emitters: vec![],
+            emitters_cdf: None,
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),

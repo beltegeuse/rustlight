@@ -218,7 +218,7 @@ impl Mesh {
         SampledPosition {
             p: Point3::from_vec(pos),
             n: normal,
-            pdf: 1.0 / (self.cdf.normalization),
+            pdf: PDF::Area(1.0 / (self.cdf.normalization)),
         }
     }
 
