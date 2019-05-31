@@ -16,7 +16,6 @@ use std::ops::*;
 use std::path::Path;
 use std::sync::Arc;
 
-
 #[derive(Clone)]
 pub enum PDF {
     SolidAngle(f32),
@@ -50,7 +49,7 @@ impl Mul<f32> for PDF {
         match self {
             PDF::Area(v) => PDF::Area(v * other),
             PDF::Discrete(v) => PDF::Discrete(v * other),
-            PDF::SolidAngle(v) => PDF::SolidAngle(v * other),  
+            PDF::SolidAngle(v) => PDF::SolidAngle(v * other),
         }
     }
 }
@@ -338,7 +337,6 @@ impl Bitmap {
         s
     }
 
-
     // Get the pixel value at the given position
     pub fn pixel_uv(&self, mut uv: Vector2<f32>) -> Color {
         uv.x = uv.x.modulo(1.0);
@@ -571,9 +569,7 @@ impl Bitmap {
                 Bitmap::read_ldr_image(filename)
             }
         }
-
     }
-
 }
 // By default, create a black image
 impl Default for Bitmap {

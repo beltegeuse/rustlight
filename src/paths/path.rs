@@ -1,3 +1,4 @@
+use crate::emitter::LightSamplingPDF;
 use crate::math::{cosine_sample_hemisphere, Frame};
 use crate::paths::vertex::*;
 use crate::samplers::*;
@@ -216,16 +217,17 @@ impl SamplingStrategy for LightSamplingStrategy {
                     let next_vertex = Rc::new(RefCell::new(Vertex::Emitter(EmitterVertex {
                         pos: light_record.p,
                         n: light_record.n,
-                        mesh: light_record.emitter,
+                        emitter: light_record.emitter,
                         edge_in: None,
                         edge_out: None,
                     })));
 
                     // FIXME: Only work for diffuse light
                     let mut weight = light_record.weight;
-                    weight.r /= light_record.emitter.emission.r;
-                    weight.g /= light_record.emitter.emission.g;
-                    weight.b /= light_record.emitter.emission.b;
+                    let emission = light_record.emitter.emitted_luminance(-d_out_local);
+                    weight.r /= emission.r;
+                    weight.g /= emission.g;
+                    weight.b /= emission.b;
 
                     // Need to evaluate the BSDF
                     weight *= &v.its.mesh.bsdf.eval(
@@ -294,7 +296,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                         Vertex::Emitter(ref v) => {
                             if let PDF::SolidAngle(light_pdf) =
                                 scene.direct_pdf(&LightSamplingPDF {
-                                    mesh: v.mesh,
+                                    emitter: v.emitter,
                                     o: ray.o,
                                     p: v.pos,
                                     n: v.n,

@@ -1,10 +1,10 @@
+use crate::emitter::Emitter;
 use crate::geometry::Mesh;
 use crate::scene::*;
 use crate::structure::*;
 use cgmath::*;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct Edge<'a> {
@@ -139,7 +139,7 @@ pub struct SurfaceVertex<'a> {
 pub struct EmitterVertex<'a> {
     pub pos: Point3<f32>,
     pub n: Vector3<f32>,
-    pub mesh: &'a Arc<Mesh>,
+    pub emitter: &'a dyn Emitter,
     pub edge_in: Option<Weak<EdgePtr<'a>>>,
     pub edge_out: Option<Rc<EdgePtr<'a>>>,
 }
@@ -197,7 +197,7 @@ impl<'a> Vertex<'a> {
                 }
             }
             Vertex::Sensor(ref _v) => Color::zero(),
-            Vertex::Emitter(ref v) => v.mesh.emission, // FIXME: Check the normal orientation
+            Vertex::Emitter(ref v) => v.emitter.emitted_luminance(-edge.d), // FIXME: Check the normal orientation
         }
     }
 }

@@ -40,12 +40,12 @@ impl<'a> Technique<'a> for TechniqueVPL {
         scene: &'a Scene,
         sampler: &mut Sampler,
     ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
-        let (mesh, pdf, sampled_point) =
+        let (emitter, pdf, sampled_point) =
             scene.random_sample_emitter_position(sampler.next(), sampler.next(), sampler.next2d());
         let emitter_vertex = Rc::new(RefCell::new(Vertex::Emitter(EmitterVertex {
             pos: sampled_point.p,
             n: sampled_point.n,
-            mesh,
+            emitter,
             edge_in: None,
             edge_out: None,
         })));
@@ -90,7 +90,7 @@ impl TechniqueVPL {
                 }
             }
             Vertex::Emitter(ref v) => {
-                let flux = v.mesh.flux() / self.pdf_vertex.as_ref().unwrap().value();
+                let flux = v.emitter.flux() / self.pdf_vertex.as_ref().unwrap().value();
                 vpls.borrow_mut().push(Box::new(VPL::Emitter(VPLEmitter {
                     pos: v.pos,
                     n: v.n,
@@ -144,7 +144,7 @@ impl Integrator for IntegratorVPL {
                 let mut sampler = independent::IndependentSampler::default();
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
-                        for _ in 0..scene.nb_samples() {
+                        for _ in 0..scene.nb_samples {
                             let c = self.compute_vpl_contrib(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
                                 scene,
@@ -156,7 +156,7 @@ impl Integrator for IntegratorVPL {
                         }
                     }
                 }
-                im_block.scale(1.0 / (scene.nb_samples() as f32));
+                im_block.scale(1.0 / (scene.nb_samples as f32));
                 {
                     progress_bar.lock().unwrap().inc();
                 }

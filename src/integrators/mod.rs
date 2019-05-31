@@ -214,7 +214,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<Buff
 
 pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> BufferCollection {
     // Here we can to the classical parallelisation
-    assert_ne!(scene.nb_samples(), 0);
+    assert_ne!(scene.nb_samples, 0);
     let buffernames = vec!["primal".to_string()];
 
     // Create rendering blocks
@@ -228,7 +228,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Buffe
             let mut sampler = independent::IndependentSampler::default();
             for iy in 0..im_block.size.y {
                 for ix in 0..im_block.size.x {
-                    for _ in 0..scene.nb_samples() {
+                    for _ in 0..scene.nb_samples {
                         let c = int.compute_pixel(
                             (ix + im_block.pos.x, iy + im_block.pos.y),
                             scene,
@@ -238,7 +238,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Buffe
                     }
                 }
             }
-            im_block.scale(1.0 / (scene.nb_samples() as f32));
+            im_block.scale(1.0 / (scene.nb_samples as f32));
 
             {
                 progress_bar.lock().unwrap().inc();

@@ -49,12 +49,13 @@ pub trait Scale<T> {
 // all the modules
 pub mod bsdfs;
 pub mod camera;
+pub mod emitter;
 pub mod geometry;
 pub mod integrators;
 pub mod math;
 pub mod paths;
 pub mod samplers;
 pub mod scene;
+pub mod scene_loader;
 pub mod structure;
 pub mod tools;
-pub mod emitter;

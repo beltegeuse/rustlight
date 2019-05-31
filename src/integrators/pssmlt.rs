@@ -46,7 +46,7 @@ impl Integrator for IntegratorPSSMLT {
 
         ///////////// Compute the state initialization
         let nb_samples_total =
-            scene.nb_samples() * (scene.camera.size().x * scene.camera.size().y) as usize;
+            scene.nb_samples * (scene.camera.size().x * scene.camera.size().y) as usize;
         let nb_samples_per_chains = 100_000;
         let nb_chains = nb_samples_total / nb_samples_per_chains;
         info!("Number of states: {:?}", nb_chains);

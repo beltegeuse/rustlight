@@ -1,6 +1,6 @@
+use crate::emitter::*;
 use crate::integrators::*;
 use crate::structure::*;
-use crate::emitter::*;
 
 pub struct IntegratorDirect {
     pub nb_bsdf_samples: u32,

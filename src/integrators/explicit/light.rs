@@ -1,9 +1,9 @@
+use crate::emitter::*;
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers;
 use crate::structure::*;
-use crate::emitter::*;
 use cgmath::InnerSpace;
 use cgmath::Point2;
 use std::cell::RefCell;
@@ -26,12 +26,12 @@ impl<'a> Technique<'a> for TechniqueLightTracing {
         scene: &'a Scene,
         sampler: &mut Sampler,
     ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
-        let (mesh, pdf, sampled_point) =
+        let (emitter, pdf, sampled_point) =
             scene.random_sample_emitter_position(sampler.next(), sampler.next(), sampler.next2d());
         let emitter_vertex = Rc::new(RefCell::new(Vertex::Emitter(EmitterVertex {
             pos: sampled_point.p,
             n: sampled_point.n,
-            mesh,
+            emitter,
             edge_in: None,
             edge_out: None,
         })));
@@ -96,7 +96,7 @@ impl TechniqueLightTracing {
                 }
             }
             Vertex::Emitter(ref v) => {
-                let flux = v.mesh.flux() / self.pdf_vertex.as_ref().unwrap().value();
+                let flux = v.emitter.flux() / self.pdf_vertex.as_ref().unwrap().value();
                 let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.pos).normalize();
                 if scene.visible(&v.pos, &pos_sensor) {
@@ -129,7 +129,7 @@ impl Integrator for IntegratorLightTracing {
         for _ in 0..nb_jobs {
             samplers.push(samplers::independent::IndependentSampler::default());
         }
-        let nb_samples = (scene.nb_samples()
+        let nb_samples = (scene.nb_samples
             * ((scene.camera.size().x * scene.camera.size().y) as usize))
             / nb_jobs as usize;
 

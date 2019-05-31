@@ -16,9 +16,8 @@ use clap::{App, Arg, SubCommand};
 use rustlight::integrators::gradient::IntegratorGradient;
 use rustlight::integrators::{BufferCollection, Integrator};
 use rustlight::scene::Scene;
+use rustlight::scene_loader::*;
 use std::time::Instant;
-
-use std::io::Read;
 
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
     match input {
@@ -244,56 +243,25 @@ fn main() {
 
     //////////////// Load the rendering configuration
     let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), usize);
-    let nb_threads = match matches.value_of("nbthreads").unwrap() {
-        "auto" => None,
+
+    //////////////// Load the scene
+    let scene = matches
+        .value_of("scene")
+        .expect("no scene parameter provided");
+    let scene = SceneLoaderManager::default()
+        .load(scene)
+        .expect("error on loading the scene");
+    let scene = match matches.value_of("nbthreads").unwrap() {
+        "auto" => scene,
         x => {
             let v = x.parse::<usize>().expect("Wrong number of thread");
             if v == 0 {
                 panic!("Impossible to use 0 thread for the computation");
             }
-            Some(v)
+            scene.nb_threads(v)
         }
     };
-
-    //////////////// Load the scene
-    let scene_path_str = matches
-        .value_of("scene")
-        .expect("no scene parameter provided");
-    let scene_ext = match std::path::Path::new(scene_path_str).extension() {
-        None => panic!("No file extension provided"),
-        Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
-    };
-    // - read the file
-    let mut scene = match scene_ext {
-        "json" => {
-            let scene_path = std::path::Path::new(scene_path_str);
-            let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
-            let mut data = String::new();
-            fscene
-                .read_to_string(&mut data)
-                .expect("impossible to read the file");
-            // - build the scene
-            let wk = scene_path
-                .parent()
-                .expect("impossible to extract parent directory for OBJ loading");
-            rustlight::scene::Scene::json(
-                &data,
-                wk,
-                nb_samples,
-                nb_threads,
-                imgout_path_str.to_string(),
-            )
-            .expect("error when loading the scene")
-        }
-        "pbrt" => rustlight::scene::Scene::pbrt(
-            scene_path_str,
-            nb_samples,
-            nb_threads,
-            imgout_path_str.to_string(),
-        )
-        .expect("error when loading the scene"),
-        _ => panic!("unsupported scene format: {}", scene_ext),
-    };
+    let mut scene = scene.nb_samples(nb_samples).output_img(imgout_path_str);
 
     ///////////////// Tweak the image size
     {

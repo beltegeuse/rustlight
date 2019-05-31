@@ -1,5 +1,5 @@
-use crate::structure::*;
 use crate::geometry::Mesh;
+use crate::structure::*;
 use cgmath::*;
 
 pub struct LightSampling<'a> {
@@ -37,46 +37,34 @@ impl<'a> LightSamplingPDF<'a> {
 }
 
 pub trait Emitter: Send + Sync {
-	fn sample_position(&self,
-        s: f32,
-        uv: Point2<f32>) -> (PDF, SampledPosition);
-	fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF;
-	fn sample_direct(&self,
-        p: &Point3<f32>,
-        r: f32,
-        uv: Point2<f32>) -> LightSampling;
-	fn flux(&self) -> Color;
-	fn emitted_luminance(&self, d: Vector3<f32>) -> Color;
+    fn sample_position(&self, s: f32, uv: Point2<f32>) -> (PDF, SampledPosition);
+    fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF;
+    fn sample_direct(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling;
+    fn flux(&self) -> Color;
+    fn emitted_luminance(&self, d: Vector3<f32>) -> Color;
 }
-
 
 pub struct EnvironmentLight {
     pub luminance: Color,
-    world_radius: f32,
+    pub world_radius: f32,
 }
 impl Emitter for EnvironmentLight {
-	fn sample_position(&self,
-        s: f32,
-        uv: Point2<f32>) -> (PDF, SampledPosition) {
-			unimplemented!();
-		}
-	fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
-		unimplemented!();
-	}
-	fn sample_direct(&self,
-        p: &Point3<f32>,
-        r: f32,
-        uv: Point2<f32>) -> LightSampling {
-			unimplemented!();
-		}
-	fn flux(&self) -> Color {
-		std::f32::consts::PI * self.world_radius.powi(2) * self.luminance
-	}
-	fn emitted_luminance(&self, _d: Vector3<f32>) -> Color {
-		self.luminance
-	}
+    fn sample_position(&self, s: f32, uv: Point2<f32>) -> (PDF, SampledPosition) {
+        unimplemented!();
+    }
+    fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
+        unimplemented!();
+    }
+    fn sample_direct(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
+        unimplemented!();
+    }
+    fn flux(&self) -> Color {
+        std::f32::consts::PI * self.world_radius.powi(2) * self.luminance
+    }
+    fn emitted_luminance(&self, _d: Vector3<f32>) -> Color {
+        self.luminance
+    }
 }
-
 
 impl Emitter for Mesh {
     fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
@@ -94,13 +82,10 @@ impl Emitter for Mesh {
     }
 
     fn emitted_luminance(&self, _d: Vector3<f32>) -> Color {
-		self.emission
-	}
+        self.emission
+    }
 
-    fn sample_direct(&self,
-        p: &Point3<f32>,
-        r: f32,
-        uv: Point2<f32>) -> LightSampling {
+    fn sample_direct(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
         let sampled_pos = self.sample(r, uv);
 
         // Compute the distance
@@ -130,10 +115,8 @@ impl Emitter for Mesh {
         }
     }
 
-    fn sample_position(&self,
-        s: f32,
-        uv: Point2<f32>) -> (PDF, SampledPosition) {
-			let sampled_pos = self.sample(s, uv);
-            (PDF::Area(sampled_pos.pdf), sampled_pos)
-		}
+    fn sample_position(&self, s: f32, uv: Point2<f32>) -> (PDF, SampledPosition) {
+        let sampled_pos = self.sample(s, uv);
+        (PDF::Area(sampled_pos.pdf), sampled_pos)
+    }
 }

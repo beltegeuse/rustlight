@@ -120,7 +120,7 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
                 let mut shiftmapping = RandomReplay::default();
                 for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
                     for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
-                        for n in 0..scene.nb_samples() {
+                        for n in 0..scene.nb_samples {
                             shiftmapping.clear();
                             let c = self.compute_pixel(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
@@ -183,7 +183,7 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
                         }
                     }
                 }
-                im_block.scale(1.0 / (scene.nb_samples() as f32));
+                im_block.scale(1.0 / (scene.nb_samples as f32));
                 // Renormalize correctly the buffer informations
                 for i in 0..nb_buffers {
                     let offset_buffers = i * 3; // 3 buffer that have multiple entries
