@@ -1,7 +1,6 @@
 use crate::samplers::*;
 use cgmath::Point2;
-use rand;
-use rand::distributions::{IndependentSample, Range};
+use rand::prelude::*;
 
 pub trait Mutator: Send {
     fn mutate(&self, v: f32, r: f32) -> f32;
@@ -68,8 +67,7 @@ struct SampleReplayValue {
 }
 
 pub struct IndependentSamplerReplay {
-    rnd: rand::StdRng,
-    dist: Range<f32>,
+    rnd: StdRng,
     values: Vec<SampleReplayValue>,
     backup: Vec<(usize, f32)>,
     mutator: Box<Mutator>,
@@ -120,8 +118,7 @@ impl SamplerMCMC for IndependentSamplerReplay {
 impl Default for IndependentSamplerReplay {
     fn default() -> Self {
         IndependentSamplerReplay {
-            rnd: rand::StdRng::new().unwrap(),
-            dist: Range::new(0.0, 1.0),
+            rnd: rand::rngs::StdRng::from_rng(thread_rng()).unwrap(),
             values: vec![],
             backup: vec![],
             mutator: Box::new(MutatorKelemen::default()),
@@ -178,6 +175,6 @@ impl IndependentSamplerReplay {
 
     // FIXME: Do not expose this function
     pub fn rand(&mut self) -> f32 {
-        self.dist.ind_sample(&mut self.rnd)
+        self.rnd.gen()
     }
 }
