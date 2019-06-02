@@ -3,7 +3,6 @@
 **/*.rs.bk
 /cmake-build-debug/
 /.idea/
-*.lock
 /test.pfm
 /test.png
 /*.png
