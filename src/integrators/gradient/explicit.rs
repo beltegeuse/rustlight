@@ -3,6 +3,7 @@ use crate::integrators::{gradient::*, *};
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::structure::*;
+use crate::scene::*;
 use cgmath::Point2;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -50,7 +51,7 @@ impl<'a> Technique<'a> for TechniqueGradientPathTracing {
     }
 }
 impl TechniqueGradientPathTracing {
-    pub fn evaluate<'a>(&self, scene: &'a Scene, vertex: &Rc<VertexPtr<'a>>) -> Color {
+    pub fn evaluate<'a>(&self, scene: &'a Scene, emitters: &'a EmitterSampler, vertex: &Rc<VertexPtr<'a>>) -> Color {
         let mut l_i = Color::zero();
         match *vertex.borrow() {
             Vertex::Surface(ref v) => {
@@ -62,7 +63,7 @@ impl TechniqueGradientPathTracing {
                                 .strategies(vertex)
                                 .iter()
                                 .map(|s| {
-                                    if let Some(v) = s.pdf(scene, &vertex, edge) {
+                                    if let Some(v) = s.pdf(scene, emitters, &vertex, edge) {
                                         v
                                     } else {
                                         0.0

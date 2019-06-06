@@ -15,6 +15,7 @@ pub trait SamplingStrategy {
         &self,
         vertex: Rc<VertexPtr<'a>>,
         scene: &'a Scene,
+        emitters: &'a EmitterSampler,
         throughput: Color,
         sampler: &mut Sampler,
         id_strategy: usize,
@@ -24,6 +25,7 @@ pub trait SamplingStrategy {
     fn pdf<'a>(
         &self,
         scene: &'a Scene,
+        emitters: &'a EmitterSampler,
         vertex: &Rc<VertexPtr<'a>>,
         edge: &Rc<EdgePtr<'a>>,
     ) -> Option<f32>;
@@ -124,6 +126,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         &self,
         vertex: Rc<VertexPtr<'a>>,
         scene: &'a Scene,
+        _emitters: &'a EmitterSampler,
         mut throughput: Color,
         sampler: &mut Sampler,
         id_strategy: usize,
@@ -161,6 +164,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
     fn pdf<'a>(
         &self,
         _scene: &'a Scene,
+        _emitters: &'a EmitterSampler,
         vertex: &Rc<VertexPtr<'a>>,
         edge: &Rc<EdgePtr<'a>>,
     ) -> Option<f32> {
@@ -195,6 +199,7 @@ impl SamplingStrategy for LightSamplingStrategy {
         &self,
         vertex: Rc<VertexPtr<'a>>,
         scene: &'a Scene,
+        emitters: &'a EmitterSampler,
         mut _throughput: Color,
         sampler: &mut Sampler,
         id_strategy: usize,
@@ -210,7 +215,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // and the incomming direct light. This evaluation will be done later when MIS
                 // will be computed.
                 let light_record =
-                    scene.sample_light(&v.its.p, sampler.next(), sampler.next(), sampler.next2d());
+                    emitters.sample_light(&v.its.p, sampler.next(), sampler.next(), sampler.next2d());
                 let d_out_local = v.its.frame.to_local(light_record.d);
                 let visible = scene.visible(&v.its.p, &light_record.p);
                 if light_record.is_valid() && d_out_local.z > 0.0 && visible {
@@ -269,6 +274,7 @@ impl SamplingStrategy for LightSamplingStrategy {
     fn pdf<'a>(
         &self,
         scene: &'a Scene,
+        emitters: &'a EmitterSampler,
         vertex: &Rc<VertexPtr<'a>>,
         edge: &Rc<EdgePtr<'a>>,
     ) -> Option<f32> {
@@ -288,14 +294,14 @@ impl SamplingStrategy for LightSamplingStrategy {
                     match *next_vertex.borrow() {
                         Vertex::Surface(ref v) => {
                             if let PDF::SolidAngle(light_pdf) =
-                                scene.direct_pdf(&LightSamplingPDF::new(&ray, &v.its))
+                                emitters.direct_pdf(&LightSamplingPDF::new(&ray, &v.its))
                             {
                                 return Some(light_pdf);
                             }
                         }
                         Vertex::Emitter(ref v) => {
                             if let PDF::SolidAngle(light_pdf) =
-                                scene.direct_pdf(&LightSamplingPDF {
+                                emitters.direct_pdf(&LightSamplingPDF {
                                     emitter: v.emitter,
                                     o: ray.o,
                                     p: v.pos,
@@ -318,6 +324,7 @@ impl SamplingStrategy for LightSamplingStrategy {
 
 pub fn generate<'a, T: Technique<'a>>(
     scene: &'a Scene,
+    emitters: &'a EmitterSampler,
     sampler: &mut Sampler,
     technique: &mut T,
 ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
@@ -339,6 +346,7 @@ pub fn generate<'a, T: Technique<'a>>(
                     if let Some((new_vertex, new_throughput)) = sampling.sample(
                         curr_vertex.clone(),
                         scene,
+                        emitters,
                         *throughput,
                         sampler,
                         id_sampling,

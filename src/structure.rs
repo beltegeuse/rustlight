@@ -14,7 +14,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::*;
 use std::path::Path;
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub enum PDF {
@@ -379,9 +378,8 @@ impl Bitmap {
                 image_ldr.put_pixel(x, y, self.pixel(p).to_rgba())
             }
         }
-        let mut fout = File::create(imgout_path_str).unwrap();
         image_ldr
-            .save(&mut fout, PNG)
+            .save(&Path::new(imgout_path_str))
             .expect("failed to write img into file");
     }
 

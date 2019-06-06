@@ -13,7 +13,7 @@ impl Integrator for IntegratorDirect {
     }
 }
 impl IntegratorMC for IntegratorDirect {
-    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
+    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler, emitters: &EmitterSampler) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
@@ -51,7 +51,7 @@ impl IntegratorMC for IntegratorDirect {
         // Explict connect to the light source
         for _ in 0..self.nb_light_samples {
             let light_record =
-                scene.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
+                emitters.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
             let light_pdf = match light_record.pdf {
                 PDF::SolidAngle(v) => v,
                 _ => panic!("Wrong light PDF"),
@@ -106,7 +106,7 @@ impl IntegratorMC for IntegratorDirect {
                 if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
                     let weight_bsdf = match sampled_bsdf.pdf {
                         PDF::SolidAngle(bsdf_pdf) => {
-                            let light_pdf = scene
+                            let light_pdf = emitters
                                 .direct_pdf(&LightSamplingPDF::new(&ray, &next_its))
                                 .value();
                             mis_weight(bsdf_pdf * weight_nb_bsdf, light_pdf * weight_nb_light)

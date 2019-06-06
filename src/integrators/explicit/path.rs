@@ -2,6 +2,7 @@ use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::structure::*;
+use crate::scene::*;
 use cgmath::Point2;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -55,6 +56,7 @@ impl TechniquePathTracing {
     fn evaluate<'a>(
         &self,
         scene: &'a Scene,
+        emitters: &'a EmitterSampler,
         vertex: &Rc<VertexPtr<'a>>,
         strategy: &IntegratorPathTracingStrategies,
     ) -> Color {
@@ -90,7 +92,7 @@ impl TechniquePathTracing {
                                         .strategies(vertex)
                                         .iter()
                                         .map(|s| {
-                                            if let Some(v) = s.pdf(scene, &vertex, edge) {
+                                            if let Some(v) = s.pdf(scene, emitters, &vertex, edge) {
                                                 v
                                             } else {
                                                 0.0
@@ -144,7 +146,7 @@ impl Integrator for IntegratorPathTracing {
     }
 }
 impl IntegratorMC for IntegratorPathTracing {
-    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
+    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, emitter: &EmitterSampler, sampler: &mut Sampler) -> Color {
         // Initialize the technique
         let mut samplings: Vec<Box<SamplingStrategy>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
@@ -156,8 +158,8 @@ impl IntegratorMC for IntegratorPathTracing {
         };
         // Call the generator on this technique
         // the generator give back the root nodes
-        let root = generate(scene, sampler, &mut technique);
+        let root = generate(scene, emitter, sampler, &mut technique);
         // Evaluate the sampling graph
-        technique.evaluate(scene, &root[0].0, &self.strategy)
+        technique.evaluate(scene, emitters, &root[0].0, &self.strategy)
     }
 }

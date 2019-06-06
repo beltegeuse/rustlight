@@ -26,13 +26,13 @@ impl SceneLoaderManager {
     pub fn register(&mut self, name: &str, loader: Rc<dyn SceneLoader>) {
         self.loader.insert(name.to_string(), loader);
     }
-    pub fn load(&self, filename: &str) -> Result<Scene, Box<Error>> {
-        let filename_ext = match std::path::Path::new(filename).extension() {
+    pub fn load(&self, filename: String) -> Result<Scene, Box<Error>> {
+        let filename_ext = match std::path::Path::new(&filename).extension() {
             None => panic!("No file extension provided"),
             Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
         };
         if let Some(loader) = self.loader.get(filename_ext) {
-            loader.load(filename)
+            loader.load(&filename)
         } else {
             panic!(
                 "Impossible to found scene loader for {} extension",
@@ -159,14 +159,11 @@ impl SceneLoader for JSONSceneLoader {
             camera,
             embree_scene: scene_embree,
             meshes,
-            emitters: vec![],
-            emitters_cdf: None,
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment: None,
         };
-        scene.configure();
         Ok(scene)
     }
 }
@@ -247,9 +244,6 @@ impl SceneLoader for PBRTSceneLoader {
         }
         let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
-        // Update the list of lights
-        let mut emitters = vec![];
-        
         // Check if there is other emitter type
         let mut emitter_environment = None;
         {
@@ -265,7 +259,7 @@ impl SceneLoader for PBRTSceneLoader {
                                 emitter_environment = Some(Arc::new(EnvironmentLight {
                                     luminance: Color::new(rgb.r, rgb.g, rgb.b),
                                     world_radius: 1.0, // TODO: Add the correct radius
-                                    world_position: Point3::new(0.0, 0.0, 0.0), // TODO: 
+                                    world_position: Point3::new(0.0, 0.0, 0.0), // TODO:
                                 }));
                                 have_env = true;
                             }
@@ -300,8 +294,6 @@ impl SceneLoader for PBRTSceneLoader {
             camera,
             embree_scene: scene_embree,
             meshes,
-            emitters: vec![],
-            emitters_cdf: None,
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),

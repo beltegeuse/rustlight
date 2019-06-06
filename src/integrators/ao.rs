@@ -1,6 +1,7 @@
 use crate::integrators::*;
 use crate::math::*;
 use crate::structure::*;
+use crate::scene::*;
 
 pub struct IntegratorAO {
     pub max_distance: Option<f32>,
@@ -13,7 +14,7 @@ impl Integrator for IntegratorAO {
     }
 }
 impl IntegratorMC for IntegratorAO {
-    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
+    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler, _: &EmitterSampler) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
 

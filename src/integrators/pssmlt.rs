@@ -1,6 +1,7 @@
 use crate::integrators::*;
 use crate::samplers;
 use crate::structure::*;
+use crate::scene::*;
 use cgmath::Point2;
 
 struct MCMCState {
@@ -32,10 +33,10 @@ pub struct IntegratorPSSMLT {
 impl Integrator for IntegratorPSSMLT {
     fn compute(&mut self, scene: &Scene) -> BufferCollection {
         ///////////// Define the closure
-        let sample = |s: &mut Sampler| {
+        let sample = |s: &mut Sampler, emitters: &EmitterSampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
             let y = (s.next() * scene.camera.size().y as f32) as u32;
-            let c = { self.integrator.compute_pixel((x, y), scene, s) };
+            let c = { self.integrator.compute_pixel((x, y), scene, s, emitters) };
             MCMCState::new(c, Point2::new(x, y))
         };
 
@@ -69,12 +70,13 @@ impl Integrator for IntegratorPSSMLT {
         let pool = generate_pool(scene);
         pool.install(|| {
             samplers.par_iter_mut().for_each(|s| {
+                let emitters = scene.emitters_sampler();
                 // Initialize the sampler
                 s.large_step = true;
-                let mut current_state = sample(s as &mut Sampler);
+                let mut current_state = sample(s as &mut Sampler, &emitters);
                 while current_state.tf == 0.0 {
                     s.reject();
-                    current_state = sample(s as &mut Sampler);
+                    current_state = sample(s as &mut Sampler, &emitters);
                 }
                 s.accept();
 
@@ -83,7 +85,7 @@ impl Integrator for IntegratorPSSMLT {
                 (0..nb_samples_per_chains).for_each(|_| {
                     // Choose randomly between large and small perturbation
                     s.large_step = s.rand() < self.large_prob;
-                    let mut proposed_state = sample(s);
+                    let mut proposed_state = sample(s, &emitters);
                     let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
                     // Do waste reclycling
                     current_state.weight += 1.0 - accept_prob;
@@ -135,9 +137,10 @@ impl IntegratorPSSMLT {
         let mut sampler = samplers::independent::IndependentSampler::default();
         (0..nb_samples)
             .map(|_i| {
+                let emitters = scene.emitters_sampler();
                 let x = (sampler.next() * scene.camera.size().x as f32) as u32;
                 let y = (sampler.next() * scene.camera.size().y as f32) as u32;
-                let c = self.integrator.compute_pixel((x, y), scene, &mut sampler);
+                let c = self.integrator.compute_pixel((x, y), scene, &mut sampler, &emitters);
                 (c.r + c.g + c.b) / 3.0
             })
             .sum::<f32>()

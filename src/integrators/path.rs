@@ -14,7 +14,13 @@ impl Integrator for IntegratorPath {
     }
 }
 impl IntegratorMC for IntegratorPath {
-    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler) -> Color {
+    fn compute_pixel(
+        &self,
+        (ix, iy): (u32, u32),
+        scene: &Scene,
+        sampler: &mut Sampler,
+        emitters: &EmitterSampler,
+    ) -> Color {
         // Generate the first ray
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let mut ray = scene.camera.generate(pix);
@@ -45,7 +51,7 @@ impl IntegratorMC for IntegratorPath {
             // the BSDF is not totally specular.
             if !its.mesh.bsdf.is_smooth() && self.next_event_estimation {
                 let light_record =
-                    scene.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
+                    emitters.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
                 let light_pdf = match light_record.pdf {
                     PDF::SolidAngle(v) => v,
                     _ => panic!("Unsupported light, abord"),
@@ -116,7 +122,7 @@ impl IntegratorMC for IntegratorPath {
                     match sampled_bsdf.pdf {
                         PDF::SolidAngle(v) => {
                             // Know the the light is intersectable so have a solid angle PDF
-                            let light_pdf = scene.direct_pdf(&LightSamplingPDF::new(&ray, &its));
+                            let light_pdf = emitters.direct_pdf(&LightSamplingPDF::new(&ray, &its));
                             mis_weight(v, light_pdf.value())
                         }
                         PDF::Discrete(_v) => 1.0,
