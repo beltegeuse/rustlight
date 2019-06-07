@@ -11,11 +11,11 @@ use image::{DynamicImage, GenericImage, Pixel};
 use openexr;
 use std;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::ops::*;
 use std::path::Path;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PDF {
     SolidAngle(f32),
     Area(f32),
@@ -410,7 +410,8 @@ impl Bitmap {
                 .add_channel("R", openexr::PixelType::FLOAT)
                 .add_channel("G", openexr::PixelType::FLOAT)
                 .add_channel("B", openexr::PixelType::FLOAT),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create a `FrameBuffer` that points at our pixel data and describes it as
         // RGB data.
@@ -440,7 +441,8 @@ impl Bitmap {
     }
 
     pub fn save_pfm(&self, imgout_path_str: &str) {
-        let mut file = File::create(Path::new(imgout_path_str)).unwrap();
+        let file = File::create(Path::new(imgout_path_str)).unwrap();
+        let mut file = BufWriter::new(file);
         let header = format!("PF\n{} {}\n-1.0\n", self.size.x, self.size.y);
         file.write_all(header.as_bytes()).unwrap();
         for y in 0..self.size.y {

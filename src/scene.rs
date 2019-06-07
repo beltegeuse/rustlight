@@ -46,7 +46,7 @@ impl<'scene> EmitterSampler<'scene> {
         panic!("Impossible to found the emitter: {:p}", emitter);
     }
 
-    pub fn direct_pdf(&self, emitter: &dyn Emitter, light_sampling:&LightSamplingPDF) -> PDF {
+    pub fn direct_pdf(&self, emitter: &dyn Emitter, light_sampling: &LightSamplingPDF) -> PDF {
         emitter.direct_pdf(light_sampling) * self.pdf(emitter)
     }
 
@@ -65,7 +65,7 @@ impl<'scene> EmitterSampler<'scene> {
     }
     pub fn random_select_emitter(&self, v: f32) -> (f32, &dyn Emitter) {
         let id_light = self.emitters_cdf.sample(v);
-        (self.emitters_cdf.pdf(id_light), &(*self.emitters[id_light]))
+        (self.emitters_cdf.pdf(id_light), self.emitters[id_light])
     }
 
     pub fn random_sample_emitter_position(
@@ -131,7 +131,8 @@ impl Scene {
     }
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
-        !self.embree_scene
+        !self
+            .embree_scene
             .occluded(embree_rs::Ray::new(*p0, d).near(0.00001).far(0.9999))
     }
 
