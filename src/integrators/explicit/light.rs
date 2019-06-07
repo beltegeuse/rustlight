@@ -20,42 +20,48 @@ pub struct TechniqueLightTracing {
     pub pdf_vertex: Option<PDF>,
 }
 
-impl<'a> Technique<'a> for TechniqueLightTracing {
-    fn init(
+impl Technique for TechniqueLightTracing {
+    fn init<'scene, 'emitter>(
         &mut self,
-        scene: &'a Scene,
+        path: &mut Path<'scene, 'emitter>,
+        scene: &'scene Scene,
         sampler: &mut Sampler,
-    ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
-        let (emitter, sampled_point) =
-            scene.random_sample_emitter_position(sampler.next(), sampler.next(), sampler.next2d());
-        let emitter_vertex = Rc::new(RefCell::new(Vertex::Emitter(EmitterVertex {
+        emitters: &'emitter EmitterSampler,
+    ) -> Vec<(VertexID, Color)> {
+        let (emitter, sampled_point) = emitters.random_sample_emitter_position(
+            sampler.next(),
+            sampler.next(),
+            sampler.next2d(),
+        );
+        let emitter_vertex = Vertex::Light(EmitterVertex {
             pos: sampled_point.p,
             n: sampled_point.n,
             emitter,
             edge_in: None,
             edge_out: None,
-        })));
+        });
         self.pdf_vertex = Some(sampled_point.pdf); // Capture the pdf for later evaluation
-        vec![(emitter_vertex, Color::one())]
+        vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
 
-    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>, depth: u32) -> bool {
+    fn expand(&self, vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }
 impl TechniqueLightTracing {
-    fn evaluate<'a>(
+    fn evaluate<'scene>(
         &self,
-        scene: &'a Scene,
-        vertex: &Rc<VertexPtr<'a>>,
+        path: &Path<'scene, '_>,
+        scene: &'scene Scene,
+        vertex_id: VertexID,
         bitmap: &mut BufferCollection,
         flux: Color,
     ) {
-        match *vertex.borrow() {
+        match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
                 // Chech the visibility from the point to the sensor
                 let pos_sensor = scene.camera.position();
@@ -83,10 +89,11 @@ impl TechniqueLightTracing {
                     }
                 }
 
-                for edge in &v.edge_out {
-                    let edge = edge.borrow();
-                    if let Some(ref vertex_next) = edge.vertices.1 {
+                for edge_id in &v.edge_out {
+                    let edge = path.edge(*edge_id);
+                    if let Some(vertex_next) = edge.vertices.1 {
                         self.evaluate(
+                            path,
                             scene,
                             vertex_next,
                             bitmap,
@@ -95,7 +102,7 @@ impl TechniqueLightTracing {
                     }
                 }
             }
-            Vertex::Emitter(ref v) => {
+            Vertex::Light(ref v) => {
                 let flux = v.emitter.flux() / self.pdf_vertex.as_ref().unwrap().value();
                 let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.pos).normalize();
@@ -108,10 +115,10 @@ impl TechniqueLightTracing {
                         );
                     }
                 }
-                if let Some(ref edge) = v.edge_out {
-                    let edge = edge.borrow();
-                    if let Some(ref next_vertex) = edge.vertices.1 {
-                        self.evaluate(scene, next_vertex, bitmap, edge.weight * flux);
+                if let Some(edge_id) = v.edge_out {
+                    let edge = path.edge(edge_id);
+                    if let Some(next_vertex) = edge.vertices.1 {
+                        self.evaluate(path, scene, next_vertex, bitmap, edge.weight * flux);
                     }
                 }
             }
@@ -146,6 +153,7 @@ impl Integrator for IntegratorLightTracing {
             samplers.par_iter_mut().for_each(|s| {
                 let mut my_img: BufferCollection =
                     BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
+                let emitters = scene.emitters_sampler();
                 (0..nb_samples).for_each(|_| {
                     // The sampling strategies
                     let samplings: Vec<Box<SamplingStrategy>> =
@@ -156,9 +164,10 @@ impl Integrator for IntegratorLightTracing {
                         samplings,
                         pdf_vertex: None,
                     };
-                    let root = generate(scene, s, &mut technique);
+                    let mut path = Path::default();
+                    let root = generate(&mut path, scene, &emitters, s, &mut technique);
                     // Evaluate the path generated using camera splatting operation
-                    technique.evaluate(scene, &root[0].0, &mut my_img, Color::one());
+                    technique.evaluate(&path, scene, root[0].0, &mut my_img, Color::one());
                 });
                 my_img.scale(1.0 / (nb_samples as f32));
                 {

@@ -3,7 +3,6 @@ use crate::bsdfs::*;
 use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
-use crate::math::Distribution1DConstruct;
 use crate::scene::Scene;
 use crate::structure::*;
 use cgmath::*;
@@ -14,7 +13,6 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io::Read;
 use std::rc::Rc;
-use std::sync::Arc;
 
 pub trait SceneLoader {
     fn load(&self, filename: &str) -> Result<Scene, Box<Error>>;
@@ -127,8 +125,6 @@ impl SceneLoader for JSONSceneLoader {
                 };
             }
         }
-        info!("Build vectors and Discrete CDF");
-        let meshes = meshes.into_iter().map(|e| Arc::from(e)).collect::<Vec<_>>();
 
         // Read the camera config
         let camera = {
@@ -142,8 +138,22 @@ impl SceneLoader for JSONSceneLoader {
                 //    m[3], m[7], m[11], m[15],
                 //);
                 let matrix = Matrix4::new(
-                    m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11],
-                    m[12], m[13], m[14], m[15],
+                    m[0],
+                    m[1],
+                    m[2],
+                    m[3],
+                    m[4],
+                    m[5],
+                    m[6],
+                    m[7],
+                    m[8],
+                    m[9],
+                    m[10],
+                    m[11],
+                    m[12],
+                    m[13],
+                    m[14],
+                    m[15],
                 );
 
                 info!("m: {:?}", matrix);
@@ -155,7 +165,7 @@ impl SceneLoader for JSONSceneLoader {
         camera.print_info();
 
         // Define a default scene
-        let mut scene = Scene {
+        Ok(Scene {
             camera,
             embree_scene: scene_embree,
             meshes,
@@ -163,8 +173,7 @@ impl SceneLoader for JSONSceneLoader {
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment: None,
-        };
-        Ok(scene)
+        })
     }
 }
 
@@ -198,8 +207,7 @@ impl SceneLoader for PBRTSceneLoader {
                         Some(ref v) => v.iter().map(|n| mat.transform_vector(n.clone())).collect(),
                         None => Vec::new(),
                     };
-                    let points = data
-                        .points
+                    let points = data.points
                         .iter()
                         .map(|n| mat.transform_point(n.clone()))
                         .collect();
@@ -242,7 +250,6 @@ impl SceneLoader for PBRTSceneLoader {
                 _ => warn!("unsupported emission profile: {:?}", shape.emission),
             }
         }
-        let meshes: Vec<Arc<geometry::Mesh>> = meshes.into_iter().map(|e| Arc::from(e)).collect();
 
         // Check if there is other emitter type
         let mut emitter_environment = None;
@@ -256,11 +263,11 @@ impl SceneLoader for PBRTSceneLoader {
                                 if have_env {
                                     panic!("Multiple env map is NOT supported");
                                 }
-                                emitter_environment = Some(Arc::new(EnvironmentLight {
+                                emitter_environment = Some(EnvironmentLight {
                                     luminance: Color::new(rgb.r, rgb.g, rgb.b),
                                     world_radius: 1.0, // TODO: Add the correct radius
                                     world_position: Point3::new(0.0, 0.0, 0.0), // TODO:
-                                }));
+                                });
                                 have_env = true;
                             }
                             _ => {

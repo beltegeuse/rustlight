@@ -674,8 +674,7 @@ impl Bxdf for FresnelSpecular {
         }
     }
     fn get_type(&self) -> u8 {
-        BxdfType::BsdfReflection as u8
-            | BxdfType::BsdfTransmission as u8
+        BxdfType::BsdfReflection as u8 | BxdfType::BsdfTransmission as u8
             | BxdfType::BsdfSpecular as u8
     }
 }
@@ -901,8 +900,7 @@ impl FresnelBlend {
 
 impl Bxdf for FresnelBlend {
     fn f(&self, wo: &Vector3f, wi: &Vector3f) -> Spectrum {
-        let diffuse: Spectrum = self.rd
-            * (Spectrum::value(1.0 as Float) - self.rs)
+        let diffuse: Spectrum = self.rd * (Spectrum::value(1.0 as Float) - self.rs)
             * (28.0 as Float / (23.0 as Float * PI))
             * (1.0 - pow5(1.0 - 0.5 * abs_cos_theta(wi)))
             * (1.0 - pow5(1.0 - 0.5 * abs_cos_theta(wo)));
@@ -916,8 +914,7 @@ impl Bxdf for FresnelBlend {
             assert!(schlick_fresnel.r >= 0.0, "wi = {:?}; wh = {:?}", wi, wh);
             let specular: Spectrum = schlick_fresnel
                 * (distribution.d(&wh)
-                    / (4.0
-                        * vec3_dot_vec3(wi, &wh).abs()
+                    / (4.0 * vec3_dot_vec3(wi, &wh).abs()
                         * f32::max(abs_cos_theta(wi), abs_cos_theta(wo))));
             diffuse + specular
         } else {
@@ -1046,7 +1043,8 @@ pub fn sin_2_phi(w: &Vector3f) -> Float {
 /// vectors in the shading coordinate system.
 pub fn cos_d_phi(wa: &Vector3f, wb: &Vector3f) -> Float {
     clamp_t(
-        ((wa.x * wb.x + wa.y * wb.y) / ((wa.x * wa.x + wa.y * wa.y) * (wb.x * wb.x + wb.y * wb.y)))
+        ((wa.x * wb.x + wa.y * wb.y)
+            / ((wa.x * wa.x + wa.y * wa.y) * (wb.x * wb.x + wb.y * wb.y)))
             .sqrt(),
         -1.0 as Float,
         1.0 as Float,

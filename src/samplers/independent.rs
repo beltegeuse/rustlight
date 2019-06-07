@@ -20,7 +20,7 @@ impl Sampler for IndependentSampler {
 impl Default for IndependentSampler {
     fn default() -> IndependentSampler {
         IndependentSampler {
-            rnd: rand::rngs::StdRng::from_rng(thread_rng()).unwrap()
+            rnd: rand::rngs::StdRng::from_rng(thread_rng()).unwrap(),
         }
     }
 }

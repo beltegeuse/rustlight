@@ -21,7 +21,6 @@ pub struct BufferCollection {
     pub size: Vector2<u32>,
     pub values: HashMap<String, Bitmap>,
 }
-unsafe impl Send for BufferCollection {}
 
 impl BufferCollection {
     /// Create a new Bitmap
@@ -229,27 +228,30 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Buffe
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
     let pool = generate_pool(scene);
-    image_blocks.iter_mut().for_each(|im_block| {
-        let mut sampler = independent::IndependentSampler::default();
-        let light_sampling = scene.emitters_sampler();
-        for iy in 0..im_block.size.y {
-            for ix in 0..im_block.size.x {
-                for _ in 0..scene.nb_samples {
-                    let c = int.compute_pixel(
-                        (ix + im_block.pos.x, iy + im_block.pos.y),
-                        scene,
-                        &mut sampler,
-                        &light_sampling,
-                    );
-                    im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
+    pool.install(|| {
+        image_blocks.par_iter_mut().for_each(|im_block| {
+            // image_blocks.iter_mut().for_each(|im_block| {
+            let mut sampler = independent::IndependentSampler::default();
+            let light_sampling = scene.emitters_sampler();
+            for iy in 0..im_block.size.y {
+                for ix in 0..im_block.size.x {
+                    for _ in 0..scene.nb_samples {
+                        let c = int.compute_pixel(
+                            (ix + im_block.pos.x, iy + im_block.pos.y),
+                            scene,
+                            &mut sampler,
+                            &light_sampling,
+                        );
+                        im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
+                    }
                 }
             }
-        }
-        im_block.scale(1.0 / (scene.nb_samples as f32));
+            im_block.scale(1.0 / (scene.nb_samples as f32));
 
-        {
-            progress_bar.lock().unwrap().inc();
-        }
+            {
+                progress_bar.lock().unwrap().inc();
+            }
+        });
     });
 
     // Fill the image

@@ -163,10 +163,7 @@ impl MicrofacetDistribution for TrowbridgeReitzDistribution {
             roughness = limit;
         }
         let x: f32 = roughness.ln(); // natural (base e) logarithm
-        1.621_42
-            + 0.819_955 * x
-            + 0.173_4 * x * x
-            + 0.017_120_1 * x * x * x
+        1.621_42 + 0.819_955 * x + 0.173_4 * x * x + 0.017_120_1 * x * x * x
             + 0.000_640_711 * x * x * x * x
     }
     fn roughness(&self) -> f32 {
@@ -220,8 +217,7 @@ impl MicrofacetDistribution for TrowbridgeReitzDistribution {
         }
         let cos_4_theta: f32 = cos_2_theta(wh) * cos_2_theta(wh);
         let e: f32 = (cos_2_phi(wh) / (self.alpha_x * self.alpha_x)
-            + sin_2_phi(wh) / (self.alpha_y * self.alpha_y))
-            * tan_2_theta;
+            + sin_2_phi(wh) / (self.alpha_y * self.alpha_y)) * tan_2_theta;
         1.0 as f32
             / (PI * self.alpha_x * self.alpha_y * cos_4_theta * (1.0 as f32 + e) * (1.0 as f32 + e))
     }

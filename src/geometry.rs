@@ -29,8 +29,7 @@ pub fn load_obj(
         let mesh = m.mesh;
         // Load vertex position
         info!(" - triangles: {}", mesh.indices.len() / 3);
-        let vertices = mesh
-            .positions
+        let vertices = mesh.positions
             .chunks(3)
             .map(|i| Point3::new(i[0], i[1], i[2]))
             .collect();
@@ -158,8 +157,6 @@ pub struct Mesh {
     pub emission: Color,
     pub cdf: Distribution1D,
 }
-unsafe impl Send for Mesh {}
-unsafe impl Sync for Mesh {}
 
 impl Mesh {
     pub fn new(

@@ -36,8 +36,7 @@ impl IntegratorMC for IntegratorPath {
         let mut depth: u32 = 1;
         while self.max_depth.map_or(true, |max| depth < max) {
             // Add the emission for the light intersection
-            if its.cos_theta() > 0.0
-                && self.min_depth.map_or(true, |min| depth >= min)
+            if its.cos_theta() > 0.0 && self.min_depth.map_or(true, |min| depth >= min)
                 && depth == 1
             {
                 l_i += &(throughput * its.mesh.emission);
@@ -58,8 +57,7 @@ impl IntegratorMC for IntegratorPath {
                 };
 
                 let d_out_local = its.frame.to_local(light_record.d);
-                if light_record.is_valid()
-                    && scene.visible(&its.p, &light_record.p)
+                if light_record.is_valid() && scene.visible(&its.p, &light_record.p)
                     && d_out_local.z > 0.0
                 {
                     // Compute the contribution of direct lighting
@@ -72,15 +70,13 @@ impl IntegratorMC for IntegratorPath {
                         // Compute MIS weights
                         let weight_light = mis_weight(light_pdf, pdf_bsdf);
                         if self.min_depth.map_or(true, |min| depth >= min) || weight_light > 0.0 {
-                            l_i += weight_light
-                                * throughput
+                            l_i += weight_light * throughput
                                 * its.mesh.bsdf.eval(
                                     &its.uv,
                                     &its.wi,
                                     &d_out_local,
                                     Domain::SolidAngle,
-                                )
-                                * light_record.weight;
+                                ) * light_record.weight;
                         }
                     } else {
                         unreachable!();
@@ -122,7 +118,8 @@ impl IntegratorMC for IntegratorPath {
                     match sampled_bsdf.pdf {
                         PDF::SolidAngle(v) => {
                             // Know the the light is intersectable so have a solid angle PDF
-                            let light_pdf = emitters.direct_pdf(&LightSamplingPDF::new(&ray, &its));
+                            let light_pdf = its.mesh.direct_pdf(&LightSamplingPDF::new(&ray, &its))
+                                * emitters.pdf(its.mesh);
                             mis_weight(v, light_pdf.value())
                         }
                         PDF::Discrete(_v) => 1.0,

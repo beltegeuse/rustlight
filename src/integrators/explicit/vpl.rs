@@ -34,73 +34,80 @@ pub struct TechniqueVPL {
     pub pdf_vertex: Option<PDF>,
 }
 
-impl<'a> Technique<'a> for TechniqueVPL {
-    fn init(
+impl Technique for TechniqueVPL {
+    fn init<'scene, 'emitter>(
         &mut self,
-        scene: &'a Scene,
+        path: &mut Path<'scene, 'emitter>,
+        scene: &'scene Scene,
         sampler: &mut Sampler,
-    ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
-        let (emitter, sampled_point) =
-            scene.random_sample_emitter_position(sampler.next(), sampler.next(), sampler.next2d());
-        let emitter_vertex = Rc::new(RefCell::new(Vertex::Emitter(EmitterVertex {
+        emitters: &'emitter EmitterSampler,
+    ) -> Vec<(VertexID, Color)> {
+        let (emitter, sampled_point) = emitters.random_sample_emitter_position(
+            sampler.next(),
+            sampler.next(),
+            sampler.next2d(),
+        );
+        let emitter_vertex = Vertex::Light(EmitterVertex {
             pos: sampled_point.p,
             n: sampled_point.n,
             emitter,
             edge_in: None,
             edge_out: None,
-        })));
+        });
         self.pdf_vertex = Some(sampled_point.pdf); // Capture the pdf for later evaluation
-        vec![(emitter_vertex, Color::one())]
+        vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
 
-    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>, depth: u32) -> bool {
-        self.max_depth.map_or(true, |max| depth < max - 1) // Because we do the gathering
+    fn expand(&self, vertex: &Vertex, depth: u32) -> bool {
+        self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }
 
 impl TechniqueVPL {
-    fn convert_vpl<'a>(
+    fn convert_vpl<'scene>(
         &self,
-        scene: &'a Scene,
-        vertex: &Rc<VertexPtr<'a>>,
-        vpls: &RefCell<Vec<Box<VPL<'a>>>>,
+        path: &Path<'scene, '_>,
+        scene: &'scene Scene,
+        vertex_id: VertexID,
+        vpls: &mut Vec<VPL<'scene>>,
         flux: Color,
     ) {
-        match *vertex.borrow() {
+        match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
-                vpls.borrow_mut().push(Box::new(VPL::Surface(VPLSurface {
+                vpls.push(VPL::Surface(VPLSurface {
                     its: v.its.clone(),
                     radiance: flux,
-                })));
+                }));
 
                 for edge in &v.edge_out {
-                    let edge = edge.borrow();
-                    if let Some(ref vertex_next) = edge.vertices.1 {
+                    let edge = path.edge(*edge);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
                         self.convert_vpl(
+                            path,
                             scene,
-                            vertex_next,
+                            vertex_next_id,
                             vpls,
                             flux * edge.weight * edge.rr_weight,
                         );
                     }
                 }
             }
-            Vertex::Emitter(ref v) => {
+            Vertex::Light(ref v) => {
                 let flux = v.emitter.flux() / self.pdf_vertex.as_ref().unwrap().value();
-                vpls.borrow_mut().push(Box::new(VPL::Emitter(VPLEmitter {
+                vpls.push(VPL::Emitter(VPLEmitter {
                     pos: v.pos,
                     n: v.n,
                     emitted_radiance: flux,
-                })));
+                }));
 
-                if let Some(ref edge) = v.edge_out {
-                    let edge = edge.borrow();
-                    if let Some(ref next_vertex) = edge.vertices.1 {
-                        self.convert_vpl(scene, next_vertex, vpls, edge.weight * flux);
+                if let Some(edge) = v.edge_out {
+                    let edge = path.edge(edge);
+                    if let Some(next_vertex_id) = edge.vertices.1 {
+                        self.convert_vpl(path, scene, next_vertex_id, vpls, edge.weight * flux);
                     }
                 }
             }
@@ -115,8 +122,9 @@ impl Integrator for IntegratorVPL {
         let buffernames = vec![String::from("primal")];
         let mut sampler = samplers::independent::IndependentSampler::default();
         let mut nb_path_shot = 0;
-        let vpls = RefCell::new(vec![]);
-        while vpls.borrow().len() < self.nb_vpl as usize {
+        let mut vpls = vec![];
+        let emitters = scene.emitters_sampler();
+        while vpls.len() < self.nb_vpl as usize {
             let samplings: Vec<Box<SamplingStrategy>> =
                 vec![Box::new(DirectionalSamplingStrategy {})];
             let mut technique = TechniqueVPL {
@@ -124,12 +132,12 @@ impl Integrator for IntegratorVPL {
                 samplings,
                 pdf_vertex: None,
             };
-
-            let root = generate(scene, &mut sampler, &mut technique);
-            technique.convert_vpl(scene, &root[0].0, &vpls, Color::one());
+            let mut path = Path::default();
+            let root = generate(&mut path, scene, &emitters, &mut sampler, &mut technique);
+            technique.convert_vpl(&path, scene, root[0].0, &mut vpls, Color::one());
             nb_path_shot += 1;
         }
-        let vpls = vpls.into_inner();
+        let vpls = vpls;
 
         // Generate the image block to get VPL efficiently
         let mut image_blocks = generate_img_blocks(scene, &buffernames);
@@ -179,7 +187,7 @@ impl IntegratorVPL {
         (ix, iy): (u32, u32),
         scene: &'a Scene,
         sampler: &mut Sampler,
-        vpls: &[Box<VPL<'a>>],
+        vpls: &[VPL<'a>],
         norm_vpl: f32,
     ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
@@ -198,7 +206,7 @@ impl IntegratorVPL {
         }
 
         for vpl in vpls {
-            match **vpl {
+            match *vpl {
                 VPL::Emitter(ref vpl) => {
                     if scene.visible(&vpl.pos, &its.p) {
                         let mut d = vpl.pos - its.p;

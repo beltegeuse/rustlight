@@ -6,7 +6,7 @@ use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use cgmath::{InnerSpace, Point2, Point3, Vector2, Vector3};
 #[cfg(feature = "image")]
-use image::{DynamicImage, GenericImage, Pixel, PNG};
+use image::{DynamicImage, GenericImage, Pixel};
 #[cfg(feature = "openexr")]
 use openexr;
 use std;
@@ -410,8 +410,7 @@ impl Bitmap {
                 .add_channel("R", openexr::PixelType::FLOAT)
                 .add_channel("G", openexr::PixelType::FLOAT)
                 .add_channel("B", openexr::PixelType::FLOAT),
-        )
-        .unwrap();
+        ).unwrap();
 
         // Create a `FrameBuffer` that points at our pixel data and describes it as
         // RGB data.

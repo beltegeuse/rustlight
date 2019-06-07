@@ -13,7 +13,13 @@ impl Integrator for IntegratorDirect {
     }
 }
 impl IntegratorMC for IntegratorDirect {
-    fn compute_pixel(&self, (ix, iy): (u32, u32), scene: &Scene, sampler: &mut Sampler, emitters: &EmitterSampler) -> Color {
+    fn compute_pixel(
+        &self,
+        (ix, iy): (u32, u32),
+        scene: &Scene,
+        sampler: &mut Sampler,
+        emitters: &EmitterSampler,
+    ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
         let mut l_i = Color::zero();
@@ -58,8 +64,7 @@ impl IntegratorMC for IntegratorDirect {
             };
 
             let d_out_local = its.frame.to_local(light_record.d);
-            if light_record.is_valid()
-                && scene.visible(&its.p, &light_record.p)
+            if light_record.is_valid() && scene.visible(&its.p, &light_record.p)
                 && d_out_local.z > 0.0
             {
                 // Compute the contribution of direct lighting
@@ -73,12 +78,10 @@ impl IntegratorMC for IntegratorDirect {
                     let weight_light =
                         mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
                     l_i += &(weight_light
-                        * its
-                            .mesh
+                        * its.mesh
                             .bsdf
                             .eval(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
-                        * weight_nb_light
-                        * light_record.weight);
+                        * weight_nb_light * light_record.weight);
                 }
             }
         }
@@ -95,8 +98,7 @@ impl IntegratorMC for IntegratorDirect {
                 let next_its = match scene.trace(&ray) {
                     Some(x) => x,
                     None => {
-                        l_i += sampled_bsdf.weight
-                            * scene.enviroment_luminance(ray.d)
+                        l_i += sampled_bsdf.weight * scene.enviroment_luminance(ray.d)
                             * weight_nb_bsdf;
                         continue;
                     } // FIXME: Need to implement MIS for BSDF
@@ -106,8 +108,10 @@ impl IntegratorMC for IntegratorDirect {
                 if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
                     let weight_bsdf = match sampled_bsdf.pdf {
                         PDF::SolidAngle(bsdf_pdf) => {
-                            let light_pdf = emitters
+                            let light_pdf = (next_its
+                                .mesh
                                 .direct_pdf(&LightSamplingPDF::new(&ray, &next_its))
+                                * emitters.pdf(next_its.mesh))
                                 .value();
                             mis_weight(bsdf_pdf * weight_nb_bsdf, light_pdf * weight_nb_light)
                         }

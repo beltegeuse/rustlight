@@ -6,8 +6,6 @@ use crate::math::Distribution1DConstruct;
 use crate::structure::*;
 use cgmath::*;
 
-use std::ops::Deref;
-use std::sync::Arc;
 /// Scene representation
 pub struct Scene {
     /// Main camera
@@ -16,9 +14,9 @@ pub struct Scene {
     pub nb_threads: Option<usize>,
     pub output_img_path: String,
     // Geometry information
-    pub meshes: Vec<Arc<geometry::Mesh>>,
+    pub meshes: Vec<geometry::Mesh>,
     pub embree_scene: embree_rs::Scene,
-    pub emitter_environment: Option<Arc<EnvironmentLight>>,
+    pub emitter_environment: Option<EnvironmentLight>,
 }
 
 pub struct EmitterSampler<'scene> {
@@ -27,21 +25,25 @@ pub struct EmitterSampler<'scene> {
 }
 
 impl<'scene> EmitterSampler<'scene> {
-    pub fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
-        let emitter: &dyn Emitter = light_sampling.emitter;
-        let emitter_id = match self.emitters.iter().position(|m| std::ptr::eq(emitter,*m)) {
-            Some(v) => v,
-            None => {
-                self.emitters
-                    .iter()
-                    .for_each(|m| warn!("- {:p} != {:p}", *m, emitter));
-                panic!(
-                    "Impossible to found the emitter ID inside the CDF: {:p}",
-                    emitter
-                );
+    pub fn pdf(&self, emitter: &dyn Emitter) -> f32 {
+        let emitter_addr: [usize; 2] = unsafe { std::mem::transmute(emitter) };
+        for (i, e) in self.emitters.iter().enumerate() {
+            let other_addr: [usize; 2] = unsafe { std::mem::transmute(*e) };
+            if emitter_addr[0] == other_addr[0] {
+                //if std::ptr::eq(emitter, *e) {
+                // I need the index to retrive an info
+                // This info cannot be stored inside the Emitter
+                return self.emitters_cdf.pdf(i);
             }
-        };
-        light_sampling.emitter.direct_pdf(&light_sampling) * self.emitters_cdf.pdf(emitter_id)
+        }
+
+        // For debug
+        println!("Size: {}", self.emitters.len());
+        for e in &self.emitters {
+            println!(" - {:p} != {:p}", (*e), emitter);
+        }
+
+        panic!("Impossible to found the emitter: {:p}", emitter);
     }
     pub fn sample_light(
         &self,
@@ -90,16 +92,12 @@ impl Scene {
 
     pub fn emitters_sampler<'scene>(&'scene self) -> EmitterSampler<'scene> {
         // Append emission mesh to the emitter list
-        let emitters = self
-            .meshes
-            .iter()
-            .filter(|m| !m.emission.is_zero())
-            .map(|m| {
-                let m: &dyn Emitter = m.deref();
-                m
-            })
-            .collect::<Vec<_>>();
-
+        let mut emitters: Vec<&dyn Emitter> = vec![];
+        for e in &self.meshes {
+            if !e.emission.is_zero() {
+                emitters.push(e)
+            }
+        }
         // Construct the CDF for all the emitters
         let emitters_cdf = {
             let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
@@ -109,6 +107,7 @@ impl Scene {
                 .for_each(|f| cdf_construct.add(f.channel_max()));
             cdf_construct.normalize()
         };
+
         EmitterSampler {
             emitters,
             emitters_cdf,
@@ -127,8 +126,7 @@ impl Scene {
     }
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
-        !self
-            .embree_scene
+        !self.embree_scene
             .occluded(embree_rs::Ray::new(*p0, d).near(0.00001).far(0.9999))
     }
 

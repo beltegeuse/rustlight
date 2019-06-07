@@ -1,5 +1,4 @@
 use crate::emitter::Emitter;
-use crate::geometry::Mesh;
 use crate::scene::*;
 use crate::structure::*;
 use cgmath::*;
@@ -7,12 +6,12 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 #[derive(Clone)]
-pub struct Edge<'a> {
+pub struct Edge {
     /// Geometric informations
     pub dist: Option<f32>,
     pub d: Vector3<f32>,
     /// Connecting two vertices
-    pub vertices: (Weak<VertexPtr<'a>>, Option<Rc<VertexPtr<'a>>>),
+    pub vertices: (VertexID, Option<VertexID>),
     /// Sampling information
     pub pdf_distance: f32,
     pub pdf_direction: PDF,
@@ -21,59 +20,61 @@ pub struct Edge<'a> {
     pub id_sampling: usize,
 }
 
-impl<'a> Edge<'a> {
+impl Edge {
     pub fn from_vertex(
-        org_vertex: &Rc<VertexPtr<'a>>,
+        path: &mut Path,
+        org_vertex_id: VertexID,
         pdf_direction: PDF,
         weight: Color,
         rr_weight: f32,
-        next_vertex: &Rc<VertexPtr<'a>>,
+        next_vertex_id: VertexID,
         id_sampling: usize,
-    ) -> Rc<EdgePtr<'a>> {
-        let mut d = next_vertex.borrow().position() - org_vertex.borrow().position();
+    ) -> EdgeID {
+        let mut d = path.vertex(next_vertex_id).position() - path.vertex(org_vertex_id).position();
         let dist = d.magnitude();
         d /= dist;
 
-        let edge = Rc::new(RefCell::new(Edge {
+        let edge = Edge {
             dist: Some(dist),
             d,
-            vertices: (Rc::downgrade(&org_vertex), Some(next_vertex.clone())),
+            vertices: (org_vertex_id, Some(next_vertex_id)),
             pdf_distance: 1.0,
             pdf_direction,
             weight,
             rr_weight,
             id_sampling,
-        }));
+        };
+        let edge = path.register_edge(edge);
 
-        match *next_vertex.borrow_mut() {
-            Vertex::Emitter(ref mut v) => v.edge_in = Some(Rc::downgrade(&edge)),
+        match path.vertex_mut(next_vertex_id) {
+            Vertex::Light(ref mut v) => v.edge_in = Some(edge),
             _ => unimplemented!(),
         };
-
         edge
     }
 
-    pub fn from_ray(
+    pub fn from_ray<'scene>(
+        path: &mut Path<'scene, '_>,
         ray: &Ray,
-        org_vertex: &Rc<VertexPtr<'a>>,
+        org_vertex_id: VertexID,
         pdf_direction: PDF,
         weight: Color,
         rr_weight: f32,
-        scene: &'a Scene,
+        scene: &'scene Scene,
         id_sampling: usize,
-    ) -> (Rc<EdgePtr<'a>>, Option<Rc<VertexPtr<'a>>>) {
+    ) -> (EdgeID, Option<VertexID>) {
         // TODO: When there will be volume, we need to sample a distance inside the volume
-        let edge = Rc::new(RefCell::new(Edge {
+        let edge = Edge {
             dist: None,
             d: ray.d,
-            vertices: (Rc::downgrade(org_vertex), None),
+            vertices: (org_vertex_id, None),
             pdf_distance: 1.0,
             pdf_direction,
             weight,
             rr_weight,
             id_sampling,
-        }));
-
+        };
+        let edge = path.register_edge(edge);
         let its = match scene.trace(&ray) {
             Some(its) => its,
             None => {
@@ -84,25 +85,26 @@ impl<'a> Edge<'a> {
 
         // Create the new vertex
         let intersection_distance = its.dist;
-        let new_vertex = Rc::new(RefCell::new(Vertex::Surface(SurfaceVertex {
+        let new_vertex = Vertex::Surface(SurfaceVertex {
             its,
             rr_weight: 1.0,
-            edge_in: Rc::downgrade(&edge),
+            edge_in: edge,
             edge_out: vec![],
-        })));
+        });
+        let new_vertex = path.register_vertex(new_vertex);
 
         // Update the edge information
         {
-            let mut edge = edge.borrow_mut();
+            let edge = path.edge_mut(edge);
             edge.dist = Some(intersection_distance);
-            edge.vertices.1 = Some(new_vertex.clone());
+            edge.vertices.1 = Some(new_vertex);
         }
         (edge, Some(new_vertex))
     }
 
-    pub fn next_on_light_source(&self) -> bool {
+    pub fn next_on_light_source(&self, path: &Path) -> bool {
         if let Some(v) = &self.vertices.1 {
-            return v.borrow().on_light_source();
+            return path.vertex(*v).on_light_source();
         } else {
             return false; //TODO: No env map
         }
@@ -110,9 +112,9 @@ impl<'a> Edge<'a> {
 
     /// Get the contribution along this edge (toward the light direction)
     /// @deprecated: This might be not optimal as it is not a recursive call.
-    pub fn contribution(&self) -> Color {
+    pub fn contribution(&self, path: &Path) -> Color {
         if let Some(v) = &self.vertices.1 {
-            return self.weight * self.rr_weight * v.borrow().contribution(self);
+            return self.weight * self.rr_weight * path.vertex(*v).contribution(self);
         } else {
             return Color::zero(); //TODO: No env map
         }
@@ -120,51 +122,37 @@ impl<'a> Edge<'a> {
 }
 
 #[derive(Clone)]
-pub struct SensorVertex<'a> {
+pub struct SensorVertex {
     pub uv: Point2<f32>,
     pub pos: Point3<f32>,
-    pub edge_in: Option<Weak<EdgePtr<'a>>>,
-    pub edge_out: Option<Rc<EdgePtr<'a>>>,
+    pub edge_in: Option<EdgeID>,
+    pub edge_out: Option<EdgeID>,
 }
 
 #[derive(Clone)]
-pub struct SurfaceVertex<'a> {
-    pub its: Intersection<'a>,
+pub struct SurfaceVertex<'scene> {
+    pub its: Intersection<'scene>,
     pub rr_weight: f32,
-    pub edge_in: Weak<EdgePtr<'a>>,
-    pub edge_out: Vec<Rc<EdgePtr<'a>>>,
+    pub edge_in: EdgeID,
+    pub edge_out: Vec<EdgeID>,
 }
 
 #[derive(Clone)]
-pub struct EmitterVertex<'a> {
+pub struct EmitterVertex<'emitter> {
     pub pos: Point3<f32>,
     pub n: Vector3<f32>,
-    pub emitter: &'a dyn Emitter,
-    pub edge_in: Option<Weak<EdgePtr<'a>>>,
-    pub edge_out: Option<Rc<EdgePtr<'a>>>,
+    pub emitter: &'emitter dyn Emitter,
+    pub edge_in: Option<EdgeID>,
+    pub edge_out: Option<EdgeID>,
 }
 
 #[derive(Clone)]
-pub enum Vertex<'a> {
-    Sensor(SensorVertex<'a>),
-    Surface(SurfaceVertex<'a>),
-    Emitter(EmitterVertex<'a>),
+pub enum Vertex<'scene, 'emitter> {
+    Sensor(SensorVertex),
+    Surface(SurfaceVertex<'scene>),
+    Light(EmitterVertex<'emitter>),
 }
-impl<'a> Vertex<'a> {
-    pub fn next_vertex(&self) -> Vec<Rc<VertexPtr<'a>>> {
-        match *self {
-            Vertex::Sensor(ref v) => match v.edge_out.as_ref() {
-                None => vec![],
-                Some(ref e) => e
-                    .borrow()
-                    .vertices
-                    .1
-                    .as_ref()
-                    .map_or(vec![], |v| vec![v.clone()]),
-            },
-            _ => unimplemented!(),
-        }
-    }
+impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
     pub fn pixel_pos(&self) -> Point2<f32> {
         match *self {
             Vertex::Sensor(ref v) => v.uv,
@@ -175,7 +163,7 @@ impl<'a> Vertex<'a> {
         match *self {
             Vertex::Surface(ref v) => v.its.p,
             Vertex::Sensor(ref v) => v.pos,
-            Vertex::Emitter(ref v) => v.pos,
+            Vertex::Light(ref v) => v.pos,
         }
     }
 
@@ -183,7 +171,7 @@ impl<'a> Vertex<'a> {
         match *self {
             Vertex::Surface(ref v) => !v.its.mesh.emission.is_zero(),
             Vertex::Sensor(ref _v) => false,
-            Vertex::Emitter(ref _v) => true,
+            Vertex::Light(ref _v) => true,
         }
     }
 
@@ -197,10 +185,63 @@ impl<'a> Vertex<'a> {
                 }
             }
             Vertex::Sensor(ref _v) => Color::zero(),
-            Vertex::Emitter(ref v) => v.emitter.emitted_luminance(-edge.d), // FIXME: Check the normal orientation
+            Vertex::Light(ref v) => v.emitter.emitted_luminance(-edge.d), // FIXME: Check the normal orientation
         }
     }
 }
 
-pub type VertexPtr<'a> = RefCell<Vertex<'a>>;
-pub type EdgePtr<'a> = RefCell<Edge<'a>>;
+#[derive(Clone, Copy, Debug)]
+pub struct VertexID(usize);
+#[derive(Clone, Copy, Debug)]
+pub struct EdgeID(usize);
+pub struct Path<'scene, 'emitter> {
+    vertices: Vec<Vertex<'scene, 'emitter>>,
+    edges: Vec<Edge>,
+}
+impl<'scene, 'emitter> Default for Path<'scene, 'emitter> {
+    fn default() -> Self {
+        Path {
+            vertices: vec![],
+            edges: vec![],
+        }
+    }
+}
+impl<'scene, 'emitter> Path<'scene, 'emitter> {
+    pub fn register_edge(&mut self, e: Edge) -> EdgeID {
+        let id = self.edges.len();
+        self.edges.push(e);
+        EdgeID(id)
+    }
+    pub fn register_vertex(&mut self, v: Vertex<'scene, 'emitter>) -> VertexID {
+        let id = self.vertices.len();
+        self.vertices.push(v);
+        VertexID(id)
+    }
+    pub fn vertex(&self, id: VertexID) -> &Vertex<'scene, 'emitter> {
+        &self.vertices[id.0]
+    }
+    pub fn edge(&self, id: EdgeID) -> &Edge {
+        &self.edges[id.0]
+    }
+    pub fn vertex_mut(&mut self, id: VertexID) -> &mut Vertex<'scene, 'emitter> {
+        &mut self.vertices[id.0]
+    }
+    pub fn edge_mut(&mut self, id: EdgeID) -> &mut Edge {
+        &mut self.edges[id.0]
+    }
+
+    // pub fn next_vertex(&self) -> Vec<Rc<VertexPtr<'a>>> {
+    //     match *self {
+    //         Vertex::Sensor(ref v) => match v.edge_out.as_ref() {
+    //             None => vec![],
+    //             Some(ref e) => e
+    //                 .borrow()
+    //                 .vertices
+    //                 .1
+    //                 .as_ref()
+    //                 .map_or(vec![], |v| vec![v.clone()]),
+    //         },
+    //         _ => unimplemented!(),
+    //     }
+    // }
+}

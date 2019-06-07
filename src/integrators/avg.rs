@@ -46,8 +46,7 @@ impl Integrator for IntegratorAverage {
                 None => info!("Total time (no timeout): {:?} secs", elapsed.as_secs()),
                 Some(t) => info!("Total time: {:?} / {:?} secs", elapsed.as_secs(), t),
             }
-            if self
-                .time_out
+            if self.time_out
                 .map_or(false, |t| elapsed.as_secs() >= t as u64)
             {
                 break;

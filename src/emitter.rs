@@ -17,18 +17,16 @@ impl<'a> LightSampling<'a> {
     }
 }
 
-pub struct LightSamplingPDF<'a> {
-    pub emitter: &'a dyn Emitter,
+pub struct LightSamplingPDF {
     pub o: Point3<f32>,
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
     pub dir: Vector3<f32>,
 }
 
-impl<'a> LightSamplingPDF<'a> {
-    pub fn new(ray: &Ray, its: &'a Intersection) -> LightSamplingPDF<'a> {
+impl LightSamplingPDF {
+    pub fn new(ray: &Ray, its: &Intersection) -> LightSamplingPDF {
         LightSamplingPDF {
-            emitter: its.mesh,
             o: ray.o,
             p: its.p,
             n: its.n_g, // FIXME: Geometrical normal?
