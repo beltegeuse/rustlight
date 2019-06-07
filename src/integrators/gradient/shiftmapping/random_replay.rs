@@ -51,13 +51,15 @@ impl Default for RandomReplay {
     }
 }
 impl ShiftMapping for RandomReplay {
-    fn base<'a>(
+    fn base<'scene, 'emitter>(
         &mut self,
+        path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        scene: &'a Scene,
+        scene: &'scene Scene,
+        emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,
-    ) -> (Color, Rc<VertexPtr<'a>>) {
+    ) -> (Color, VertexID) {
         // Capture the random numbers
         let mut capture_sampler = ReplaySampler {
             sampler,
@@ -67,18 +69,20 @@ impl ShiftMapping for RandomReplay {
         // Call the generator on this technique
         // the generator give back the root nodes
         technique.img_pos = pos;
-        let root = generate(scene, &mut capture_sampler, technique);
-        let root = root[0].0.clone();
-        self.base_value = technique.evaluate(scene, &root);
+        let root = generate(path, scene, emitters, &mut capture_sampler, technique);
+        let root = root[0].0;
+        self.base_value = technique.evaluate(path, scene, emitters, root);
         (self.base_value, root)
     }
-    fn shift<'a>(
+    fn shift<'scene, 'emitter>(
         &mut self,
+        path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        scene: &Scene,
+        scene: &'scene Scene,
+        emitters: &'emitter EmitterSampler, 
         sampler: &mut Sampler,
-        _base: &Rc<VertexPtr<'a>>,
+        base: VertexID,
     ) -> ShiftValue {
         technique.img_pos = pos;
         let mut capture_sampler = ReplaySampler {
@@ -86,8 +90,8 @@ impl ShiftMapping for RandomReplay {
             random: &mut self.random_sequence,
             indice: 0,
         };
-        let offset = generate(scene, &mut capture_sampler, technique);
-        let offset_contrib = technique.evaluate(scene, &offset[0].0);
+        let offset = generate(path, scene, emitters, &mut capture_sampler, technique);
+        let offset_contrib = technique.evaluate(path, scene, emitters, offset[0].0);
         ShiftValue {
             base: 0.5 * self.base_value,
             offset: 0.5 * offset_contrib,

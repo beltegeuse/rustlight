@@ -249,7 +249,7 @@ fn main() {
         .value_of("scene")
         .expect("no scene parameter provided");
     let scene = SceneLoaderManager::default()
-        .load(scene)
+        .load(scene.to_string())
         .expect("error on loading the scene");
     let scene = match matches.value_of("nbthreads").unwrap() {
         "auto" => scene,

@@ -118,8 +118,7 @@ impl IntegratorMC for IntegratorPath {
                     match sampled_bsdf.pdf {
                         PDF::SolidAngle(v) => {
                             // Know the the light is intersectable so have a solid angle PDF
-                            let light_pdf = its.mesh.direct_pdf(&LightSamplingPDF::new(&ray, &its))
-                                * emitters.pdf(its.mesh);
+                            let light_pdf = emitters.direct_pdf(its.mesh, &LightSamplingPDF::new(&ray, &its));
                             mis_weight(v, light_pdf.value())
                         }
                         PDF::Discrete(_v) => 1.0,

@@ -108,10 +108,8 @@ impl IntegratorMC for IntegratorDirect {
                 if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
                     let weight_bsdf = match sampled_bsdf.pdf {
                         PDF::SolidAngle(bsdf_pdf) => {
-                            let light_pdf = (next_its
-                                .mesh
-                                .direct_pdf(&LightSamplingPDF::new(&ray, &next_its))
-                                * emitters.pdf(next_its.mesh))
+                            let light_pdf = emitters
+                                .direct_pdf(next_its.mesh, &LightSamplingPDF::new(&ray, &next_its))
                                 .value();
                             mis_weight(bsdf_pdf * weight_nb_bsdf, light_pdf * weight_nb_light)
                         }

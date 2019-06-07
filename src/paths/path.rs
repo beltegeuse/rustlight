@@ -312,20 +312,19 @@ impl SamplingStrategy for LightSamplingStrategy {
                     match path.vertex(next_vertex_id) {
                         Vertex::Surface(ref v) => {
                             if let PDF::SolidAngle(light_pdf) =
-                                v.its.mesh.direct_pdf(&LightSamplingPDF::new(&ray, &v.its))
-                                    * emitters.pdf(v.its.mesh)
+                                emitters.direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
                             {
                                 return Some(light_pdf);
                             }
                         }
                         Vertex::Light(ref v) => {
                             if let PDF::SolidAngle(light_pdf) =
-                                v.emitter.direct_pdf(&LightSamplingPDF {
+                                emitters.direct_pdf(v.emitter, &LightSamplingPDF {
                                     o: ray.o,
                                     p: v.pos,
                                     n: v.n,
                                     dir: ray.d,
-                                }) * emitters.pdf(v.emitter)
+                                })
                             {
                                 return Some(light_pdf);
                             }

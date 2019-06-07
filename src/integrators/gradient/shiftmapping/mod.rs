@@ -2,7 +2,7 @@ use crate::integrators::gradient::explicit::TechniqueGradientPathTracing;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers::Sampler;
-use crate::scene::Scene;
+use crate::scene::*;
 use crate::structure::Color;
 use cgmath::Point2;
 use std::rc::Rc;
@@ -29,20 +29,24 @@ impl ShiftValue {
     }
 }
 pub trait ShiftMapping {
-    fn base<'a>(
+    fn base<'scene, 'emitter>(
         &mut self,
+        path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        scene: &'a Scene,
+        scene: &'scene Scene,
+        emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,
-    ) -> (Color, Rc<VertexPtr<'a>>);
-    fn shift<'a>(
+    ) -> (Color, VertexID);
+    fn shift<'scene, 'emitter>(
         &mut self,
+        path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        scene: &Scene,
+        scene: &'scene Scene,
+        emitters: &'emitter EmitterSampler, 
         sampler: &mut Sampler,
-        base: &Rc<VertexPtr<'a>>,
+        base: VertexID,
     ) -> ShiftValue;
     fn clear(&mut self);
 }

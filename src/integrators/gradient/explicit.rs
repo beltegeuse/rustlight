@@ -22,14 +22,16 @@ pub struct TechniqueGradientPathTracing {
     pub samplings: Vec<Box<SamplingStrategy>>,
     pub img_pos: Point2<u32>,
 }
-impl<'a> Technique<'a> for TechniqueGradientPathTracing {
-    fn init(
+impl Technique for TechniqueGradientPathTracing {
+    fn init<'scene, 'emitter>(
         &mut self,
-        scene: &'a Scene,
+        path: &mut Path<'scene, 'emitter>,
+        scene: &'scene Scene,
         sampler: &mut Sampler,
-    ) -> Vec<(Rc<RefCell<Vertex<'a>>>, Color)> {
+        emitters: &'emitter EmitterSampler,
+    ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor
-        let root = Rc::new(RefCell::new(Vertex::Sensor(SensorVertex {
+        let root = Vertex::Sensor(SensorVertex {
             uv: Point2::new(
                 self.img_pos.x as f32 + sampler.next(),
                 self.img_pos.y as f32 + sampler.next(),
@@ -37,33 +39,34 @@ impl<'a> Technique<'a> for TechniqueGradientPathTracing {
             pos: scene.camera.position(),
             edge_in: None,
             edge_out: None,
-        })));
+        });
 
-        return vec![(root, Color::one())];
+        return vec![(path.register_vertex(root), Color::one())];
     }
 
-    fn expand(&self, _vertex: &Rc<RefCell<Vertex<'a>>>, depth: u32) -> bool {
+    fn expand(&self, vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, _vertex: &Rc<RefCell<Vertex<'a>>>) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }
 impl TechniqueGradientPathTracing {
-    pub fn evaluate<'a>(&self, scene: &'a Scene, emitters: &'a EmitterSampler, vertex: &Rc<VertexPtr<'a>>) -> Color {
+    pub fn evaluate<'scene, 'emitter>(&self, path: &Path<'scene, '_>, scene: &'scene Scene, emitters: &'emitter EmitterSampler, vertex_id: VertexID) -> Color {
         let mut l_i = Color::zero();
-        match *vertex.borrow() {
+        match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
-                for edge in &v.edge_out {
-                    let contrib = edge.borrow().contribution();
+                for edge_id in &v.edge_out {
+                    let edge = path.edge(*edge_id);
+                    let contrib = edge.contribution(path);
                     if !contrib.is_zero() {
-                        let weight = if let PDF::SolidAngle(v) = edge.borrow().pdf_direction {
+                        let weight = if let PDF::SolidAngle(v) = edge.pdf_direction {
                             let total: f32 = self
-                                .strategies(vertex)
+                                .strategies(path.vertex(vertex_id))
                                 .iter()
                                 .map(|s| {
-                                    if let Some(v) = s.pdf(scene, emitters, &vertex, edge) {
+                                    if let Some(v) = s.pdf(path, scene, emitters, vertex_id, *edge_id) {
                                         v
                                     } else {
                                         0.0
@@ -77,25 +80,24 @@ impl TechniqueGradientPathTracing {
                         l_i += contrib * weight;
                     }
 
-                    let edge = edge.borrow();
-                    if let Some(ref vertex_next) = edge.vertices.1 {
-                        l_i += edge.weight * edge.rr_weight * self.evaluate(scene, &vertex_next);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        l_i += edge.weight * edge.rr_weight * self.evaluate(path, scene, emitters, vertex_next_id);
                     }
                 }
             }
             Vertex::Sensor(ref v) => {
                 // Only one strategy where...
-                let edge = v.edge_out.as_ref().unwrap();
+                let edge = path.edge(v.edge_out.unwrap());
 
                 // Get the potential contribution
-                let contrib = edge.borrow().contribution();
+                let contrib = edge.contribution(path);
                 if !contrib.is_zero() {
                     l_i += contrib;
                 }
 
                 // Do the reccursive call
-                if let Some(ref vertex_next) = edge.borrow().vertices.1 {
-                    l_i += edge.borrow().weight * self.evaluate(scene, &vertex_next);
+                if let Some(vertex_next_id) = edge.vertices.1 {
+                    l_i += edge.weight * self.evaluate(path, scene, emitters, vertex_next_id);
                 }
             }
             _ => {}
@@ -119,6 +121,7 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
             image_blocks.par_iter_mut().for_each(|(info, im_block)| {
                 let mut sampler = independent::IndependentSampler::default();
                 let mut shiftmapping = RandomReplay::default();
+                let emitters = scene.emitters_sampler();
                 for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
                     for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
                         for n in 0..scene.nb_samples {
@@ -126,6 +129,7 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
                             let c = self.compute_pixel(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
                                 scene,
+                                &emitters,
                                 &mut sampler,
                                 &mut shiftmapping,
                             );
@@ -224,9 +228,11 @@ impl IntegratorGradientPathTracing {
         &self,
         (ix, iy): (u32, u32),
         scene: &Scene,
+        emitters: &EmitterSampler,
         sampler: &mut Sampler,
         shiftmapping: &mut T,
     ) -> ColorGradient {
+        let mut path = Path::default();
         let mut samplings: Vec<Box<SamplingStrategy>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
         samplings.push(Box::new(LightSamplingStrategy {}));
@@ -237,7 +243,7 @@ impl IntegratorGradientPathTracing {
         };
 
         let (base_contrib, base_path) =
-            shiftmapping.base(&mut technique, Point2::new(ix, iy), scene, sampler);
+            shiftmapping.base(&mut path, &mut technique, Point2::new(ix, iy), scene, emitters, sampler);
         let weight_survival = if let Some(min_survival) = self.min_survival {
             // TODO: Change the 0.1 hard coded to a more meaningful value
             let prob_survival = (base_contrib.luminance() / 0.1).min(1.0).max(min_survival);
@@ -270,11 +276,13 @@ impl IntegratorGradientPathTracing {
                     // Change the pixel for the sampling technique
                     // and reset the sampler
                     let shift_value = shiftmapping.shift(
+                        &mut path,
                         &mut technique,
                         Point2::new(pix.x as u32, pix.y as u32),
                         scene,
+                        emitters,
                         sampler,
-                        &base_path,
+                        base_path,
                     );
                     output.main += shift_value.base * weight_survival;
                     output.radiances[i] = shift_value.offset * weight_survival;
