@@ -1,42 +1,47 @@
+sudo: false
 language: rust
-rust:
-  - stable
-
+cache: cargo
 matrix:
-  allow_failures:
-    - rust: nightly
+    allow_failures:
+        - os: windows
+    include:
+        - os: linux
+          dist: xenial
+          env:
+              - EMBREE_VERSION=3.5.0
+          rust: stable
+          addons:
+              apt:
+                  sources:
+                      - ubuntu-toolchain-r-test
+        - os: osx
+          osx_image: xcode9.4
+          env: EMBREE_VERSION=3.5.0
+          rust: stable
+        - os: windows
+          env: EMBREE_VERSION=3.5.0
+          rust: stable
 
-before_install:
-  - sudo apt-get install -y libtbb-dev
-  # get embree
-  - sudo apt-get install -y alien dpkg-dev debhelper build-essential wget
-  - if [ ! -d "$HOME/openexr/lib" ]; then
-    wget http://download.savannah.nongnu.org/releases/openexr/ilmbase-2.2.0.tar.gz -O /tmp/ilmbase.tgz;
-    tar -xvzf /tmp/ilmbase.tgz -C $HOME;
-    pushd $HOME/ilmbase-2.2.0;
-    ./configure --prefix=$HOME/openexr;
-    make && make install;
-    popd;
-    wget http://download.savannah.nongnu.org/releases/openexr/openexr-2.2.0.tar.gz -O /tmp/openexr.tgz;
-    tar -xvzf /tmp/openexr.tgz -C $HOME;
-    pushd $HOME/openexr-2.2.0;
-    ./configure --prefix=$HOME/openexr --with-pkg-config=no
-    LDFLAGS="-Wl,-rpath -Wl,$HOME/openexr/lib";
-    make && make install;
-    popd;
-  else
-    echo 'Using cached OpenEXR';
-  fi
-  - wget https://github.com/embree/embree/releases/download/v3.2.0/embree-3.2.0.x86_64.rpm.tar.gz -O /tmp/embree.tar.gz
-  - cd /tmp
-  - tar -xvf embree.tar.gz
-  - ls -la
-  - sudo alien embree3-lib-3.2.0-1.x86_64.rpm
-  - sudo alien embree3-devel-3.2.0-1.noarch.rpm
-  - sudo dpkg -i embree3-lib_3.2.0-2_amd64.deb
-  - sudo dpkg -i embree3-devel_3.2.0-2_all.deb
-  - cd - # Go back to the working directory
+before_script:
+    - export TARGET_OS=$TRAVIS_OS_NAME
+    - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+          export TARGET_OS="macosx";
+      fi
+    - if [[ "$TARGET_OS" != "windows" ]]; then
+          wget https://github.com/embree/embree/releases/download/v${EMBREE_VERSION}/embree-${EMBREE_VERSION}.x86_64.${TARGET_OS}.tar.gz;
+          tar -xf embree-${EMBREE_VERSION}.x86_64.${TARGET_OS}.tar.gz;
+          source embree-${EMBREE_VERSION}.x86_64.${TARGET_OS}/embree-vars.sh;
+          export EMBREE_DIR=`pwd`/embree-${EMBREE_VERSION}.x86_64.${TARGET_OS}/;
+      else
+          echo "Grabbing Embree";
+          wget https://github.com/embree/embree/releases/download/v${EMBREE_VERSION}/embree-${EMBREE_VERSION}.x64.vc14.${TARGET_OS}.zip;
+          7z x embree-${EMBREE_VERSION}.x64.vc14.${TARGET_OS}.zip -y;
+          export EMBREE_DIR=`pwd`/embree-${EMBREE_VERSION}.x64.vc14.${TARGET_OS};
+      fi
+    - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+          pip install 'travis-cargo<0.2' --user;
+          export PATH=$HOME/.local/bin:$PATH;
+      fi
 
 script:
-  - OPENEXR_DIR="$HOME/openexr" cargo build --verbose --all
-  - OPENEXR_DIR="$HOME/openexr" cargo test --verbose --all
+  - cargo build --verbose --all
