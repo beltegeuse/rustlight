@@ -1,10 +1,9 @@
-use crate::integrators::{generate_img_blocks, generate_pool, BufferCollection, Integrator};
+use crate::integrators::*;
 use crate::scene::Scene;
 use crate::structure::Color;
 use crate::tools::StepRangeInt;
 use cgmath::{Point2, Vector2};
 use std::cmp;
-use std::time::Instant;
 
 #[derive(Clone, Debug, Copy)]
 pub struct ColorGradient {
@@ -41,34 +40,6 @@ pub static GRADIENT_DIRECTION: [GradientDirection; 4] = [
     GradientDirection::X(1),
     GradientDirection::X(-1),
 ];
-
-pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, scene: &Scene) -> BufferCollection;
-    fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync>;
-
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
-        // Rendering the gradient informations
-        info!("Rendering...");
-        let start = Instant::now();
-        let image = self.compute_gradients(scene);
-        let elapsed = start.elapsed();
-        info!("Rendering Elapsed: {:?}", elapsed,);
-
-        // Reconstruct the image
-        info!("Reconstruction...");
-        let start = Instant::now();
-        let image = self.reconstruct().reconstruct(scene, &image);
-        let elapsed = start.elapsed();
-        info!("Reconstruction Elapsed: {:?}", elapsed,);
-
-        image
-    }
-}
-
-pub trait PoissonReconstruction {
-    fn reconstruct(&self, scene: &Scene, est: &BufferCollection) -> BufferCollection;
-    fn need_variance_estimates(&self) -> Option<usize>;
-}
 
 // Compare to path tracing, make the block a bit bigger
 // so that we can store all the path contribution
@@ -162,7 +133,6 @@ pub fn generate_img_blocks_gradient(
     )
 }
 
-pub mod avg;
 pub mod explicit;
 pub mod path;
 pub mod recons;

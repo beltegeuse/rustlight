@@ -167,6 +167,10 @@ impl BufferCollection {
     pub fn save(&self, name: &str, filename: &str) {
         self.values[name].save(filename);
     }
+
+    pub fn print_buffers_name(&self) {
+        info!("buffers names: {:?}", self.values.keys());
+    }
 }
 
 impl Scale<f32> for BufferCollection {
@@ -185,7 +189,57 @@ pub trait Integrator {
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
+pub trait IntegratorGradient: Integrator {
+    fn compute_gradients(&mut self, scene: &Scene) -> BufferCollection;
+    fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync>;
 
+    fn compute(&mut self, scene: &Scene) -> BufferCollection {
+        // Rendering the gradient informations
+        info!("Gradient Rendering...");
+        let start = Instant::now();
+        let image = self.compute_gradients(scene);
+        let elapsed = start.elapsed();
+        info!("Gradient Rendering Elapsed: {:?}", elapsed,);
+
+        // Reconstruct the image
+        info!("Reconstruction...");
+        let start = Instant::now();
+        let image = self.reconstruct().reconstruct(scene, &image);
+        let elapsed = start.elapsed();
+        info!("Reconstruction Elapsed: {:?}", elapsed,);
+
+        image
+    }
+}
+pub trait PoissonReconstruction {
+    fn reconstruct(&self, scene: &Scene, est: &BufferCollection) -> BufferCollection;
+    fn need_variance_estimates(&self) -> Option<usize>;
+}
+pub enum IntegratorType {
+    Primal(Box<Integrator>),
+    Gradient(Box<IntegratorGradient>),
+}
+impl IntegratorType {
+    pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
+        info!("Run Integrator...");
+        let start = Instant::now();
+
+        let img = match self {
+            IntegratorType::Primal(ref mut v) => v.compute(scene),
+            IntegratorType::Gradient(ref mut v) => IntegratorGradient::compute(v.as_mut(), scene),
+        };
+
+        let elapsed = start.elapsed();
+        info!(
+            "Elapsed Integrator: {} ms",
+            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
+        );
+
+        img
+    }
+}
+
+/////////////// Implementation gradients
 pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(
         &self,

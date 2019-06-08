@@ -4,8 +4,6 @@ use crate::paths::vertex::*;
 use crate::samplers;
 use crate::structure::*;
 use cgmath::{InnerSpace, Point2, Point3, Vector3};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct IntegratorVPL {
     pub nb_vpl: usize,
@@ -38,7 +36,7 @@ impl Technique for TechniqueVPL {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
-        scene: &'scene Scene,
+        _scene: &'scene Scene,
         sampler: &mut Sampler,
         emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
@@ -58,11 +56,11 @@ impl Technique for TechniqueVPL {
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
 
-    fn expand(&self, vertex: &Vertex, depth: u32) -> bool {
+    fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }

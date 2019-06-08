@@ -2,10 +2,7 @@ use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::structure::*;
-use crate::scene::*;
 use cgmath::Point2;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// This structure store the rendering options
 /// That the user have given through the command line
@@ -30,7 +27,7 @@ impl Technique for TechniquePathTracing {
         path: &mut Path<'scene, 'emitter>,
         scene: &'scene Scene,
         sampler: &mut Sampler,
-        emitters: &'emitter EmitterSampler,
+        _emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor
         let root = Vertex::Sensor(SensorVertex {
@@ -46,11 +43,11 @@ impl Technique for TechniquePathTracing {
         return vec![(path.register_vertex(root), Color::one())];
     }
 
-    fn expand(&self, vertex: &Vertex, depth: u32) -> bool {
+    fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }

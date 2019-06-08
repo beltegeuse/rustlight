@@ -1,4 +1,3 @@
-use crate::emitter::*;
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
@@ -6,8 +5,6 @@ use crate::samplers;
 use crate::structure::*;
 use cgmath::InnerSpace;
 use cgmath::Point2;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct IntegratorLightTracing {
     pub max_depth: Option<u32>,
@@ -24,7 +21,7 @@ impl Technique for TechniqueLightTracing {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
-        scene: &'scene Scene,
+        _scene: &'scene Scene,
         sampler: &mut Sampler,
         emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
@@ -44,11 +41,11 @@ impl Technique for TechniqueLightTracing {
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
 
-    fn expand(&self, vertex: &Vertex, depth: u32) -> bool {
+    fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }

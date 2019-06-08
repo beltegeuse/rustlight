@@ -108,11 +108,11 @@ impl Emitter for Mesh {
                     PDF::SolidAngle(0.0)
                 } else {
                     // FIXME: Make the conversion as a method
-                    PDF::SolidAngle((sampled_pos.pdf.value() * dist * dist) / cos_light)
+                    PDF::SolidAngle((v * dist * dist) / cos_light)
                 }
             }
             PDF::SolidAngle(v) => PDF::SolidAngle(v),
-            PDF::Discrete(v) => panic!("Discrete pdf is not handled yet"),
+            PDF::Discrete(_v) => panic!("Discrete pdf is not handled yet"),
         };
 
         let emission = if pdf.is_zero() {

@@ -2,8 +2,6 @@ use crate::emitter::Emitter;
 use crate::scene::*;
 use crate::structure::*;
 use cgmath::*;
-use std::cell::RefCell;
-use std::rc::{Rc, Weak};
 
 #[derive(Clone)]
 pub struct Edge {

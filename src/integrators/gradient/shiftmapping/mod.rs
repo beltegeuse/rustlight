@@ -5,7 +5,6 @@ use crate::samplers::Sampler;
 use crate::scene::*;
 use crate::structure::Color;
 use cgmath::Point2;
-use std::rc::Rc;
 
 /// Shift mapping definition
 pub struct ShiftValue {
@@ -44,7 +43,7 @@ pub trait ShiftMapping {
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler, 
+        emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,
         base: VertexID,
     ) -> ShiftValue;

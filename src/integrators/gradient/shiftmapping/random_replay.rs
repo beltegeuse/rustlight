@@ -80,9 +80,9 @@ impl ShiftMapping for RandomReplay {
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler, 
+        emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,
-        base: VertexID,
+        _base: VertexID,
     ) -> ShiftValue {
         technique.img_pos = pos;
         let mut capture_sampler = ReplaySampler {

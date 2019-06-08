@@ -13,12 +13,8 @@ extern crate rayon;
 extern crate rustlight;
 
 use clap::{App, Arg, SubCommand};
-use rustlight::integrators::gradient::IntegratorGradient;
-use rustlight::integrators::{BufferCollection, Integrator};
-use rustlight::scene::Scene;
-use rustlight::scene_loader::*;
-use std::time::Instant;
-
+use rustlight::integrators::Integrator;
+use rustlight::integrators::IntegratorType;
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
     match input {
         "inf" => None,
@@ -26,32 +22,6 @@ fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
             Ok(x) => Some(x),
             Err(_e) => panic!("wrong input for inf type parameter"),
         },
-    }
-}
-
-enum IntegratorType {
-    Primal(Box<Integrator>),
-    Gradient(Box<IntegratorGradient>),
-}
-impl IntegratorType {
-    fn compute(self, scene: &Scene) -> BufferCollection {
-        info!("Run Integrator...");
-        let start = Instant::now();
-
-        let img = match self {
-            IntegratorType::Primal(mut v) => v.compute(scene),
-            IntegratorType::Gradient(mut v) => {
-                rustlight::integrators::gradient::IntegratorGradient::compute(&mut *v, scene)
-            }
-        };
-
-        let elapsed = start.elapsed();
-        info!(
-            "Elapsed Integrator: {} ms",
-            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-        );
-
-        img
     }
 }
 
@@ -235,7 +205,7 @@ fn main() {
     } else {
         env_logger::Builder::from_default_env()
             .default_format_timestamp(false)
-            .parse("info")
+            .parse_filters("info")
             .init();
     }
     /////////////// Check output extension
@@ -248,7 +218,7 @@ fn main() {
     let scene = matches
         .value_of("scene")
         .expect("no scene parameter provided");
-    let scene = SceneLoaderManager::default()
+    let scene = rustlight::scene_loader::SceneLoaderManager::default()
         .load(scene.to_string())
         .expect("error on loading the scene");
     let scene = match matches.value_of("nbthreads").unwrap() {
@@ -277,9 +247,10 @@ fn main() {
     let recons = match matches.subcommand() {
         ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {
             let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            let recons: Box<
-                rustlight::integrators::gradient::PoissonReconstruction + Sync,
-            > = match m.value_of("reconstruction_type").unwrap() {
+            let recons: Box<rustlight::integrators::PoissonReconstruction + Sync> = match m.value_of(
+                "reconstruction_type",
+            ).unwrap()
+            {
                 "uniform" => Box::new(
                     rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
                         iterations,
@@ -304,7 +275,7 @@ fn main() {
     };
 
     ///////////////// Create the main integrator
-    let int = match matches.subcommand() {
+    let mut int = match matches.subcommand() {
         ("path-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
@@ -415,28 +386,16 @@ fn main() {
         }
         _ => panic!("unknown integrator"),
     };
-    let int = if matches.is_present("average") {
+    let img = if matches.is_present("average") {
         let time_out = match_infinity(matches.value_of("average").unwrap());
-        match int {
-            IntegratorType::Gradient(v) => IntegratorType::Primal(Box::new(
-                rustlight::integrators::gradient::avg::IntegratorGradientAverage {
-                    time_out,
-                    output_csv: false,
-                    integrator: v,
-                },
-            )),
-            IntegratorType::Primal(v) => {
-                IntegratorType::Primal(Box::new(rustlight::integrators::avg::IntegratorAverage {
-                    time_out,
-                    output_csv: false,
-                    integrator: v,
-                }))
-            }
-        }
+        let mut int = rustlight::integrators::avg::IntegratorAverage {
+            time_out,
+            integrator: int,
+        };
+        int.compute(&scene)
     } else {
-        int
+        int.compute(&scene)
     };
-    let img = int.compute(&scene);
 
     // Save the image
     img.save("primal", imgout_path_str);

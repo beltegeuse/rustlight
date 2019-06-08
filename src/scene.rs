@@ -131,8 +131,7 @@ impl Scene {
     }
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
         let d = p1 - p0;
-        !self
-            .embree_scene
+        !self.embree_scene
             .occluded(embree_rs::Ray::new(*p0, d).near(0.00001).far(0.9999))
     }
 

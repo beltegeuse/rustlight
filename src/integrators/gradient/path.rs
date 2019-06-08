@@ -68,9 +68,7 @@ impl<'a> RayState<'a> {
 
     pub fn new((x, y): (f32, f32), off: Point2<i32>, scene: &'a Scene) -> RayState<'a> {
         let pix = Point2::new(x + off.x as f32, y + off.y as f32);
-        if pix.x < 0.0
-            || pix.x > (scene.camera.size().x as f32)
-            || pix.y < 0.0
+        if pix.x < 0.0 || pix.x > (scene.camera.size().x as f32) || pix.y < 0.0
             || pix.y > (scene.camera.size().y as f32)
         {
             return RayState::Dead;
@@ -358,8 +356,12 @@ impl IntegratorGradientPath {
 
                                 if !intersectable_light || (main_bsdf_rought && shift_bsdf_rought) {
                                     // Sample the light from the point
-                                    let shift_light_record =
-                                        emitters.sample_light(&s.its.p, r_sel_rand, r_rand, uv_rand);
+                                    let shift_light_record = emitters.sample_light(
+                                        &s.its.p,
+                                        r_sel_rand,
+                                        r_rand,
+                                        uv_rand,
+                                    );
                                     let shift_light_visible =
                                         scene.visible(&s.its.p, &shift_light_record.p);
                                     let shift_emitter_rad = if shift_light_visible {
@@ -401,7 +403,7 @@ impl IntegratorGradientPath {
                                             .abs()
                                             / (main_geom_cos_light
                                                 * (s.its.p - shift_light_record.p).magnitude2())
-                                            .abs(),
+                                                .abs(),
                                     );
                                     assert!(jacobian.is_finite());
                                     assert!(jacobian >= 0.0);
@@ -410,8 +412,7 @@ impl IntegratorGradientPath {
                                         .powi(MIS_POWER)
                                         * (shift_light_pdf.powi(MIS_POWER)
                                             + shift_bsdf_pdf.powi(MIS_POWER));
-                                    let shift_contrib = (jacobian as f32)
-                                        * s.throughput
+                                    let shift_contrib = (jacobian as f32) * s.throughput
                                         * shift_bsdf_value
                                         * shift_emitter_rad;
                                     (shift_weight_dem, shift_contrib)
@@ -442,16 +443,14 @@ impl IntegratorGradientPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let main_sampled_bsdf =
-                match main
-                    .its
-                    .mesh
-                    .bsdf
-                    .sample(&main.its.uv, &main.its.wi, sampler.next2d())
-                {
-                    Some(x) => x,
-                    None => return l_i,
-                };
+            let main_sampled_bsdf = match main.its.mesh.bsdf.sample(
+                &main.its.uv,
+                &main.its.wi,
+                sampler.next2d(),
+            ) {
+                Some(x) => x,
+                None => return l_i,
+            };
 
             // Generate the new ray and do the intersection
             let main_d_out_global = main.its.frame.to_world(main_sampled_bsdf.d);
@@ -594,10 +593,10 @@ impl IntegratorGradientPath {
                                     let jacobian = f64::from(
                                         (main.its.n_g.dot(-shift_d_out_global)
                                             * main.its.dist.powi(2))
-                                        .abs()
+                                            .abs()
                                             / (main.its.n_g.dot(-main.ray.d)
                                                 * (s.its.p - main.its.p).magnitude2())
-                                            .abs(),
+                                                .abs(),
                                     );
                                     assert!(jacobian.is_finite());
                                     assert!(jacobian >= 0.0);
@@ -629,24 +628,28 @@ impl IntegratorGradientPath {
                                     // Two case:
                                     // - the main are on a emitter, need to do MIS
                                     // - the main are not on a emitter, just do a reconnection
-                                    let (shift_emitter_rad, shift_emitter_pdf) =
-                                        if main_light_pdf == 0.0 {
-                                            // The base path did not hit a light source
-                                            // FIXME: Do not use the trick of 0 PDF
-                                            (Color::zero(), 0.0)
-                                        } else {
-                                            let shift_emitter_pdf = emitters
-                                                .direct_pdf(main_next_mesh, &LightSamplingPDF {
+                                    let (shift_emitter_rad, shift_emitter_pdf) = if main_light_pdf
+                                        == 0.0
+                                    {
+                                        // The base path did not hit a light source
+                                        // FIXME: Do not use the trick of 0 PDF
+                                        (Color::zero(), 0.0)
+                                    } else {
+                                        let shift_emitter_pdf = emitters
+                                            .direct_pdf(
+                                                main_next_mesh,
+                                                &LightSamplingPDF {
                                                     o: s.its.p,
                                                     p: main.its.p,
                                                     n: main.its.n_g,
                                                     dir: shift_d_out_global,
-                                                })
-                                                .value();
-                                            // FIXME: We return without the cos as the light
-                                            // FIXME: does not change, does it true for non uniform light?
-                                            (main_emitter_rad, f64::from(shift_emitter_pdf))
-                                        };
+                                                },
+                                            )
+                                            .value();
+                                        // FIXME: We return without the cos as the light
+                                        // FIXME: does not change, does it true for non uniform light?
+                                        (main_emitter_rad, f64::from(shift_emitter_pdf))
+                                    };
 
                                     // Return the shift path updated + MIS weights
                                     let shift_weight_dem = (shift_pdf_pred / main_pdf_pred)

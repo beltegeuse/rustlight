@@ -1,10 +1,7 @@
 use crate::integrators::gradient::shiftmapping::*;
 use crate::samplers::Sampler;
 use crate::structure::*;
-use crate::scene::*;
-use cgmath::{InnerSpace, Point2};
-use std::cell::RefCell;
-use std::rc::Rc;
+use cgmath::Point2;
 
 struct DiffuseReconnection {
     pub base_contrib: Color,
@@ -37,7 +34,7 @@ impl ShiftMapping for DiffuseReconnection {
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler, 
+        emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,
         base_id: VertexID,
     ) -> ShiftValue {

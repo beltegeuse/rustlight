@@ -1,12 +1,9 @@
-use crate::integrators::gradient::shiftmapping::{random_replay::RandomReplay, ShiftMapping};
-use crate::integrators::{gradient::*, *};
+use crate::integrators::gradient::shiftmapping::{ShiftMapping, random_replay::RandomReplay};
+use crate::integrators::{*, gradient::*};
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::structure::*;
-use crate::scene::*;
 use cgmath::Point2;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// Path tracing system
 /// This structure store the rendering options
@@ -28,7 +25,7 @@ impl Technique for TechniqueGradientPathTracing {
         path: &mut Path<'scene, 'emitter>,
         scene: &'scene Scene,
         sampler: &mut Sampler,
-        emitters: &'emitter EmitterSampler,
+        _emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor
         let root = Vertex::Sensor(SensorVertex {
@@ -44,47 +41,51 @@ impl Technique for TechniqueGradientPathTracing {
         return vec![(path.register_vertex(root), Color::one())];
     }
 
-    fn expand(&self, vertex: &Vertex, depth: u32) -> bool {
+    fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
         &self.samplings
     }
 }
 impl TechniqueGradientPathTracing {
-    pub fn evaluate<'scene, 'emitter>(&self, path: &Path<'scene, '_>, scene: &'scene Scene, emitters: &'emitter EmitterSampler, vertex_id: VertexID) -> Color {
+    pub fn evaluate<'scene, 'emitter>(
+        &self,
+        path: &Path<'scene, '_>,
+        scene: &'scene Scene,
+        emitters: &'emitter EmitterSampler,
+        vertex_id: VertexID,
+    ) -> Color {
         let mut l_i = Color::zero();
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
-                for edge_id in &v.edge_out {
-                    let edge = path.edge(*edge_id);
-                    let contrib = edge.contribution(path);
-                    if !contrib.is_zero() {
-                        let weight = if let PDF::SolidAngle(v) = edge.pdf_direction {
-                            let total: f32 = self
-                                .strategies(path.vertex(vertex_id))
-                                .iter()
-                                .map(|s| {
-                                    if let Some(v) = s.pdf(path, scene, emitters, vertex_id, *edge_id) {
-                                        v
-                                    } else {
-                                        0.0
-                                    }
-                                })
-                                .sum();
-                            v / total
-                        } else {
-                            1.0
-                        };
-                        l_i += contrib * weight;
-                    }
-
-                    if let Some(vertex_next_id) = edge.vertices.1 {
-                        l_i += edge.weight * edge.rr_weight * self.evaluate(path, scene, emitters, vertex_next_id);
-                    }
+            Vertex::Surface(ref v) => for edge_id in &v.edge_out {
+                let edge = path.edge(*edge_id);
+                let contrib = edge.contribution(path);
+                if !contrib.is_zero() {
+                    let weight = if let PDF::SolidAngle(v) = edge.pdf_direction {
+                        let total: f32 = self.strategies(path.vertex(vertex_id))
+                            .iter()
+                            .map(|s| {
+                                if let Some(v) = s.pdf(path, scene, emitters, vertex_id, *edge_id) {
+                                    v
+                                } else {
+                                    0.0
+                                }
+                            })
+                            .sum();
+                        v / total
+                    } else {
+                        1.0
+                    };
+                    l_i += contrib * weight;
                 }
-            }
+
+                if let Some(vertex_next_id) = edge.vertices.1 {
+                    l_i += edge.weight * edge.rr_weight
+                        * self.evaluate(path, scene, emitters, vertex_next_id);
+                }
+            },
             Vertex::Sensor(ref v) => {
                 // Only one strategy where...
                 let edge = path.edge(v.edge_out.unwrap());
@@ -242,8 +243,14 @@ impl IntegratorGradientPathTracing {
             img_pos: Point2::new(0, 0), // FIXME
         };
 
-        let (base_contrib, base_path) =
-            shiftmapping.base(&mut path, &mut technique, Point2::new(ix, iy), scene, emitters, sampler);
+        let (base_contrib, base_path) = shiftmapping.base(
+            &mut path,
+            &mut technique,
+            Point2::new(ix, iy),
+            scene,
+            emitters,
+            sampler,
+        );
         let weight_survival = if let Some(min_survival) = self.min_survival {
             // TODO: Change the 0.1 hard coded to a more meaningful value
             let prob_survival = (base_contrib.luminance() / 0.1).min(1.0).max(min_survival);
@@ -266,9 +273,7 @@ impl IntegratorGradientPathTracing {
 
             GRADIENT_ORDER.iter().enumerate().for_each(|(i, off)| {
                 let pix = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
-                if pix.x < 0
-                    || pix.x > scene.camera.size().x as i32
-                    || pix.y < 0
+                if pix.x < 0 || pix.x > scene.camera.size().x as i32 || pix.y < 0
                     || pix.y > scene.camera.size().y as i32
                 {
                     // Do nothing
