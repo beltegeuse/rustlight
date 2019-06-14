@@ -1,5 +1,6 @@
 use crate::samplers::*;
 use crate::scene::*;
+use crate::emitter::*;
 use crate::structure::{Bitmap, Color};
 use crate::tools::StepRangeInt;
 use crate::Scale;

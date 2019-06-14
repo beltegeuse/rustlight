@@ -596,11 +596,55 @@ impl Ray {
             tfar: std::f32::MAX,
         }
     }
+}
 
-    pub fn to_embree(&self) -> embree_rs::Ray {
-        embree_rs::Ray::new(self.o, self.d)
-            .near(self.tnear)
-            .far(self.tfar)
+pub struct AABB {
+    pub min: Vector3<f32>,
+    pub max: Vector3<f32>,
+}
+impl Default for AABB {
+    fn default() -> Self {
+        Self {
+            min: Vector3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX),
+            max: Vector3::new(std::f32::MIN, std::f32::MIN, std::f32::MIN),
+        }
+    }
+}
+impl AABB {
+    pub fn center(&self) -> Vector3<f32> {
+        (self.min + self.max) * 0.5
+    }
+    pub fn surface_area(&self) -> f32 {
+        let d = self.max - self.min;
+        2.0 * (d.x * d.y + d.y + d.z + d.z * d.x)
+    }
+    pub fn merge_point(self, p: Vector3<f32>) -> AABB {
+        AABB {
+            min: Vector3::new(
+                self.min.x.min(p.x),
+                self.min.y.min(p.y),
+                self.min.z.min(p.z),
+            ),
+            max: Vector3::new(
+                self.max.x.max(p.x),
+                self.max.y.max(p.y),
+                self.max.z.max(p.z),
+            ),
+        }
+    }
+    pub fn merge_aabb(self, b: AABB) -> AABB {
+        AABB {
+            min: Vector3::new(
+                self.min.x.min(b.min.x),
+                self.min.y.min(b.min.y),
+                self.min.z.min(b.min.z),
+            ),
+            max: Vector3::new(
+                self.max.x.max(b.max.x),
+                self.max.y.max(b.max.y),
+                self.max.z.max(b.max.z),
+            ),
+        }
     }
 }
 
@@ -625,46 +669,9 @@ pub struct Intersection<'a> {
 }
 
 impl<'a> Intersection<'a> {
-    pub fn new(
-        embree_its: &embree_rs::Intersection,
-        d: Vector3<f32>,
-        mesh: &'a Mesh,
-    ) -> Intersection<'a> {
-        let n_s = if embree_its.n_s.is_none() {
-            embree_its.n_g
-        } else {
-            embree_its.n_s.unwrap()
-        };
-        // TODO: Hack for now for make automatic twosided.
-        let (n_s, n_g) = if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && d.dot(n_s) <= 0.0
-        {
-            (
-                Vector3::new(-n_s.x, -n_s.y, -n_s.z),
-                Vector3::new(-embree_its.n_g.x, -embree_its.n_g.y, -embree_its.n_g.z),
-            )
-        } else {
-            (n_s, embree_its.n_g)
-        };
-
-        let frame = Frame::new(n_s);
-        let wi = frame.to_local(d);
-
-        Intersection {
-            dist: embree_its.t,
-            n_g,
-            n_s,
-            p: embree_its.p,
-            uv: embree_its.uv,
-            mesh,
-            frame,
-            wi,
-        }
-    }
-
     pub fn cos_theta(&self) -> f32 {
         self.wi.z
     }
-
     pub fn to_local(&self, d: &Vector3<f32>) -> Vector3<f32> {
         self.frame.to_local(*d)
     }

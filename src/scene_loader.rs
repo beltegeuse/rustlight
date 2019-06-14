@@ -3,7 +3,7 @@ use crate::bsdfs::*;
 use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
-use crate::scene::Scene;
+use crate::scene::*;
 use crate::structure::*;
 use cgmath::*;
 #[cfg(feature = "pbrt")]
@@ -14,8 +14,12 @@ use std::error::Error;
 use std::io::Read;
 use std::rc::Rc;
 
+enum AccelerationOption<'device, 'scene> {
+    Embree(&'device embree_rs::Device, &'scene mut embree_rs::Scene<'device>)
+}
+
 pub trait SceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<Error>>;
+    fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: &str) -> Result<Scene, Box<Error>>;
 }
 pub struct SceneLoaderManager {
     loader: HashMap<String, Rc<dyn SceneLoader>>,
@@ -24,13 +28,13 @@ impl SceneLoaderManager {
     pub fn register(&mut self, name: &str, loader: Rc<dyn SceneLoader>) {
         self.loader.insert(name.to_string(), loader);
     }
-    pub fn load(&self, filename: String) -> Result<Scene, Box<Error>> {
+    pub fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: String) -> Result<Scene, Box<Error>> {
         let filename_ext = match std::path::Path::new(&filename).extension() {
             None => panic!("No file extension provided"),
             Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
         };
         if let Some(loader) = self.loader.get(filename_ext) {
-            loader.load(&filename)
+            loader.load(option, &filename)
         } else {
             panic!(
                 "Impossible to found scene loader for {} extension",
@@ -54,7 +58,7 @@ impl Default for SceneLoaderManager {
 
 pub struct JSONSceneLoader {}
 impl SceneLoader for JSONSceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<Error>> {
+    fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: &str) -> Result<Scene, Box<Error>> {
         // Reading the scene
         let scene_path = std::path::Path::new(filename);
         let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
@@ -69,18 +73,10 @@ impl SceneLoader for JSONSceneLoader {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(&data)?;
 
-        // Allocate embree
-        let device = embree_rs::Device::debug();
-        let mut scene_embree = embree_rs::SceneConstruct::new(&device);
-
         // Read the object
         let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
         let obj_path = wk.join(obj_path_str);
-        let mut meshes = geometry::load_obj(&device, &mut scene_embree, obj_path.as_path())?;
-
-        // Build embree as we will not geometry for now
-        info!("Build the acceleration structure");
-        let scene_embree = scene_embree.commit()?;
+        let mut meshes = geometry::load_obj(obj_path.as_path())?;
 
         // Update meshes information
         //  - which are light?
@@ -164,15 +160,18 @@ impl SceneLoader for JSONSceneLoader {
         };
         camera.print_info();
 
+        // Create the acceleration
+        let acceleration = Box::new(EmbreeAcceleration::new(&meshes));
+
         // Define a default scene
         Ok(Scene {
             camera,
-            embree_scene: scene_embree,
             meshes,
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment: None,
+            acceleration,
         })
     }
 }
@@ -181,15 +180,11 @@ impl SceneLoader for JSONSceneLoader {
 pub struct PBRTSceneLoader {}
 #[cfg(feature = "pbrt")]
 impl SceneLoader for PBRTSceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<Error>> {
+    fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: &str) -> Result<Scene, Box<Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
         let working_dir = std::path::Path::new(filename).parent().unwrap();
         pbrt_rs::read_pbrt_file(filename, &working_dir, &mut scene_info, &mut state);
-
-        // Allocate embree
-        let device = embree_rs::Device::debug();
-        let mut scene_embree = embree_rs::SceneConstruct::new(&device);
 
         // Load the data
         let mut meshes: Vec<geometry::Mesh> = scene_info
@@ -198,26 +193,16 @@ impl SceneLoader for PBRTSceneLoader {
             .map(|m| match m.data {
                 pbrt_rs::Shape::TriMesh(ref data) => {
                     let mat = m.matrix;
-                    let uv = if let Some(uv) = data.uv.clone() {
-                        uv
-                    } else {
-                        vec![]
-                    };
+                    let uv = data.uv.clone();
                     let normals = match data.normals {
                         Some(ref v) => v.iter().map(|n| mat.transform_vector(n.clone())).collect(),
-                        None => Vec::new(),
+                        None => { panic!("See how to support this case") },
                     };
                     let points = data.points
                         .iter()
-                        .map(|n| mat.transform_point(n.clone()))
+                        .map(|n| mat.transform_point(n.clone()).to_vec())
                         .collect();
-                    let trimesh = scene_embree.add_triangle_mesh(
-                        &device,
-                        points,
-                        normals,
-                        uv,
-                        data.indices.clone(),
-                    );
+                    let indices = data.indices.clone();
 
                     let bsdf = if let Some(ref name) = m.material_name {
                         if let Some(bsdf_name) = scene_info.materials.get(name) {
@@ -232,12 +217,12 @@ impl SceneLoader for PBRTSceneLoader {
                             diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
                         })
                     };
-                    geometry::Mesh::new("noname".to_string(), trimesh, bsdf)
+                    let mut mesh = geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
+                    mesh.bsdf = bsdf;
+                    mesh
                 }
             })
             .collect();
-        info!("Build the acceleration structure");
-        let scene_embree = scene_embree.commit()?;
 
         // Assign materials and emissions
         for (i, shape) in scene_info.shapes.iter().enumerate() {
@@ -296,15 +281,18 @@ impl SceneLoader for PBRTSceneLoader {
             }
         };
 
+        // Create the acceleration
+        let acceleration = Box::new(EmbreeAcceleration::new(&meshes));
+
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
             camera,
-            embree_scene: scene_embree,
             meshes,
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
+            acceleration,
         })
     }
 }

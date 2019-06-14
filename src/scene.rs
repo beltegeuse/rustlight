@@ -1,10 +1,58 @@
 use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
-use crate::math::Distribution1D;
 use crate::math::Distribution1DConstruct;
 use crate::structure::*;
 use cgmath::*;
+
+pub struct BasicIntersection {
+    pub n_g: Vector3<f32>,  //< Geometric normal
+    pub uv: Vector2<f32>,   //< barycentric coordinate
+    pub t: f32,             //< Distance intersection
+    pub id_geo: usize,      //< ID geometry
+    pub id_prim: usize,     //< ID primitive 
+    pub id_inst: usize,     //< ID instance
+}
+pub trait Acceleration: Sync {
+    fn trace(&self, ray: &Ray) -> Option<BasicIntersection>; 
+    fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
+}
+
+pub struct EmbreeAcceleration<'scene> {
+    pub rtscene: embree_rs::CommittedScene<'scene>,
+}
+impl<'scene> EmbreeAcceleration<'scene> {
+    pub fn new(scene: &'scene embree_rs::Scene) -> Self {
+        let rtscene = scene.commit();
+        EmbreeAcceleration {
+            rtscene
+        }
+    }
+}
+
+impl<'scene> Acceleration for EmbreeAcceleration<'scene> {
+    fn trace(&self, ray: &Ray) -> Option<BasicIntersection> {
+        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
+        let ray = embree_rs::Ray::segment(Vector3::new(ray.o.x,ray.o.y,ray.o.z), ray.d, ray.tnear, ray.tfar);
+        let mut ray_hit = embree_rs::RayHit::new(ray);
+        self.rtscene.intersect(&mut intersection_ctx, &mut ray_hit);
+        if ray_hit.hit.hit() {
+           Some(BasicIntersection {
+               n_g: Vector3::new(ray_hit.hit.Ng_x,ray_hit.hit.Ng_y,ray_hit.hit.Ng_z),
+               uv: Vector2::new(ray_hit.hit.u, ray_hit.hit.v),
+               t: ray_hit.ray.tfar,
+               id_geo: ray_hit.hit.geomID as usize,
+               id_prim: ray_hit.hit.primID as usize,
+               id_inst: ray_hit.hit.instID[0] as usize,
+           })
+        } else {
+            None
+        }
+    }
+    fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
+        unimplemented!()
+    }
+}
 
 /// Scene representation
 pub struct Scene {
@@ -15,70 +63,9 @@ pub struct Scene {
     pub output_img_path: String,
     // Geometry information
     pub meshes: Vec<geometry::Mesh>,
-    pub embree_scene: embree_rs::Scene,
     pub emitter_environment: Option<EnvironmentLight>,
-}
-
-pub struct EmitterSampler<'scene> {
-    pub emitters: Vec<&'scene dyn Emitter>,
-    pub emitters_cdf: Distribution1D,
-}
-
-impl<'scene> EmitterSampler<'scene> {
-    fn pdf(&self, emitter: &dyn Emitter) -> f32 {
-        let emitter_addr: [usize; 2] = unsafe { std::mem::transmute(emitter) };
-        for (i, e) in self.emitters.iter().enumerate() {
-            let other_addr: [usize; 2] = unsafe { std::mem::transmute(*e) };
-            if emitter_addr[0] == other_addr[0] {
-                //if std::ptr::eq(emitter, *e) {
-                // I need the index to retrive an info
-                // This info cannot be stored inside the Emitter
-                return self.emitters_cdf.pdf(i);
-            }
-        }
-
-        // For debug
-        println!("Size: {}", self.emitters.len());
-        for e in &self.emitters {
-            println!(" - {:p} != {:p}", (*e), emitter);
-        }
-
-        panic!("Impossible to found the emitter: {:p}", emitter);
-    }
-
-    pub fn direct_pdf(&self, emitter: &dyn Emitter, light_sampling: &LightSamplingPDF) -> PDF {
-        emitter.direct_pdf(light_sampling) * self.pdf(emitter)
-    }
-
-    pub fn sample_light(
-        &self,
-        p: &Point3<f32>,
-        r_sel: f32,
-        r: f32,
-        uv: Point2<f32>,
-    ) -> LightSampling {
-        // Select the point on the light
-        let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
-        let mut res = emitter.sample_direct(p, r, uv);
-        res.pdf = res.pdf * pdf_sel;
-        res
-    }
-    pub fn random_select_emitter(&self, v: f32) -> (f32, &dyn Emitter) {
-        let id_light = self.emitters_cdf.sample(v);
-        (self.emitters_cdf.pdf(id_light), self.emitters[id_light])
-    }
-
-    pub fn random_sample_emitter_position(
-        &self,
-        v1: f32,
-        v2: f32,
-        uv: Point2<f32>,
-    ) -> (&dyn Emitter, SampledPosition) {
-        let (pdf_sel, emitter) = self.random_select_emitter(v1);
-        let mut sampled_pos = emitter.sample_position(v2, uv);
-        sampled_pos.pdf = sampled_pos.pdf * pdf_sel;
-        (emitter, sampled_pos)
-    }
+    // Acceleration for intersection
+    pub acceleration: Box<Acceleration>,
 }
 
 impl Scene {
@@ -121,18 +108,45 @@ impl Scene {
 
     /// Intersect and compute intersection information
     pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        match self.embree_scene.intersect(ray.to_embree()) {
+        match self.acceleration.trace(ray) {
             None => None,
-            Some(its) => {
-                let geom_id = its.geom_id as usize;
-                Some(Intersection::new(&its, -ray.d, &self.meshes[geom_id]))
+            Some(basic_info) => {
+                unimplemented!()
+                // Retrive the mesh
+                // let n_s = if basic_info.n_s.is_none() {
+                //     embree_its.n_g
+                // } else {
+                //     embree_its.n_s.unwrap()
+                // };
+                
+                // // TODO: Hack for now for make automatic twosided.
+                // let (n_s, n_g) = if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && d.dot(n_s) <= 0.0
+                // {
+                //     (
+                //         Vector3::new(-n_s.x, -n_s.y, -n_s.z),
+                //         Vector3::new(-embree_its.n_g.x, -embree_its.n_g.y, -embree_its.n_g.z),
+                //     )
+                // } else {
+                //     (n_s, embree_its.n_g)
+                // };
+
+                // let frame = Frame::new(n_s);
+                // let wi = frame.to_local(d);
+                // Some(Intersection {
+                //     dist: embree_its.t,
+                //     n_g,
+                //     n_s,
+                //     p: embree_its.p,
+                //     uv: embree_its.uv,
+                //     mesh,
+                //     frame,
+                //     wi,
+                // })
             }
         }
     }
     pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
-        let d = p1 - p0;
-        !self.embree_scene
-            .occluded(embree_rs::Ray::new(*p0, d).near(0.00001).far(0.9999))
+        self.visible(p0, p1)
     }
 
     pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {
