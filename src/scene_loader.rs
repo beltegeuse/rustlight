@@ -14,12 +14,8 @@ use std::error::Error;
 use std::io::Read;
 use std::rc::Rc;
 
-enum AccelerationOption<'device, 'scene> {
-    Embree(&'device embree_rs::Device, &'scene mut embree_rs::Scene<'device>)
-}
-
 pub trait SceneLoader {
-    fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: &str) -> Result<Scene, Box<Error>>;
+    fn load(&self, filename: &str) -> Result<Scene, Box<Error>>;
 }
 pub struct SceneLoaderManager {
     loader: HashMap<String, Rc<dyn SceneLoader>>,
@@ -28,13 +24,13 @@ impl SceneLoaderManager {
     pub fn register(&mut self, name: &str, loader: Rc<dyn SceneLoader>) {
         self.loader.insert(name.to_string(), loader);
     }
-    pub fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: String) -> Result<Scene, Box<Error>> {
+    pub fn load(&self, filename: String) -> Result<Scene, Box<Error>> {
         let filename_ext = match std::path::Path::new(&filename).extension() {
             None => panic!("No file extension provided"),
             Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
         };
         if let Some(loader) = self.loader.get(filename_ext) {
-            loader.load(option, &filename)
+            loader.load(&filename)
         } else {
             panic!(
                 "Impossible to found scene loader for {} extension",
@@ -58,7 +54,7 @@ impl Default for SceneLoaderManager {
 
 pub struct JSONSceneLoader {}
 impl SceneLoader for JSONSceneLoader {
-    fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: &str) -> Result<Scene, Box<Error>> {
+    fn load(&self, filename: &str) -> Result<Scene, Box<Error>> {
         // Reading the scene
         let scene_path = std::path::Path::new(filename);
         let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
@@ -160,9 +156,6 @@ impl SceneLoader for JSONSceneLoader {
         };
         camera.print_info();
 
-        // Create the acceleration
-        let acceleration = Box::new(EmbreeAcceleration::new(&meshes));
-
         // Define a default scene
         Ok(Scene {
             camera,
@@ -170,8 +163,7 @@ impl SceneLoader for JSONSceneLoader {
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
-            emitter_environment: None,
-            acceleration,
+            emitter_environment: None
         })
     }
 }
@@ -180,7 +172,7 @@ impl SceneLoader for JSONSceneLoader {
 pub struct PBRTSceneLoader {}
 #[cfg(feature = "pbrt")]
 impl SceneLoader for PBRTSceneLoader {
-    fn load<'device, 'scene>(&self, option: AccelerationOption<'device, 'scene>, filename: &str) -> Result<Scene, Box<Error>> {
+    fn load(&self, filename: &str) -> Result<Scene, Box<Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
         let working_dir = std::path::Path::new(filename).parent().unwrap();
@@ -195,8 +187,8 @@ impl SceneLoader for PBRTSceneLoader {
                     let mat = m.matrix;
                     let uv = data.uv.clone();
                     let normals = match data.normals {
-                        Some(ref v) => v.iter().map(|n| mat.transform_vector(n.clone())).collect(),
-                        None => { panic!("See how to support this case") },
+                        Some(ref v) => Some(v.iter().map(|n| mat.transform_vector(n.clone())).collect()),
+                        None => None,
                     };
                     let points = data.points
                         .iter()
@@ -281,9 +273,6 @@ impl SceneLoader for PBRTSceneLoader {
             }
         };
 
-        // Create the acceleration
-        let acceleration = Box::new(EmbreeAcceleration::new(&meshes));
-
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
             camera,
@@ -292,7 +281,6 @@ impl SceneLoader for PBRTSceneLoader {
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
-            acceleration,
         })
     }
 }

@@ -2,49 +2,112 @@ use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
 use crate::math::Distribution1DConstruct;
+
+use crate::math::Frame;
 use crate::structure::*;
 use cgmath::*;
-
-pub struct BasicIntersection {
-    pub n_g: Vector3<f32>,  //< Geometric normal
-    pub uv: Vector2<f32>,   //< barycentric coordinate
-    pub t: f32,             //< Distance intersection
-    pub id_geo: usize,      //< ID geometry
-    pub id_prim: usize,     //< ID primitive 
-    pub id_inst: usize,     //< ID instance
-}
-pub trait Acceleration: Sync {
-    fn trace(&self, ray: &Ray) -> Option<BasicIntersection>; 
+pub trait Acceleration: Sync + Send {
+    fn trace(&self, ray: &Ray) -> Option<Intersection>;
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
 }
 
-pub struct EmbreeAcceleration<'scene> {
+pub struct EmbreeAcceleration<'a, 'scene> {
+    pub scene: &'a Scene,
     pub rtscene: embree_rs::CommittedScene<'scene>,
 }
-impl<'scene> EmbreeAcceleration<'scene> {
-    pub fn new(scene: &'scene embree_rs::Scene) -> Self {
-        let rtscene = scene.commit();
+
+impl<'a, 'scene> EmbreeAcceleration<'a, 'scene> {
+    pub fn new(
+        scene: &'a Scene,
+        embree_scene: &'scene embree_rs::Scene,
+    ) -> EmbreeAcceleration<'a, 'scene> {
         EmbreeAcceleration {
-            rtscene
+            scene,
+            rtscene: embree_scene.commit(),
         }
     }
 }
 
-impl<'scene> Acceleration for EmbreeAcceleration<'scene> {
-    fn trace(&self, ray: &Ray) -> Option<BasicIntersection> {
+impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
+    fn trace(&self, ray: &Ray) -> Option<Intersection> {
         let mut intersection_ctx = embree_rs::IntersectContext::coherent();
-        let ray = embree_rs::Ray::segment(Vector3::new(ray.o.x,ray.o.y,ray.o.z), ray.d, ray.tnear, ray.tfar);
-        let mut ray_hit = embree_rs::RayHit::new(ray);
+        let embree_ray = embree_rs::Ray::segment(
+            Vector3::new(ray.o.x, ray.o.y, ray.o.z),
+            ray.d,
+            ray.tnear,
+            ray.tfar,
+        );
+        let mut ray_hit = embree_rs::RayHit::new(embree_ray);
         self.rtscene.intersect(&mut intersection_ctx, &mut ray_hit);
         if ray_hit.hit.hit() {
-           Some(BasicIntersection {
-               n_g: Vector3::new(ray_hit.hit.Ng_x,ray_hit.hit.Ng_y,ray_hit.hit.Ng_z),
-               uv: Vector2::new(ray_hit.hit.u, ray_hit.hit.v),
-               t: ray_hit.ray.tfar,
-               id_geo: ray_hit.hit.geomID as usize,
-               id_prim: ray_hit.hit.primID as usize,
-               id_inst: ray_hit.hit.instID[0] as usize,
-           })
+            let mesh = &self.scene.meshes[ray_hit.hit.geomID as usize];
+            let index = mesh.indices[ray_hit.hit.primID as usize];
+
+            // Retrive the mesh
+            // The geometric normal is not normalized...
+            let mut n_g = Vector3::new(ray_hit.hit.Ng_x, ray_hit.hit.Ng_y, ray_hit.hit.Ng_z);
+            let n_g_dot = n_g.dot(n_g);
+            if n_g_dot != 1.0 {
+                n_g /= n_g_dot.sqrt();
+            }
+
+            let n_s = if let Some(ref normals) = mesh.normals {
+                let d0 = &normals[index.x];
+                let d1 = &normals[index.y];
+                let d2 = &normals[index.z];
+                let mut n_s = d0 * (1.0 - ray_hit.hit.u - ray_hit.hit.v)
+                    + d1 * ray_hit.hit.u
+                    + d2 * ray_hit.hit.v;
+                if n_g.dot(n_s) < 0.0 {
+                    n_s = -n_s;
+                }
+                n_s
+            } else {
+                n_g
+            };
+
+            // TODO: Hack for now for make automatic twosided.
+            let (n_s, n_g) =
+                if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && ray.d.dot(n_s) > 0.0 {
+                    (
+                        Vector3::new(-n_s.x, -n_s.y, -n_s.z),
+                        Vector3::new(-n_g.x, -n_g.y, -n_g.z),
+                    )
+                } else {
+                    (n_s, n_g)
+                };
+
+
+            // UV interpolation
+            let uv = if let Some(ref uv_data) = mesh.uv {
+                let d0 = &uv_data[index.x];
+                let d1 = &uv_data[index.y];
+                let d2 = &uv_data[index.z];
+                Some(
+                    d0 * (1.0 - ray_hit.hit.u - ray_hit.hit.v)
+                        + d1 * ray_hit.hit.u
+                        + d2 * ray_hit.hit.v,
+                )
+            } else {
+                None
+            };
+
+            let frame = Frame::new(n_s);
+            let wi = frame.to_local(-ray.d);
+            Some(Intersection {
+                dist: ray_hit.ray.tfar,
+                n_g,
+                n_s,
+                p: Point3::new(
+                    ray_hit.ray.org_x + ray_hit.ray.tfar * ray_hit.ray.dir_x,
+                    ray_hit.ray.org_y + ray_hit.ray.tfar * ray_hit.ray.dir_y,
+                    ray_hit.ray.org_z + ray_hit.ray.tfar * ray_hit.ray.dir_z,
+                ),
+                uv,
+                mesh,
+                frame,
+                wi,
+            })
         } else {
             None
         }
@@ -64,8 +127,6 @@ pub struct Scene {
     // Geometry information
     pub meshes: Vec<geometry::Mesh>,
     pub emitter_environment: Option<EnvironmentLight>,
-    // Acceleration for intersection
-    pub acceleration: Box<Acceleration>,
 }
 
 impl Scene {
@@ -104,49 +165,6 @@ impl Scene {
             emitters,
             emitters_cdf,
         }
-    }
-
-    /// Intersect and compute intersection information
-    pub fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        match self.acceleration.trace(ray) {
-            None => None,
-            Some(basic_info) => {
-                unimplemented!()
-                // Retrive the mesh
-                // let n_s = if basic_info.n_s.is_none() {
-                //     embree_its.n_g
-                // } else {
-                //     embree_its.n_s.unwrap()
-                // };
-                
-                // // TODO: Hack for now for make automatic twosided.
-                // let (n_s, n_g) = if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && d.dot(n_s) <= 0.0
-                // {
-                //     (
-                //         Vector3::new(-n_s.x, -n_s.y, -n_s.z),
-                //         Vector3::new(-embree_its.n_g.x, -embree_its.n_g.y, -embree_its.n_g.z),
-                //     )
-                // } else {
-                //     (n_s, embree_its.n_g)
-                // };
-
-                // let frame = Frame::new(n_s);
-                // let wi = frame.to_local(d);
-                // Some(Intersection {
-                //     dist: embree_its.t,
-                //     n_g,
-                //     n_s,
-                //     p: embree_its.p,
-                //     uv: embree_its.uv,
-                //     mesh,
-                //     frame,
-                //     wi,
-                // })
-            }
-        }
-    }
-    pub fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
-        self.visible(p0, p1)
     }
 
     pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {

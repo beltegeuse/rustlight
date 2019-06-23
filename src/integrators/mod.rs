@@ -1,6 +1,6 @@
-use crate::samplers::*;
-use crate::scene::*;
 use crate::emitter::*;
+use crate::scene::*;
+use crate::samplers::*;
 use crate::structure::{Bitmap, Color};
 use crate::tools::StepRangeInt;
 use crate::Scale;
@@ -185,20 +185,20 @@ impl Scale<f32> for BufferCollection {
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
 pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, scene: &Scene) -> BufferCollection;
+    fn compute_gradients(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection;
     fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync>;
 
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         // Rendering the gradient informations
         info!("Gradient Rendering...");
         let start = Instant::now();
-        let image = self.compute_gradients(scene);
+        let image = self.compute_gradients(accel, scene);
         let elapsed = start.elapsed();
         info!("Gradient Rendering Elapsed: {:?}", elapsed,);
 
@@ -222,12 +222,44 @@ pub enum IntegratorType {
 }
 impl IntegratorType {
     pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
+        info!("Build acceleration data structure...");
+        let embree_device = embree_rs::Device::new();
+        let mut embree_scene = embree_rs::Scene::new(&embree_device);
+        // Add all meshes
+        for m in &scene.meshes {
+            let mut tris = embree_rs::TriangleMesh::unanimated(&embree_device,
+                                                m.indices.len(),
+                                                m.vertices.len());
+            {
+                let mut verts = tris.vertex_buffer.map();
+                let mut tris = tris.index_buffer.map();
+                for i in 0..m.vertices.len() { 
+                    verts[i] = cgmath::Vector4::new(m.vertices[i].x,
+                                            m.vertices[i].y,
+                                            m.vertices[i].z,
+                                            0.0);
+                }
+
+                for i in 0..m.indices.len() { 
+                    tris[i] = cgmath::Vector3::new(m.indices[i].x as u32,
+                                        m.indices[i].y  as u32,
+                                        m.indices[i].z  as u32);
+                }
+            }
+            let mut tri_geom = embree_rs::Geometry::Triangle(tris);
+            tri_geom.commit();
+            embree_scene.attach_geometry(tri_geom);
+        }
+        let accel = EmbreeAcceleration::new(scene, &embree_scene);
+
         info!("Run Integrator...");
         let start = Instant::now();
 
         let img = match self {
-            IntegratorType::Primal(ref mut v) => v.compute(scene),
-            IntegratorType::Gradient(ref mut v) => IntegratorGradient::compute(v.as_mut(), scene),
+            IntegratorType::Primal(ref mut v) => v.compute(&accel, scene),
+            IntegratorType::Gradient(ref mut v) => {
+                IntegratorGradient::compute(v.as_mut(), &accel, scene)
+            }
         };
 
         let elapsed = start.elapsed();
@@ -245,6 +277,7 @@ pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(
         &self,
         pix: (u32, u32),
+        accel: &Acceleration,
         scene: &Scene,
         sampler: &mut Sampler,
         emitters: &EmitterSampler,
@@ -272,7 +305,11 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<Buff
     image_blocks
 }
 
-pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> BufferCollection {
+pub fn compute_mc<T: IntegratorMC + Integrator>(
+    int: &T,
+    accel: &Acceleration,
+    scene: &Scene,
+) -> BufferCollection {
     // Here we can to the classical parallelisation
     assert_ne!(scene.nb_samples, 0);
     let buffernames = vec!["primal".to_string()];
@@ -293,6 +330,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(int: &T, scene: &Scene) -> Buffe
                     for _ in 0..scene.nb_samples {
                         let c = int.compute_pixel(
                             (ix + im_block.pos.x, iy + im_block.pos.y),
+                            accel,
                             scene,
                             &mut sampler,
                             &light_sampling,
@@ -345,9 +383,4 @@ pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
 
 pub mod ao;
 pub mod avg;
-pub mod direct;
-pub mod explicit;
-pub mod gradient;
-pub mod path;
 pub mod prelude;
-pub mod pssmlt;

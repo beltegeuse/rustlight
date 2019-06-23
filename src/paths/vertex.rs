@@ -58,6 +58,7 @@ impl Edge {
         pdf_direction: PDF,
         weight: Color,
         rr_weight: f32,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         id_sampling: usize,
     ) -> (EdgeID, Option<VertexID>) {
@@ -73,7 +74,7 @@ impl Edge {
             id_sampling,
         };
         let edge = path.register_edge(edge);
-        let its = match scene.trace(&ray) {
+        let its = match accel.trace(&ray) {
             Some(its) => its,
             None => {
                 // Create an edge without distance

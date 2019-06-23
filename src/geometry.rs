@@ -21,41 +21,41 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
         info!("Loading model {}", m.name);
         let mesh = m.mesh;
         // Load vertex position
-        let indices = mesh.indices.chunks(3).map(|i| Vector3::new(i[0] as usize, i[1] as usize, i[2] as usize)).collect::<Vec<_>>();
+        let indices = mesh
+            .indices
+            .chunks(3)
+            .map(|i| Vector3::new(i[0] as usize, i[1] as usize, i[2] as usize))
+            .collect::<Vec<_>>();
         info!(" - triangles: {}", indices.len());
-        let vertices = mesh.positions
+        let vertices = mesh
+            .positions
             .chunks(3)
             .map(|i| Vector3::new(i[0], i[1], i[2]))
             .collect();
         // Load normal
         let normals = if mesh.normals.is_empty() {
-            // Only rely on face normals
-            Vec::new()
+            None
         } else {
-            mesh.normals
+            Some(mesh.normals
                 .chunks(3)
                 .map(|i| Vector3::new(i[0], i[1], i[2]))
-                .collect()
+                .collect())
         };
 
         let uv = if mesh.texcoords.is_empty() {
             None
         } else {
-            Some(mesh.texcoords
-                .chunks(2)
-                .map(|i| Vector2::new(i[0], i[1]))
-                .collect())
+            Some(
+                mesh.texcoords
+                    .chunks(2)
+                    .map(|i| Vector2::new(i[0], i[1]))
+                    .collect(),
+            )
         };
 
         // Read materials and push the mesh
-        let mut tri_mesh = Mesh::new(
-                m.name,
-                vertices,
-                indices,
-                normals,
-                uv
-        );
-        
+        let mut tri_mesh = Mesh::new(m.name, vertices, indices, normals, uv);
+
         // Load the BSDF informations
         tri_mesh.bsdf = {
             if let Some(id) = mesh.material_id {
@@ -92,7 +92,7 @@ pub struct Mesh {
     // Geometrical informations
     pub vertices: Vec<Vector3<f32>>,
     pub indices: Vec<Vector3<usize>>,
-    pub normals: Vec<Vector3<f32>>,
+    pub normals: Option<Vec<Vector3<f32>>>,
     pub uv: Option<Vec<Vector2<f32>>>,
     // Other informations
     pub bsdf: Box<bsdfs::BSDF>,
@@ -105,8 +105,8 @@ impl Mesh {
         name: String,
         vertices: Vec<Vector3<f32>>,
         indices: Vec<Vector3<usize>>,
-        normals: Vec<Vector3<f32>>,
-        uv: Option<Vec<Vector2<f32>>>
+        normals: Option<Vec<Vector3<f32>>>,
+        uv: Option<Vec<Vector2<f32>>>,
     ) -> Mesh {
         // Construct the mesh CDF
         let mut dist_const = Distribution1DConstruct::new(indices.len());
@@ -126,8 +126,8 @@ impl Mesh {
             normals,
             uv: None,
             bsdf: Box::new(bsdfs::diffuse::BSDFDiffuse {
-                    diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
-                }),
+                diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
+            }),
             emission: Color::zero(),
             cdf: dist_const.normalize(),
         }
@@ -139,6 +139,8 @@ impl Mesh {
 
     // FIXME: reuse random number
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
+        assert!(self.normals.is_some());
+
         // Select a triangle
         let id = self.indices[self.cdf.sample(s)];
 
@@ -146,10 +148,10 @@ impl Mesh {
         let v1 = self.vertices[id.y];
         let v2 = self.vertices[id.z];
 
-        // TODO:
-        let n0 = self.normals[id.x];
-        let n1 = self.normals[id.y];
-        let n2 = self.normals[id.z];
+        let normals = self.normals.as_ref().unwrap();
+        let n0 = normals[id.x];
+        let n1 = normals[id.y];
+        let n2 = normals[id.z];
 
         // Select barycentric coordinate on a triangle
         let b = uniform_sample_triangle(v);

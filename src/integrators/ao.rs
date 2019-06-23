@@ -8,14 +8,15 @@ pub struct IntegratorAO {
 }
 
 impl Integrator for IntegratorAO {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
-        compute_mc(self, scene)
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+        compute_mc(self, accel, scene)
     }
 }
 impl IntegratorMC for IntegratorAO {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
+        accel: &Acceleration,
         scene: &Scene,
         sampler: &mut Sampler,
         _: &EmitterSampler,
@@ -24,7 +25,7 @@ impl IntegratorMC for IntegratorAO {
         let ray = scene.camera.generate(pix);
 
         // Do the intersection for the first path
-        let its = match scene.trace(&ray) {
+        let its = match accel.trace(&ray) {
             Some(its) => its,
             None => return Color::zero(),
         };
@@ -45,7 +46,7 @@ impl IntegratorMC for IntegratorAO {
 
         // Check the new intersection distance
         let ray = Ray::new(its.p, d_world);
-        match scene.trace(&ray) {
+        match accel.trace(&ray) {
             None => Color::one(),
             Some(new_its) => match self.max_distance {
                 None => Color::zero(),

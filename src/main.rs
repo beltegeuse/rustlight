@@ -13,7 +13,6 @@ extern crate rayon;
 extern crate rustlight;
 
 use clap::{App, Arg, SubCommand};
-use rustlight::integrators::Integrator;
 use rustlight::integrators::IntegratorType;
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
     match input {
@@ -243,133 +242,8 @@ fn main() {
         }
     }
 
-    ///////////////// Get the reconstruction algorithm
-    let recons = match matches.subcommand() {
-        ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {
-            let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            let recons: Box<rustlight::integrators::PoissonReconstruction + Sync> = match m.value_of(
-                "reconstruction_type",
-            ).unwrap()
-            {
-                "uniform" => Box::new(
-                    rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
-                        iterations,
-                    },
-                ),
-                "weighted" => Box::new(
-                    rustlight::integrators::gradient::recons::WeightedPoissonReconstruction::new(
-                        iterations,
-                    ),
-                ),
-                "bagging" => Box::new(
-                    rustlight::integrators::gradient::recons::BaggingPoissonReconstruction {
-                        iterations,
-                        nb_buffers: if nb_samples <= 8 { nb_samples } else { 8 },
-                    },
-                ),
-                _ => panic!("Impossible to found a reconstruction_type"),
-            };
-            Some(recons)
-        }
-        _ => None,
-    };
-
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
-        ("path-explicit", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
-            let strategy = match strategy.as_ref() {
-                "all" => {
-                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
-                }
-                "bsdf" => {
-                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::BSDF
-                }
-                "emitter" => {
-                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::Emitter
-                }
-                _ => panic!("invalid strategy: {}", strategy),
-            };
-            IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path::IntegratorPathTracing {
-                    max_depth,
-                    strategy,
-                },
-            ))
-        }
-        ("light-explicit", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth },
-            ))
-        }
-        ("gradient-path", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-
-            IntegratorType::Gradient(Box::new(
-                rustlight::integrators::gradient::path::IntegratorGradientPath {
-                    max_depth,
-                    min_depth,
-                    recons: recons.unwrap(),
-                },
-            ))
-        }
-        ("gradient-path-explicit", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_survival = value_t_or_exit!(m.value_of("min_survival"), f32);
-            if min_survival <= 0.0 || min_survival > 1.0 {
-                panic!("need to specify min_survival in ]0.0,1.0]");
-            }
-            IntegratorType::Gradient(Box::new(
-                rustlight::integrators::gradient::explicit::IntegratorGradientPathTracing {
-                    max_depth,
-                    recons: recons.unwrap(),
-                    min_survival: Some(min_survival),
-                },
-            ))
-        }
-        ("vpl", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
-            let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
-            IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::vpl::IntegratorVPL {
-                    nb_vpl,
-                    max_depth,
-                    clamping_factor: if clamping <= 0.0 {
-                        None
-                    } else {
-                        Some(clamping)
-                    },
-                },
-            ))
-        }
-        ("path", Some(m)) => {
-            let primitive = m.is_present("primitive");
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            IntegratorType::Primal(Box::new(rustlight::integrators::path::IntegratorPath {
-                max_depth,
-                min_depth,
-                next_event_estimation: !primitive,
-            }))
-        }
-        ("pssmlt", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
-            assert!(large_prob > 0.0 && large_prob <= 1.0);
-            IntegratorType::Primal(Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
-                large_prob,
-                integrator: Box::new(rustlight::integrators::path::IntegratorPath {
-                    max_depth,
-                    min_depth,
-                    next_event_estimation: true,
-                }),
-            }))
-        }
         ("ao", Some(m)) => {
             let normal_correction = m.is_present("normal-correction");
             let dist = match_infinity(m.value_of("distance").unwrap());
@@ -378,20 +252,16 @@ fn main() {
                 normal_correction,
             }))
         }
-        ("direct", Some(m)) => {
-            IntegratorType::Primal(Box::new(rustlight::integrators::direct::IntegratorDirect {
-                nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
-                nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
-            }))
-        }
         _ => panic!("unknown integrator"),
     };
     let img = if matches.is_present("average") {
+        // Add an additional wraping on the struct
         let time_out = match_infinity(matches.value_of("average").unwrap());
-        let mut int = rustlight::integrators::avg::IntegratorAverage {
-            time_out,
-            integrator: int,
-        };
+        let mut int =
+            IntegratorType::Primal(Box::new(rustlight::integrators::avg::IntegratorAverage {
+                time_out,
+                integrator: int,
+            }));
         int.compute(&scene)
     } else {
         int.compute(&scene)
