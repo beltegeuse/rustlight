@@ -1,7 +1,6 @@
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::structure::*;
 use cgmath::Point2;
 
 /// This structure store the rendering options
@@ -25,6 +24,7 @@ impl Technique for TechniquePathTracing {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
+        _accel: &Acceleration,
         scene: &'scene Scene,
         sampler: &mut Sampler,
         _emitters: &'emitter EmitterSampler,
@@ -142,14 +142,15 @@ impl TechniquePathTracing {
 }
 
 impl Integrator for IntegratorPathTracing {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
-        compute_mc(self, scene)
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+        compute_mc(self, accel, scene)
     }
 }
 impl IntegratorMC for IntegratorPathTracing {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
+        accel: &Acceleration,
         scene: &Scene,
         sampler: &mut Sampler,
         emitters: &EmitterSampler,
@@ -166,7 +167,7 @@ impl IntegratorMC for IntegratorPathTracing {
         // Call the generator on this technique
         // the generator give back the root nodes
         let mut path = Path::default();
-        let root = generate(&mut path, scene, emitters, sampler, &mut technique);
+        let root = generate(&mut path, accel, scene, emitters, sampler, &mut technique);
         // Evaluate the sampling graph
         technique.evaluate(&path, scene, emitters, root[0].0, &self.strategy)
     }

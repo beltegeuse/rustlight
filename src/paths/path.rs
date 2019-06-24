@@ -1,11 +1,10 @@
-use crate::emitter::LightSamplingPDF;
-use crate::math::{cosine_sample_hemisphere, Frame};
+use crate::emitter::*;
+use crate::math::*;
 use crate::paths::vertex::*;
 use crate::samplers::*;
 use crate::scene::*;
 use crate::structure::*;
 use crate::Scale;
-use crate::emitter::Emitter;
 use std;
 use std::mem;
 
@@ -14,6 +13,7 @@ pub trait SamplingStrategy {
         &self,
         path: &mut Path<'scene, 'emitter>,
         vertex_id: VertexID,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         throughput: Color,
@@ -37,6 +37,7 @@ impl DirectionalSamplingStrategy {
     pub fn bounce<'scene>(
         path: &mut Path<'scene, '_>,
         vertex_id: VertexID,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         throughput: &mut Color,
         sampler: &mut Sampler,
@@ -52,6 +53,7 @@ impl DirectionalSamplingStrategy {
                     PDF::SolidAngle(1.0),
                     Color::one(),
                     1.0,
+                    accel,
                     scene,
                     id_strategy,
                 );
@@ -87,6 +89,7 @@ impl DirectionalSamplingStrategy {
                         sampled_bsdf.pdf.clone(),
                         sampled_bsdf.weight,
                         rr_weight,
+                        accel,
                         scene,
                         id_strategy,
                     );
@@ -116,6 +119,7 @@ impl DirectionalSamplingStrategy {
                     PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
                     weight,
                     1.0,
+                    accel,
                     scene,
                     id_strategy,
                 );
@@ -130,6 +134,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         &self,
         path: &mut Path<'scene, 'emitter>,
         vertex_id: VertexID,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         _emitters: &'emitter EmitterSampler,
         mut throughput: Color,
@@ -140,6 +145,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         let (edge, new_vertex) = DirectionalSamplingStrategy::bounce(
             path,
             vertex_id,
+            accel,
             scene,
             &mut throughput,
             sampler,
@@ -170,8 +176,8 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
     fn pdf<'scene, 'emitter>(
         &self,
         path: &Path<'scene, 'emitter>,
-        scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
+        _scene: &'scene Scene,
+        _emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {
@@ -207,9 +213,10 @@ impl SamplingStrategy for LightSamplingStrategy {
         &self,
         path: &mut Path<'scene, 'emitter>,
         vertex_id: VertexID,
-        scene: &'scene Scene,
+        accel: &'scene Acceleration,
+        _scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
-        throughput: Color,
+        _throughput: Color,
         sampler: &mut Sampler,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)> {
@@ -230,7 +237,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                     sampler.next2d(),
                 );
                 let d_out_local = v.its.frame.to_local(light_record.d);
-                let visible = scene.visible(&v.its.p, &light_record.p);
+                let visible = accel.visible(&v.its.p, &light_record.p);
                 if light_record.is_valid() && d_out_local.z > 0.0 && visible {
                     let next_vertex = Vertex::Light(EmitterVertex {
                         pos: light_record.p,
@@ -289,7 +296,7 @@ impl SamplingStrategy for LightSamplingStrategy {
     fn pdf<'scene, 'emitter>(
         &self,
         path: &Path<'scene, 'emitter>,
-        scene: &'scene Scene,
+        _scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         edge_id: EdgeID,
@@ -342,12 +349,13 @@ impl SamplingStrategy for LightSamplingStrategy {
 
 pub fn generate<'scene, 'emitter, T: Technique>(
     path: &mut Path<'scene, 'emitter>,
+    accel: &'scene Acceleration,
     scene: &'scene Scene,
     emitters: &'emitter EmitterSampler,
     sampler: &mut Sampler,
     technique: &mut T,
 ) -> Vec<(VertexID, Color)> {
-    let root = technique.init(path, scene, sampler, emitters);
+    let root = technique.init(path, accel, scene, sampler, emitters);
     let mut curr = root.clone();
     let mut next = vec![];
     let mut depth = 1;
@@ -368,6 +376,7 @@ pub fn generate<'scene, 'emitter, T: Technique>(
                     if let Some((new_vertex, new_throughput)) = sampling.sample(
                         path,
                         *curr_vertex_id,
+                        accel,
                         scene,
                         emitters,
                         *throughput,
@@ -391,6 +400,7 @@ pub trait Technique {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         sampler: &mut Sampler,
         emitters: &'emitter EmitterSampler,

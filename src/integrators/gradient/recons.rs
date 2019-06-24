@@ -1,7 +1,6 @@
 use crate::integrators::gradient::*;
 use crate::Scale;
 use cgmath::Vector2;
-use rayon::prelude::*;
 
 pub struct BaggingPoissonReconstruction {
     pub iterations: usize,

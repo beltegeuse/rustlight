@@ -58,7 +58,8 @@ impl Edge {
         pdf_direction: PDF,
         weight: Color,
         rr_weight: f32,
-        scene: &'scene Scene,
+        accel: &'scene Acceleration,
+        _scene: &'scene Scene,
         id_sampling: usize,
     ) -> (EdgeID, Option<VertexID>) {
         // TODO: When there will be volume, we need to sample a distance inside the volume
@@ -73,7 +74,7 @@ impl Edge {
             id_sampling,
         };
         let edge = path.register_edge(edge);
-        let its = match scene.trace(&ray) {
+        let its = match accel.trace(&ray) {
             Some(its) => its,
             None => {
                 // Create an edge without distance

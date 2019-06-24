@@ -1,9 +1,7 @@
 use crate::bsdfs::reflect_vector;
 use crate::emitter::*;
-use crate::scene::*;
 use crate::integrators::gradient::*;
 use crate::integrators::*;
-use crate::structure::*;
 use cgmath::*;
 
 pub struct IntegratorGradientPath {
@@ -66,7 +64,12 @@ impl<'a> RayState<'a> {
         }
     }
 
-    pub fn new((x, y): (f32, f32), off: Point2<i32>, scene: &'a Scene) -> RayState<'a> {
+    pub fn new(
+        (x, y): (f32, f32),
+        off: Point2<i32>,
+        accel: &'a Acceleration,
+        scene: &'a Scene,
+    ) -> RayState<'a> {
         let pix = Point2::new(x + off.x as f32, y + off.y as f32);
         if pix.x < 0.0 || pix.x > (scene.camera.size().x as f32) || pix.y < 0.0
             || pix.y > (scene.camera.size().y as f32)
@@ -75,7 +78,7 @@ impl<'a> RayState<'a> {
         }
 
         let ray = scene.camera.generate(pix);
-        let its = match scene.trace(&ray) {
+        let its = match accel.trace(&ray) {
             Some(x) => x,
             None => return RayState::Dead,
         };
@@ -95,7 +98,7 @@ impl IntegratorGradient for IntegratorGradientPath {
         &self.recons
     }
 
-    fn compute_gradients(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute_gradients(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
             generate_img_blocks_gradient(scene, &self.recons);
 
@@ -110,6 +113,7 @@ impl IntegratorGradient for IntegratorGradientPath {
                         for n in 0..scene.nb_samples {
                             let c = self.compute_pixel(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
+                                accel,
                                 scene,
                                 &emitters,
                                 &mut sampler,
@@ -208,20 +212,21 @@ impl IntegratorGradientPath {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
+        accel: &Acceleration,
         scene: &Scene,
         emitters: &EmitterSampler,
         sampler: &mut Sampler,
     ) -> ColorGradient {
         let mut l_i = ColorGradient::default();
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
-        let mut main = match RayState::new(pix, Point2::new(0, 0), scene) {
+        let mut main = match RayState::new(pix, Point2::new(0, 0), accel, scene) {
             RayState::NotConnected(x) => x,
             _ => return l_i,
         };
         let mut offsets: Vec<RayState> = {
             GRADIENT_ORDER
                 .iter()
-                .map(|e| RayState::new(pix, *e, &scene))
+                .map(|e| RayState::new(pix, *e, accel, scene))
                 .collect()
         };
 
@@ -252,7 +257,7 @@ impl IntegratorGradientPath {
                     (sampler.next(), sampler.next(), sampler.next2d());
                 let main_light_record =
                     emitters.sample_light(&main.its.p, r_sel_rand, r_rand, uv_rand);
-                let main_light_visible = scene.visible(&main.its.p, &main_light_record.p);
+                let main_light_visible = accel.visible(&main.its.p, &main_light_record.p);
                 let main_emitter_rad = if main_light_visible {
                     main_light_record.weight
                 } else {
@@ -363,7 +368,7 @@ impl IntegratorGradientPath {
                                         uv_rand,
                                     );
                                     let shift_light_visible =
-                                        scene.visible(&s.its.p, &shift_light_record.p);
+                                        accel.visible(&s.its.p, &shift_light_record.p);
                                     let shift_emitter_rad = if shift_light_visible {
                                         shift_light_record.weight
                                             * (shift_light_record.pdf.value()
@@ -456,7 +461,7 @@ impl IntegratorGradientPath {
             let main_d_out_global = main.its.frame.to_world(main_sampled_bsdf.d);
             main.ray = Ray::new(main.its.p, main_d_out_global);
             let main_pred_its = main.its; // Need to save the previous hit
-            main.its = match scene.trace(&main.ray) {
+            main.its = match accel.trace(&main.ray) {
                 Some(x) => x,
                 None => return l_i,
             };
@@ -583,7 +588,7 @@ impl IntegratorGradientPath {
                             let shift_bsdf_rought = !s.its.mesh.bsdf.is_smooth();
                             if main_bsdf_rought && main_next_bsdf_rought && shift_bsdf_rought {
                                 // In this case, we can do the reconnection
-                                if !scene.visible(&s.its.p, &main.its.p) {
+                                if !accel.visible(&s.its.p, &main.its.p) {
                                     ShiftResult::default()
                                 } else {
                                     // Compute the ratio of geometry factors
@@ -767,7 +772,7 @@ impl IntegratorGradientPath {
                                     // Shoot a ray to compute the next intersection
                                     let shift_d_out_global = s.its.frame.to_world(wo);
                                     s.ray = Ray::new(s.its.p, shift_d_out_global);
-                                    let new_its = scene.trace(&s.ray);
+                                    let new_its = accel.trace(&s.ray);
                                     if new_its.is_none() {
                                         let mut result = ShiftResult::default();
                                         result.half_vector = true;

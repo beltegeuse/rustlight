@@ -1,6 +1,4 @@
-use crate::emitter::*;
 use crate::integrators::*;
-use crate::structure::*;
 
 pub struct IntegratorPath {
     pub max_depth: Option<u32>,
@@ -9,14 +7,15 @@ pub struct IntegratorPath {
 }
 
 impl Integrator for IntegratorPath {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
-        compute_mc(self, scene)
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+        compute_mc(self, accel, scene)
     }
 }
 impl IntegratorMC for IntegratorPath {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
+        accel: &Acceleration,
         scene: &Scene,
         sampler: &mut Sampler,
         emitters: &EmitterSampler,
@@ -28,7 +27,7 @@ impl IntegratorMC for IntegratorPath {
         let mut throughput = Color::one();
 
         // Check if we have a intersection with the primary ray
-        let mut its = match scene.trace(&ray) {
+        let mut its = match accel.trace(&ray) {
             Some(x) => x,
             None => return throughput * scene.enviroment_luminance(ray.d),
         };
@@ -57,7 +56,7 @@ impl IntegratorMC for IntegratorPath {
                 };
 
                 let d_out_local = its.frame.to_local(light_record.d);
-                if light_record.is_valid() && scene.visible(&its.p, &light_record.p)
+                if light_record.is_valid() && accel.visible(&its.p, &light_record.p)
                     && d_out_local.z > 0.0
                 {
                     // Compute the contribution of direct lighting
@@ -103,7 +102,7 @@ impl IntegratorMC for IntegratorPath {
             // Generate the new ray and do the intersection
             let d_out_global = its.frame.to_world(sampled_bsdf.d);
             ray = Ray::new(its.p, d_out_global);
-            its = match scene.trace(&ray) {
+            its = match accel.trace(&ray) {
                 Some(x) => x,
                 None => {
                     // TODO: Need to implement the MIS for this case

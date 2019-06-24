@@ -2,7 +2,6 @@ use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers;
-use crate::structure::*;
 use cgmath::{InnerSpace, Point2, Point3, Vector3};
 
 pub struct IntegratorVPL {
@@ -36,6 +35,7 @@ impl Technique for TechniqueVPL {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
+        _accel: &Acceleration,
         _scene: &'scene Scene,
         sampler: &mut Sampler,
         emitters: &'emitter EmitterSampler,
@@ -115,7 +115,7 @@ impl TechniqueVPL {
 }
 
 impl Integrator for IntegratorVPL {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         info!("Generating the VPL...");
         let buffernames = vec![String::from("primal")];
         let mut sampler = samplers::independent::IndependentSampler::default();
@@ -131,7 +131,14 @@ impl Integrator for IntegratorVPL {
                 pdf_vertex: None,
             };
             let mut path = Path::default();
-            let root = generate(&mut path, scene, &emitters, &mut sampler, &mut technique);
+            let root = generate(
+                &mut path,
+                accel,
+                scene,
+                &emitters,
+                &mut sampler,
+                &mut technique,
+            );
             technique.convert_vpl(&path, scene, root[0].0, &mut vpls, Color::one());
             nb_path_shot += 1;
         }
@@ -153,6 +160,7 @@ impl Integrator for IntegratorVPL {
                         for _ in 0..scene.nb_samples {
                             let c = self.compute_vpl_contrib(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
+                                accel,
                                 scene,
                                 &mut sampler,
                                 &vpls,
@@ -183,6 +191,7 @@ impl IntegratorVPL {
     fn compute_vpl_contrib<'a>(
         &self,
         (ix, iy): (u32, u32),
+        accel: &Acceleration,
         scene: &'a Scene,
         sampler: &mut Sampler,
         vpls: &[VPL<'a>],
@@ -193,7 +202,7 @@ impl IntegratorVPL {
         let mut l_i = Color::zero();
 
         // Check if we have a intersection with the primary ray
-        let its = match scene.trace(&ray) {
+        let its = match accel.trace(&ray) {
             Some(x) => x,
             None => return l_i,
         };
@@ -206,7 +215,7 @@ impl IntegratorVPL {
         for vpl in vpls {
             match *vpl {
                 VPL::Emitter(ref vpl) => {
-                    if scene.visible(&vpl.pos, &its.p) {
+                    if accel.visible(&vpl.pos, &its.p) {
                         let mut d = vpl.pos - its.p;
                         let dist = d.magnitude();
                         d /= dist;
@@ -224,7 +233,7 @@ impl IntegratorVPL {
                     }
                 }
                 VPL::Surface(ref vpl) => {
-                    if scene.visible(&vpl.its.p, &its.p) {
+                    if accel.visible(&vpl.its.p, &its.p) {
                         let mut d = vpl.its.p - its.p;
                         let dist = d.magnitude();
                         d /= dist;

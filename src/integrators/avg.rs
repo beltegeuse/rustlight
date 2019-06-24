@@ -8,7 +8,7 @@ pub struct IntegratorAverage {
 }
 
 impl Integrator for IntegratorAverage {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         // Get the output file type
         let output_ext = match std::path::Path::new(&scene.output_img_path).extension() {
             None => panic!("No file extension provided"),
@@ -28,8 +28,8 @@ impl Integrator for IntegratorAverage {
 
         loop {
             let new_bitmap = match self.integrator {
-                IntegratorType::Primal(ref mut v) => v.compute(scene),
-                IntegratorType::Gradient(ref mut v) => v.compute_gradients(scene),
+                IntegratorType::Primal(ref mut v) => v.compute(accel, scene),
+                IntegratorType::Gradient(ref mut v) => v.compute_gradients(accel, scene),
             };
             if iteration == 1 {
                 bitmap = Some(new_bitmap);
@@ -65,8 +65,7 @@ impl Integrator for IntegratorAverage {
             // Write the rendering time
             write!(csv, "{}.{},\n", elapsed.as_secs(), elapsed.subsec_millis()).unwrap();
 
-            if self
-                .time_out
+            if self.time_out
                 .map_or(false, |t| elapsed.as_secs() >= t as u64)
             {
                 break;

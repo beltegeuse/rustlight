@@ -19,24 +19,26 @@ impl ShiftMapping for DiffuseReconnection {
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,
     ) -> (Color, VertexID) {
         technique.img_pos = pos;
-        let root = generate(path, scene, emitters, sampler, technique);
+        let root = generate(path, accel, scene, emitters, sampler, technique);
         self.base_contrib = technique.evaluate(path, scene, emitters, root[0].0);
         (self.base_contrib, root[0].0)
     }
     fn shift<'scene, 'emitter>(
         &mut self,
-        path: &mut Path<'scene, 'emitter>,
-        technique: &mut TechniqueGradientPathTracing,
-        pos: Point2<u32>,
-        scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
-        sampler: &mut Sampler,
-        base_id: VertexID,
+        _path: &mut Path<'scene, 'emitter>,
+        _technique: &mut TechniqueGradientPathTracing,
+        _pos: Point2<u32>,
+        _accel: &'scene Acceleration,
+        _scene: &'scene Scene,
+        _emitters: &'emitter EmitterSampler,
+        _sampler: &mut Sampler,
+        _base_id: VertexID,
     ) -> ShiftValue {
         unimplemented!();
         // Generate
@@ -81,9 +83,9 @@ impl DiffuseReconnection {
     fn not_reconnected<'a, 'b>(
         &self,
         _path: &Path,
-        scene: &Scene,
-        base_id: VertexID,
-        shift_id: VertexID,
+        _scene: &Scene,
+        _base_id: VertexID,
+        _shift_id: VertexID,
     ) {
         unimplemented!();
         // Check the reconnection to the light source.

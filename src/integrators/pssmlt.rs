@@ -1,6 +1,5 @@
 use crate::integrators::*;
 use crate::samplers;
-use crate::structure::*;
 use cgmath::Point2;
 
 struct MCMCState {
@@ -30,18 +29,21 @@ pub struct IntegratorPSSMLT {
     pub integrator: Box<IntegratorMC>,
 }
 impl Integrator for IntegratorPSSMLT {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         ///////////// Define the closure
         let sample = |s: &mut Sampler, emitters: &EmitterSampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
             let y = (s.next() * scene.camera.size().y as f32) as u32;
-            let c = { self.integrator.compute_pixel((x, y), scene, s, emitters) };
+            let c = {
+                self.integrator
+                    .compute_pixel((x, y), accel, scene, s, emitters)
+            };
             MCMCState::new(c, Point2::new(x, y))
         };
 
         ///////////// Compute the normalization factor
         info!("Computing normalization factor...");
-        let b = self.compute_normalization(scene, 10000);
+        let b = self.compute_normalization(accel, scene, 10000);
         info!("Normalisation factor: {:?}", b);
 
         ///////////// Compute the state initialization
@@ -130,7 +132,7 @@ impl Integrator for IntegratorPSSMLT {
     }
 }
 impl IntegratorPSSMLT {
-    fn compute_normalization(&self, scene: &Scene, nb_samples: usize) -> f32 {
+    fn compute_normalization(&self, accel: &Acceleration, scene: &Scene, nb_samples: usize) -> f32 {
         assert_ne!(nb_samples, 0);
 
         let mut sampler = samplers::independent::IndependentSampler::default();
@@ -139,8 +141,9 @@ impl IntegratorPSSMLT {
                 let emitters = scene.emitters_sampler();
                 let x = (sampler.next() * scene.camera.size().x as f32) as u32;
                 let y = (sampler.next() * scene.camera.size().y as f32) as u32;
-                let c = self.integrator
-                    .compute_pixel((x, y), scene, &mut sampler, &emitters);
+                let c =
+                    self.integrator
+                        .compute_pixel((x, y), accel, scene, &mut sampler, &emitters);
                 (c.r + c.g + c.b) / 3.0
             })
             .sum::<f32>() / (nb_samples as f32)

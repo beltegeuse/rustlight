@@ -1,6 +1,5 @@
 use crate::emitter::*;
 use crate::integrators::*;
-use crate::structure::*;
 
 pub struct IntegratorDirect {
     pub nb_bsdf_samples: u32,
@@ -8,14 +7,15 @@ pub struct IntegratorDirect {
 }
 
 impl Integrator for IntegratorDirect {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
-        compute_mc(self, scene)
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+        compute_mc(self, accel, scene)
     }
 }
 impl IntegratorMC for IntegratorDirect {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
+        accel: &Acceleration,
         scene: &Scene,
         sampler: &mut Sampler,
         emitters: &EmitterSampler,
@@ -25,7 +25,7 @@ impl IntegratorMC for IntegratorDirect {
         let mut l_i = Color::zero();
 
         // Do the intersection for the first path
-        let its = match scene.trace(&ray) {
+        let its = match accel.trace(&ray) {
             Some(its) => its,
             None => return scene.enviroment_luminance(ray.d),
         };
@@ -64,7 +64,7 @@ impl IntegratorMC for IntegratorDirect {
             };
 
             let d_out_local = its.frame.to_local(light_record.d);
-            if light_record.is_valid() && scene.visible(&its.p, &light_record.p)
+            if light_record.is_valid() && accel.visible(&its.p, &light_record.p)
                 && d_out_local.z > 0.0
             {
                 // Compute the contribution of direct lighting
@@ -95,7 +95,7 @@ impl IntegratorMC for IntegratorDirect {
                 // Generate the new ray and do the intersection
                 let d_out_world = its.frame.to_world(sampled_bsdf.d);
                 let ray = Ray::new(its.p, d_out_world);
-                let next_its = match scene.trace(&ray) {
+                let next_its = match accel.trace(&ray) {
                     Some(x) => x,
                     None => {
                         l_i += sampled_bsdf.weight * scene.enviroment_luminance(ray.d)

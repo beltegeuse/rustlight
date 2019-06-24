@@ -3,6 +3,7 @@ use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers::Sampler;
 use crate::scene::*;
+use crate::emitter::*;
 use crate::structure::Color;
 use cgmath::Point2;
 
@@ -33,6 +34,7 @@ pub trait ShiftMapping {
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,
@@ -42,6 +44,7 @@ pub trait ShiftMapping {
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         sampler: &mut Sampler,

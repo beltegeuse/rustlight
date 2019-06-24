@@ -13,7 +13,6 @@ extern crate rayon;
 extern crate rustlight;
 
 use clap::{App, Arg, SubCommand};
-use rustlight::integrators::Integrator;
 use rustlight::integrators::IntegratorType;
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
     match input {
@@ -388,10 +387,11 @@ fn main() {
     };
     let img = if matches.is_present("average") {
         let time_out = match_infinity(matches.value_of("average").unwrap());
-        let mut int = rustlight::integrators::avg::IntegratorAverage {
-            time_out,
-            integrator: int,
-        };
+        let mut int =
+            IntegratorType::Primal(Box::new(rustlight::integrators::avg::IntegratorAverage {
+                time_out,
+                integrator: int,
+            }));
         int.compute(&scene)
     } else {
         int.compute(&scene)

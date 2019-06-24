@@ -2,7 +2,6 @@ use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers;
-use crate::structure::*;
 use cgmath::InnerSpace;
 use cgmath::Point2;
 
@@ -21,6 +20,7 @@ impl Technique for TechniqueLightTracing {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
+        _accel: &Acceleration,
         _scene: &'scene Scene,
         sampler: &mut Sampler,
         emitters: &'emitter EmitterSampler,
@@ -53,6 +53,7 @@ impl TechniqueLightTracing {
     fn evaluate<'scene>(
         &self,
         path: &Path<'scene, '_>,
+        accel: &Acceleration,
         scene: &'scene Scene,
         vertex_id: VertexID,
         bitmap: &mut BufferCollection,
@@ -63,7 +64,7 @@ impl TechniqueLightTracing {
                 // Chech the visibility from the point to the sensor
                 let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.its.p).normalize();
-                if !v.its.mesh.bsdf.is_smooth() && scene.visible(&v.its.p, &pos_sensor) {
+                if !v.its.mesh.bsdf.is_smooth() && accel.visible(&v.its.p, &pos_sensor) {
                     // Splat the contribution
                     if let Some((importance, uv)) = scene.camera.sample_direct(&v.its.p) {
                         // Compute BSDF for the splatting
@@ -91,6 +92,7 @@ impl TechniqueLightTracing {
                     if let Some(vertex_next) = edge.vertices.1 {
                         self.evaluate(
                             path,
+                            accel,
                             scene,
                             vertex_next,
                             bitmap,
@@ -103,7 +105,7 @@ impl TechniqueLightTracing {
                 let flux = v.emitter.flux() / self.pdf_vertex.as_ref().unwrap().value();
                 let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.pos).normalize();
-                if scene.visible(&v.pos, &pos_sensor) {
+                if accel.visible(&v.pos, &pos_sensor) {
                     if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
                         bitmap.accumulate_safe(
                             Point2::new(uv.x as i32, uv.y as i32),
@@ -115,7 +117,7 @@ impl TechniqueLightTracing {
                 if let Some(edge_id) = v.edge_out {
                     let edge = path.edge(edge_id);
                     if let Some(next_vertex) = edge.vertices.1 {
-                        self.evaluate(path, scene, next_vertex, bitmap, edge.weight * flux);
+                        self.evaluate(path, accel, scene, next_vertex, bitmap, edge.weight * flux);
                     }
                 }
             }
@@ -125,7 +127,7 @@ impl TechniqueLightTracing {
 }
 
 impl Integrator for IntegratorLightTracing {
-    fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         // Number of samples that the system will trace
         let nb_threads = rayon::current_num_threads();
         let nb_jobs = nb_threads * 4;
@@ -162,9 +164,9 @@ impl Integrator for IntegratorLightTracing {
                         pdf_vertex: None,
                     };
                     let mut path = Path::default();
-                    let root = generate(&mut path, scene, &emitters, s, &mut technique);
+                    let root = generate(&mut path, accel, scene, &emitters, s, &mut technique);
                     // Evaluate the path generated using camera splatting operation
-                    technique.evaluate(&path, scene, root[0].0, &mut my_img, Color::one());
+                    technique.evaluate(&path, accel, scene, root[0].0, &mut my_img, Color::one());
                 });
                 my_img.scale(1.0 / (nb_samples as f32));
                 {

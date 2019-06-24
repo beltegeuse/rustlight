@@ -2,7 +2,6 @@ use crate::integrators::gradient::shiftmapping::{ShiftMapping, random_replay::Ra
 use crate::integrators::{*, gradient::*};
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::structure::*;
 use cgmath::Point2;
 
 /// Path tracing system
@@ -23,6 +22,7 @@ impl Technique for TechniqueGradientPathTracing {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
+        _accel: &'scene Acceleration,
         scene: &'scene Scene,
         sampler: &mut Sampler,
         _emitters: &'emitter EmitterSampler,
@@ -112,7 +112,7 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
         &self.recons
     }
 
-    fn compute_gradients(&mut self, scene: &Scene) -> BufferCollection {
+    fn compute_gradients(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
             generate_img_blocks_gradient(scene, &self.recons);
 
@@ -129,6 +129,7 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
                             shiftmapping.clear();
                             let c = self.compute_pixel(
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
+                                accel,
                                 scene,
                                 &emitters,
                                 &mut sampler,
@@ -228,6 +229,7 @@ impl IntegratorGradientPathTracing {
     fn compute_pixel<T: ShiftMapping>(
         &self,
         (ix, iy): (u32, u32),
+        accel: &Acceleration,
         scene: &Scene,
         emitters: &EmitterSampler,
         sampler: &mut Sampler,
@@ -247,6 +249,7 @@ impl IntegratorGradientPathTracing {
             &mut path,
             &mut technique,
             Point2::new(ix, iy),
+            accel,
             scene,
             emitters,
             sampler,
@@ -284,6 +287,7 @@ impl IntegratorGradientPathTracing {
                         &mut path,
                         &mut technique,
                         Point2::new(pix.x as u32, pix.y as u32),
+                        accel,
                         scene,
                         emitters,
                         sampler,

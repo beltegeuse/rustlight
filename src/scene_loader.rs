@@ -3,7 +3,7 @@ use crate::bsdfs::*;
 use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
-use crate::scene::Scene;
+use crate::scene::*;
 use crate::structure::*;
 use cgmath::*;
 #[cfg(feature = "pbrt")]
@@ -69,18 +69,10 @@ impl SceneLoader for JSONSceneLoader {
         // Read json string
         let v: serde_json::Value = serde_json::from_str(&data)?;
 
-        // Allocate embree
-        let device = embree_rs::Device::debug();
-        let mut scene_embree = embree_rs::SceneConstruct::new(&device);
-
         // Read the object
         let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
         let obj_path = wk.join(obj_path_str);
-        let mut meshes = geometry::load_obj(&device, &mut scene_embree, obj_path.as_path())?;
-
-        // Build embree as we will not geometry for now
-        info!("Build the acceleration structure");
-        let scene_embree = scene_embree.commit()?;
+        let mut meshes = geometry::load_obj(obj_path.as_path())?;
 
         // Update meshes information
         //  - which are light?
@@ -167,7 +159,6 @@ impl SceneLoader for JSONSceneLoader {
         // Define a default scene
         Ok(Scene {
             camera,
-            embree_scene: scene_embree,
             meshes,
             nb_samples: 1,
             nb_threads: None,
@@ -187,10 +178,6 @@ impl SceneLoader for PBRTSceneLoader {
         let working_dir = std::path::Path::new(filename).parent().unwrap();
         pbrt_rs::read_pbrt_file(filename, &working_dir, &mut scene_info, &mut state);
 
-        // Allocate embree
-        let device = embree_rs::Device::debug();
-        let mut scene_embree = embree_rs::SceneConstruct::new(&device);
-
         // Load the data
         let mut meshes: Vec<geometry::Mesh> = scene_info
             .shapes
@@ -198,26 +185,18 @@ impl SceneLoader for PBRTSceneLoader {
             .map(|m| match m.data {
                 pbrt_rs::Shape::TriMesh(ref data) => {
                     let mat = m.matrix;
-                    let uv = if let Some(uv) = data.uv.clone() {
-                        uv
-                    } else {
-                        vec![]
-                    };
+                    let uv = data.uv.clone();
                     let normals = match data.normals {
-                        Some(ref v) => v.iter().map(|n| mat.transform_vector(n.clone())).collect(),
-                        None => Vec::new(),
+                        Some(ref v) => {
+                            Some(v.iter().map(|n| mat.transform_vector(n.clone())).collect())
+                        }
+                        None => None,
                     };
                     let points = data.points
                         .iter()
-                        .map(|n| mat.transform_point(n.clone()))
+                        .map(|n| mat.transform_point(n.clone()).to_vec())
                         .collect();
-                    let trimesh = scene_embree.add_triangle_mesh(
-                        &device,
-                        points,
-                        normals,
-                        uv,
-                        data.indices.clone(),
-                    );
+                    let indices = data.indices.clone();
 
                     let bsdf = if let Some(ref name) = m.material_name {
                         if let Some(bsdf_name) = scene_info.materials.get(name) {
@@ -232,12 +211,13 @@ impl SceneLoader for PBRTSceneLoader {
                             diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
                         })
                     };
-                    geometry::Mesh::new("noname".to_string(), trimesh, bsdf)
+                    let mut mesh =
+                        geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
+                    mesh.bsdf = bsdf;
+                    mesh
                 }
             })
             .collect();
-        info!("Build the acceleration structure");
-        let scene_embree = scene_embree.commit()?;
 
         // Assign materials and emissions
         for (i, shape) in scene_info.shapes.iter().enumerate() {
@@ -299,7 +279,6 @@ impl SceneLoader for PBRTSceneLoader {
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
             camera,
-            embree_scene: scene_embree,
             meshes,
             nb_samples: 1,
             nb_threads: None,

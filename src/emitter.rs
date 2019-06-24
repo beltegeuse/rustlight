@@ -1,8 +1,8 @@
 use crate::geometry::Mesh;
-
-use crate::math::sample_uniform_sphere;
+use crate::math::{sample_uniform_sphere, Distribution1D};
 use crate::structure::*;
 use cgmath::*;
+
 pub struct LightSampling<'a> {
     pub emitter: &'a dyn Emitter,
     pub pdf: PDF,
@@ -49,7 +49,7 @@ pub struct EnvironmentLight {
     pub world_position: Point3<f32>,
 }
 impl Emitter for EnvironmentLight {
-    fn sample_position(&self, s: f32, uv: Point2<f32>) -> SampledPosition {
+    fn sample_position(&self, _s: f32, uv: Point2<f32>) -> SampledPosition {
         // TODO: Check this function
         let d = sample_uniform_sphere(uv);
         let pdf = 1.0 / (self.world_radius * self.world_radius * std::f32::consts::PI * 4.0);
@@ -59,10 +59,10 @@ impl Emitter for EnvironmentLight {
             pdf: PDF::Area(pdf),
         }
     }
-    fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
+    fn direct_pdf(&self, _light_sampling: &LightSamplingPDF) -> PDF {
         unimplemented!();
     }
-    fn sample_direct(&self, p: &Point3<f32>, _r: f32, uv: Point2<f32>) -> LightSampling {
+    fn sample_direct(&self, _p: &Point3<f32>, _r: f32, _uv: Point2<f32>) -> LightSampling {
         unimplemented!();
     }
     fn flux(&self) -> Color {
@@ -132,5 +132,67 @@ impl Emitter for Mesh {
 
     fn sample_position(&self, s: f32, uv: Point2<f32>) -> SampledPosition {
         self.sample(s, uv)
+    }
+}
+
+pub struct EmitterSampler<'scene> {
+    pub emitters: Vec<&'scene dyn Emitter>,
+    pub emitters_cdf: Distribution1D,
+}
+
+impl<'scene> EmitterSampler<'scene> {
+    fn pdf(&self, emitter: &dyn Emitter) -> f32 {
+        let emitter_addr: [usize; 2] = unsafe { std::mem::transmute(emitter) };
+        for (i, e) in self.emitters.iter().enumerate() {
+            let other_addr: [usize; 2] = unsafe { std::mem::transmute(*e) };
+            if emitter_addr[0] == other_addr[0] {
+                //if std::ptr::eq(emitter, *e) {
+                // I need the index to retrive an info
+                // This info cannot be stored inside the Emitter
+                return self.emitters_cdf.pdf(i);
+            }
+        }
+
+        // For debug
+        println!("Size: {}", self.emitters.len());
+        for e in &self.emitters {
+            println!(" - {:p} != {:p}", (*e), emitter);
+        }
+
+        panic!("Impossible to found the emitter: {:p}", emitter);
+    }
+
+    pub fn direct_pdf(&self, emitter: &dyn Emitter, light_sampling: &LightSamplingPDF) -> PDF {
+        emitter.direct_pdf(light_sampling) * self.pdf(emitter)
+    }
+
+    pub fn sample_light(
+        &self,
+        p: &Point3<f32>,
+        r_sel: f32,
+        r: f32,
+        uv: Point2<f32>,
+    ) -> LightSampling {
+        // Select the point on the light
+        let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
+        let mut res = emitter.sample_direct(p, r, uv);
+        res.pdf = res.pdf * pdf_sel;
+        res
+    }
+    pub fn random_select_emitter(&self, v: f32) -> (f32, &dyn Emitter) {
+        let id_light = self.emitters_cdf.sample(v);
+        (self.emitters_cdf.pdf(id_light), self.emitters[id_light])
+    }
+
+    pub fn random_sample_emitter_position(
+        &self,
+        v1: f32,
+        v2: f32,
+        uv: Point2<f32>,
+    ) -> (&dyn Emitter, SampledPosition) {
+        let (pdf_sel, emitter) = self.random_select_emitter(v1);
+        let mut sampled_pos = emitter.sample_position(v2, uv);
+        sampled_pos.pdf = sampled_pos.pdf * pdf_sel;
+        (emitter, sampled_pos)
     }
 }
