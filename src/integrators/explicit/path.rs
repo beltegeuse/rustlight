@@ -89,8 +89,7 @@ impl TechniquePathTracing {
                             IntegratorPathTracingStrategies::All => {
                                 // Balance heuristic
                                 if let PDF::SolidAngle(v) = edge.pdf_direction {
-                                    let total: f32 = self
-                                        .strategies(path.vertex(vertex_id))
+                                    let total: f32 = self.strategies(path.vertex(vertex_id))
                                         .iter()
                                         .map(|s| {
                                             if let Some(v) =
@@ -115,8 +114,7 @@ impl TechniquePathTracing {
                     }
 
                     if let Some(vertex_next_id) = edge.vertices.1 {
-                        l_i += edge.weight
-                            * edge.rr_weight
+                        l_i += edge.weight * edge.rr_weight
                             * self.evaluate(path, scene, emitters, vertex_next_id, strategy);
                     }
                 }

@@ -70,7 +70,14 @@ impl ShiftMapping for RandomReplay {
         // Call the generator on this technique
         // the generator give back the root nodes
         technique.img_pos = pos;
-        let root = generate(path, accel, scene, emitters, &mut capture_sampler, technique);
+        let root = generate(
+            path,
+            accel,
+            scene,
+            emitters,
+            &mut capture_sampler,
+            technique,
+        );
         let root = root[0].0;
         self.base_value = technique.evaluate(path, scene, emitters, root);
         (self.base_value, root)
@@ -92,7 +99,14 @@ impl ShiftMapping for RandomReplay {
             random: &mut self.random_sequence,
             indice: 0,
         };
-        let offset = generate(path, accel, scene, emitters, &mut capture_sampler, technique);
+        let offset = generate(
+            path,
+            accel,
+            scene,
+            emitters,
+            &mut capture_sampler,
+            technique,
+        );
         let offset_contrib = technique.evaluate(path, scene, emitters, offset[0].0);
         ShiftValue {
             base: 0.5 * self.base_value,
