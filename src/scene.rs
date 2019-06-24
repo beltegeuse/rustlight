@@ -55,8 +55,7 @@ impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
                 let d0 = &normals[index.x];
                 let d1 = &normals[index.y];
                 let d2 = &normals[index.z];
-                let mut n_s = d0 * (1.0 - ray_hit.hit.u - ray_hit.hit.v)
-                    + d1 * ray_hit.hit.u
+                let mut n_s = d0 * (1.0 - ray_hit.hit.u - ray_hit.hit.v) + d1 * ray_hit.hit.u
                     + d2 * ray_hit.hit.v;
                 if n_g.dot(n_s) < 0.0 {
                     n_s = -n_s;
@@ -77,15 +76,13 @@ impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
                     (n_s, n_g)
                 };
 
-
             // UV interpolation
             let uv = if let Some(ref uv_data) = mesh.uv {
                 let d0 = &uv_data[index.x];
                 let d1 = &uv_data[index.y];
                 let d2 = &uv_data[index.z];
                 Some(
-                    d0 * (1.0 - ray_hit.hit.u - ray_hit.hit.v)
-                        + d1 * ray_hit.hit.u
+                    d0 * (1.0 - ray_hit.hit.u - ray_hit.hit.v) + d1 * ray_hit.hit.u
                         + d2 * ray_hit.hit.v,
                 )
             } else {
@@ -117,7 +114,8 @@ impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
         let mut d = p1 - p0;
         let length = d.magnitude();
         d /= length;
-        let mut embree_ray = embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
+        let mut embree_ray =
+            embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
         self.rtscene
             .occluded(&mut intersection_ctx, &mut embree_ray);
         embree_ray.tfar == std::f32::NEG_INFINITY

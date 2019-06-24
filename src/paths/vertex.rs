@@ -59,7 +59,7 @@ impl Edge {
         weight: Color,
         rr_weight: f32,
         accel: &'scene Acceleration,
-        scene: &'scene Scene,
+        _scene: &'scene Scene,
         id_sampling: usize,
     ) -> (EdgeID, Option<VertexID>) {
         // TODO: When there will be volume, we need to sample a distance inside the volume

@@ -135,7 +135,6 @@ impl Emitter for Mesh {
     }
 }
 
-
 pub struct EmitterSampler<'scene> {
     pub emitters: Vec<&'scene dyn Emitter>,
     pub emitters_cdf: Distribution1D,

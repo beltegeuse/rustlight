@@ -65,8 +65,7 @@ impl Integrator for IntegratorAverage {
             // Write the rendering time
             write!(csv, "{}.{},\n", elapsed.as_secs(), elapsed.subsec_millis()).unwrap();
 
-            if self
-                .time_out
+            if self.time_out
                 .map_or(false, |t| elapsed.as_secs() >= t as u64)
             {
                 break;

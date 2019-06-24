@@ -163,7 +163,7 @@ impl SceneLoader for JSONSceneLoader {
             nb_samples: 1,
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
-            emitter_environment: None
+            emitter_environment: None,
         })
     }
 }
@@ -187,7 +187,9 @@ impl SceneLoader for PBRTSceneLoader {
                     let mat = m.matrix;
                     let uv = data.uv.clone();
                     let normals = match data.normals {
-                        Some(ref v) => Some(v.iter().map(|n| mat.transform_vector(n.clone())).collect()),
+                        Some(ref v) => {
+                            Some(v.iter().map(|n| mat.transform_vector(n.clone())).collect())
+                        }
                         None => None,
                     };
                     let points = data.points
@@ -209,7 +211,8 @@ impl SceneLoader for PBRTSceneLoader {
                             diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
                         })
                     };
-                    let mut mesh = geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
+                    let mut mesh =
+                        geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
                     mesh.bsdf = bsdf;
                     mesh
                 }

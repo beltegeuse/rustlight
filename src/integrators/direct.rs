@@ -64,8 +64,7 @@ impl IntegratorMC for IntegratorDirect {
             };
 
             let d_out_local = its.frame.to_local(light_record.d);
-            if light_record.is_valid()
-                && accel.visible(&its.p, &light_record.p)
+            if light_record.is_valid() && accel.visible(&its.p, &light_record.p)
                 && d_out_local.z > 0.0
             {
                 // Compute the contribution of direct lighting
@@ -79,12 +78,10 @@ impl IntegratorMC for IntegratorDirect {
                     let weight_light =
                         mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
                     l_i += &(weight_light
-                        * its
-                            .mesh
+                        * its.mesh
                             .bsdf
                             .eval(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
-                        * weight_nb_light
-                        * light_record.weight);
+                        * weight_nb_light * light_record.weight);
                 }
             }
         }
@@ -101,8 +98,7 @@ impl IntegratorMC for IntegratorDirect {
                 let next_its = match accel.trace(&ray) {
                     Some(x) => x,
                     None => {
-                        l_i += sampled_bsdf.weight
-                            * scene.enviroment_luminance(ray.d)
+                        l_i += sampled_bsdf.weight * scene.enviroment_luminance(ray.d)
                             * weight_nb_bsdf;
                         continue;
                     } // FIXME: Need to implement MIS for BSDF

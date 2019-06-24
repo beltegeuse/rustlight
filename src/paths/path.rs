@@ -1,10 +1,10 @@
-use crate::math::{cosine_sample_hemisphere, Frame};
+use crate::emitter::*;
+use crate::math::*;
 use crate::paths::vertex::*;
 use crate::samplers::*;
 use crate::scene::*;
 use crate::structure::*;
 use crate::Scale;
-use crate::emitter::*;
 use std;
 use std::mem;
 
@@ -176,8 +176,8 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
     fn pdf<'scene, 'emitter>(
         &self,
         path: &Path<'scene, 'emitter>,
-        scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
+        _scene: &'scene Scene,
+        _emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {
@@ -214,9 +214,9 @@ impl SamplingStrategy for LightSamplingStrategy {
         path: &mut Path<'scene, 'emitter>,
         vertex_id: VertexID,
         accel: &'scene Acceleration,
-        scene: &'scene Scene,
+        _scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
-        throughput: Color,
+        _throughput: Color,
         sampler: &mut Sampler,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)> {
@@ -296,7 +296,7 @@ impl SamplingStrategy for LightSamplingStrategy {
     fn pdf<'scene, 'emitter>(
         &self,
         path: &Path<'scene, 'emitter>,
-        scene: &'scene Scene,
+        _scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         edge_id: EdgeID,
@@ -355,7 +355,7 @@ pub fn generate<'scene, 'emitter, T: Technique>(
     sampler: &mut Sampler,
     technique: &mut T,
 ) -> Vec<(VertexID, Color)> {
-    let root = technique.init(path, scene, sampler, emitters);
+    let root = technique.init(path, accel, scene, sampler, emitters);
     let mut curr = root.clone();
     let mut next = vec![];
     let mut depth = 1;
@@ -400,6 +400,7 @@ pub trait Technique {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
+        accel: &'scene Acceleration,
         scene: &'scene Scene,
         sampler: &mut Sampler,
         emitters: &'emitter EmitterSampler,

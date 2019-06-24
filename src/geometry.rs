@@ -21,14 +21,12 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
         info!("Loading model {}", m.name);
         let mesh = m.mesh;
         // Load vertex position
-        let indices = mesh
-            .indices
+        let indices = mesh.indices
             .chunks(3)
             .map(|i| Vector3::new(i[0] as usize, i[1] as usize, i[2] as usize))
             .collect::<Vec<_>>();
         info!(" - triangles: {}", indices.len());
-        let vertices = mesh
-            .positions
+        let vertices = mesh.positions
             .chunks(3)
             .map(|i| Vector3::new(i[0], i[1], i[2]))
             .collect();

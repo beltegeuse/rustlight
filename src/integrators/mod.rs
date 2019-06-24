@@ -366,9 +366,8 @@ pub fn generate_pool(scene: &Scene) -> rayon::ThreadPool {
     match scene.nb_threads {
         None => rayon::ThreadPoolBuilder::new(),
         Some(x) => rayon::ThreadPoolBuilder::new().num_threads(x),
-    }
-    .build()
-    .unwrap()
+    }.build()
+        .unwrap()
 }
 
 /// Power heuristic for path tracing or direct lighting
