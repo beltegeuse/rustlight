@@ -1,6 +1,5 @@
 use crate::integrators::*;
 use crate::math::*;
-use crate::structure::*;
 
 pub struct IntegratorAO {
     pub max_distance: Option<f32>,

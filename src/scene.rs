@@ -113,7 +113,14 @@ impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
         }
     }
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
-        unimplemented!()
+        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
+        let mut d = p1 - p0;
+        let length = d.magnitude();
+        d /= length;
+        let mut embree_ray = embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
+        self.rtscene
+            .occluded(&mut intersection_ctx, &mut embree_ray);
+        embree_ray.tfar == std::f32::NEG_INFINITY
     }
 }
 

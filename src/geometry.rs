@@ -36,10 +36,12 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
         let normals = if mesh.normals.is_empty() {
             None
         } else {
-            Some(mesh.normals
-                .chunks(3)
-                .map(|i| Vector3::new(i[0], i[1], i[2]))
-                .collect())
+            Some(
+                mesh.normals
+                    .chunks(3)
+                    .map(|i| Vector3::new(i[0], i[1], i[2]))
+                    .collect(),
+            )
         };
 
         let uv = if mesh.texcoords.is_empty() {
@@ -124,7 +126,7 @@ impl Mesh {
             vertices,
             indices,
             normals,
-            uv: None,
+            uv,
             bsdf: Box::new(bsdfs::diffuse::BSDFDiffuse {
                 diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
             }),

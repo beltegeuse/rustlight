@@ -49,7 +49,7 @@ pub struct EnvironmentLight {
     pub world_position: Point3<f32>,
 }
 impl Emitter for EnvironmentLight {
-    fn sample_position(&self, s: f32, uv: Point2<f32>) -> SampledPosition {
+    fn sample_position(&self, _s: f32, uv: Point2<f32>) -> SampledPosition {
         // TODO: Check this function
         let d = sample_uniform_sphere(uv);
         let pdf = 1.0 / (self.world_radius * self.world_radius * std::f32::consts::PI * 4.0);
@@ -59,10 +59,10 @@ impl Emitter for EnvironmentLight {
             pdf: PDF::Area(pdf),
         }
     }
-    fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF {
+    fn direct_pdf(&self, _light_sampling: &LightSamplingPDF) -> PDF {
         unimplemented!();
     }
-    fn sample_direct(&self, p: &Point3<f32>, _r: f32, uv: Point2<f32>) -> LightSampling {
+    fn sample_direct(&self, _p: &Point3<f32>, _r: f32, _uv: Point2<f32>) -> LightSampling {
         unimplemented!();
     }
     fn flux(&self) -> Color {

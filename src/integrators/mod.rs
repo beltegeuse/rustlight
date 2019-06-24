@@ -1,9 +1,10 @@
 use crate::emitter::*;
-use crate::scene::*;
 use crate::samplers::*;
-use crate::structure::{Bitmap, Color};
-use crate::tools::StepRangeInt;
+use crate::scene::*;
+use crate::structure::*;
 use crate::Scale;
+use crate::tools::StepRangeInt;
+
 use cgmath::{Point2, Vector2};
 use pbr::ProgressBar;
 use rayon;
@@ -185,7 +186,7 @@ impl Scale<f32> for BufferCollection {
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, _accel: &Acceleration, scene: &Scene) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
@@ -227,23 +228,29 @@ impl IntegratorType {
         let mut embree_scene = embree_rs::Scene::new(&embree_device);
         // Add all meshes
         for m in &scene.meshes {
-            let mut tris = embree_rs::TriangleMesh::unanimated(&embree_device,
-                                                m.indices.len(),
-                                                m.vertices.len());
+            let mut tris = embree_rs::TriangleMesh::unanimated(
+                &embree_device,
+                m.indices.len(),
+                m.vertices.len(),
+            );
             {
                 let mut verts = tris.vertex_buffer.map();
                 let mut tris = tris.index_buffer.map();
-                for i in 0..m.vertices.len() { 
-                    verts[i] = cgmath::Vector4::new(m.vertices[i].x,
-                                            m.vertices[i].y,
-                                            m.vertices[i].z,
-                                            0.0);
+                for i in 0..m.vertices.len() {
+                    verts[i] = cgmath::Vector4::new(
+                        m.vertices[i].x,
+                        m.vertices[i].y,
+                        m.vertices[i].z,
+                        0.0,
+                    );
                 }
 
-                for i in 0..m.indices.len() { 
-                    tris[i] = cgmath::Vector3::new(m.indices[i].x as u32,
-                                        m.indices[i].y  as u32,
-                                        m.indices[i].z  as u32);
+                for i in 0..m.indices.len() {
+                    tris[i] = cgmath::Vector3::new(
+                        m.indices[i].x as u32,
+                        m.indices[i].y as u32,
+                        m.indices[i].z as u32,
+                    );
                 }
             }
             let mut tri_geom = embree_rs::Geometry::Triangle(tris);
@@ -383,4 +390,8 @@ pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
 
 pub mod ao;
 pub mod avg;
-pub mod prelude;
+pub mod direct;
+pub mod explicit;
+pub mod gradient;
+pub mod path;
+pub mod pssmlt;
