@@ -1,0 +1,3 @@
+[submodule "tests/interactive-viewer"]
+	path = tests/interactive-viewer
+	url = https://github.com/joeylitalien/interactive-viewer.git
