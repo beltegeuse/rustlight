@@ -13,7 +13,7 @@ pub struct IntegratorLightTracing {
 pub struct TechniqueLightTracing {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<SamplingStrategy>>,
-    pub pdf_vertex: Option<PDF>,
+    pub flux: Option<Color>,
 }
 
 impl Technique for TechniqueLightTracing {
@@ -25,7 +25,7 @@ impl Technique for TechniqueLightTracing {
         sampler: &mut Sampler,
         emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
-        let (emitter, sampled_point) = emitters.random_sample_emitter_position(
+        let (emitter, sampled_point, flux) = emitters.random_sample_emitter_position(
             sampler.next(),
             sampler.next(),
             sampler.next2d(),
@@ -37,7 +37,7 @@ impl Technique for TechniqueLightTracing {
             edge_in: None,
             edge_out: None,
         });
-        self.pdf_vertex = Some(sampled_point.pdf); // Capture the pdf for later evaluation
+        self.flux = Some(flux); // Capture the scaled flux for later evaluation
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
 
@@ -102,14 +102,15 @@ impl TechniqueLightTracing {
                 }
             }
             Vertex::Light(ref v) => {
-                let flux = v.emitter.flux() / self.pdf_vertex.as_ref().unwrap().value();
                 let pos_sensor = scene.camera.position();
                 let d = (pos_sensor - v.pos).normalize();
+                let flux = *self.flux.as_ref().unwrap();
+
                 if accel.visible(&v.pos, &pos_sensor) {
                     if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
                         bitmap.accumulate_safe(
                             Point2::new(uv.x as i32, uv.y as i32),
-                            flux * importance * d.dot(v.n),
+                            flux * importance * d.dot(v.n) * std::f32::consts::FRAC_1_PI,
                             &"primal".to_owned(),
                         );
                     }
@@ -161,7 +162,7 @@ impl Integrator for IntegratorLightTracing {
                     let mut technique = TechniqueLightTracing {
                         max_depth: self.max_depth,
                         samplings,
-                        pdf_vertex: None,
+                        flux: None,
                     };
                     let mut path = Path::default();
                     let root = generate(&mut path, accel, scene, &emitters, s, &mut technique);

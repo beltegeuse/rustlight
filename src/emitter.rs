@@ -189,10 +189,10 @@ impl<'scene> EmitterSampler<'scene> {
         v1: f32,
         v2: f32,
         uv: Point2<f32>,
-    ) -> (&dyn Emitter, SampledPosition) {
+    ) -> (&dyn Emitter, SampledPosition, Color) {
         let (pdf_sel, emitter) = self.random_select_emitter(v1);
         let mut sampled_pos = emitter.sample_position(v2, uv);
         sampled_pos.pdf = sampled_pos.pdf * pdf_sel;
-        (emitter, sampled_pos)
+        (emitter, sampled_pos, emitter.flux() / pdf_sel)
     }
 }

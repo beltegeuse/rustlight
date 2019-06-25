@@ -9,20 +9,23 @@ class RenderTest:
         self.ref = ref
         self.scene_file = scene_file
         self.techniques = techniques
-        self.timeout = 30
-        self.spp = 32
         self.extra = extra
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Batch analysis of rendered images.')
-    parser.add_argument('-s',   '--scenes',
-                        help='scenes root directory', type=str)
-    parser.add_argument('-t', '--techniques',
-                        help='only render the techniques', type=str, nargs='+')
+    parser.add_argument('-r',   '--root', type=str,
+                        help='root directory for HTML visualizer')
+    parser.add_argument('-t', '--techniques', type=str, nargs='+',
+                        help='only render the listed techniques')
+    parser.add_argument('-s', '--scenes', type=str, nargs="+",
+                        help='only render the listed scenes')
+    parser.add_argument('--time', type=int, default=30, required=True,
+                        help='time for the rendering')
     args = parser.parse_args()
 
+    DEFAULT_SPP = 32
     DEFAULT_ANALYSE_SCRIPT = ["python", "interactive-viewer/tools/analyze.py"]
     DEFAULT_SCENE_SCRIPT = ["python", "interactive-viewer/tools/scene.py"]
     SCENE_DIR = "/home/beltegeuse/projects/pbrt_rs/data/pbrt/"
@@ -42,6 +45,14 @@ if __name__ == "__main__":
                    GI_ALGO[:]),
     }
     for (n, t) in tests.items():
+        # Checking if we need to skip the scene
+        if(len(args.scenes) != 0):
+            if(not (n in args.scenes)):
+                print("SKIP:", n)
+                continue
+            print("{}".format(n))
+
+        # Create the output directory if needed
         if(not os.path.exists(n)):
             os.makedirs(n)
             print("Create: {}".format(n))
@@ -49,6 +60,7 @@ if __name__ == "__main__":
         scene = SCENE_DIR + os.path.sep + t.scene_file
         rendered_technique = 0
         for a in t.techniques:
+            # Checking if we need to skip the technique
             if(len(args.techniques) != 0):
                 if(not (a in args.techniques)):
                     print("SKIP:", a)
@@ -66,12 +78,12 @@ if __name__ == "__main__":
             output_name = os.path.join(output_name_dir, a + ".exr")
 
             # SPP
-            spp = t.spp
+            spp = DEFAULT_SPP
             if(a == "vpl"):
                 spp = 1
 
             COMMAND = DEFAULT_COMMAND[:]
-            COMMAND += ['-a', str(t.timeout), '-n',
+            COMMAND += ['-a', str(args.time), '-n',
                         str(spp), "-o", output_name, scene, a]
             for (n_e, v_e) in t.extra.items():
                 COMMAND += [n_e, v_e]
