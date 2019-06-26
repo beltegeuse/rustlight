@@ -17,6 +17,8 @@ if __name__ == "__main__":
         description='Batch analysis of rendered images.')
     parser.add_argument('-r',   '--root', type=str,
                         help='root directory for HTML visualizer')
+    parser.add_argument('-sc',   '--skipcompute', action="store_true",
+                        help='skip the computation')
     parser.add_argument('-t', '--techniques', type=str, nargs='+',
                         help='only render the listed techniques')
     parser.add_argument('-s', '--scenes', type=str, nargs="+",
@@ -46,7 +48,7 @@ if __name__ == "__main__":
     }
     for (n, t) in tests.items():
         # Checking if we need to skip the scene
-        if(len(args.scenes) != 0):
+        if(args.scenes):
             if(not (n in args.scenes)):
                 print("SKIP:", n)
                 continue
@@ -58,10 +60,19 @@ if __name__ == "__main__":
             print("Create: {}".format(n))
         os.chdir("..")
         scene = SCENE_DIR + os.path.sep + t.scene_file
+
+        # Iterate on all the technique
+        # to generated the rendering outputs
         rendered_technique = 0
         for a in t.techniques:
+            if(args.skipcompute):
+                # We increate the number of rendered technique
+                # to force to update the HTML
+                rendered_technique += 1
+                continue
+
             # Checking if we need to skip the technique
-            if(len(args.techniques) != 0):
+            if(args.techniques):
                 if(not (a in args.techniques)):
                     print("SKIP:", a)
                     continue
@@ -77,7 +88,7 @@ if __name__ == "__main__":
             print("Create: {}".format(output_name_dir))
             output_name = os.path.join(output_name_dir, a + ".exr")
 
-            # SPP
+            # SPP, some technique have special number of SPP
             spp = DEFAULT_SPP
             if(a == "vpl"):
                 spp = 1
@@ -105,6 +116,7 @@ if __name__ == "__main__":
         SCRIPT += ["-d", "interactive-viewer/scenes/"+n+os.path.sep]
         SCRIPT += ["-r", "ref/"+t.ref+".exr"]
         SCRIPT += ["-m", "l1", "l2", "mape"]
+        SCRIPT += ['-np']  # NP false color
         SCRIPT += ["-n"]
         for a in t.techniques:
             SCRIPT += [a]
