@@ -6,12 +6,6 @@ Rustlight <img src="http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/ru
 
 Physically-based rendering engine implemented with **Rust**.
 
-## Building
-
-NOTE: Need Rust 1.25 at least to support ```repr(align(X))``` routine for embree-rs. To install this version, you can run the following command:
-
-```RUSTUP_DIST_SERVER=https://dev-static.rust-lang.org rustup update stable```
-
 ## How to use it
 
 ```
