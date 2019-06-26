@@ -4,16 +4,12 @@ cache: cargo
 matrix:
     allow_failures:
         - os: windows
+        - os: linux
     include:
         - os: linux
           dist: xenial
-          env:
-              - EMBREE_VERSION=3.5.0
+          env: EMBREE_VERSION=3.5.0
           rust: stable
-          addons:
-              apt:
-                  sources:
-                      - ubuntu-toolchain-r-test
         - os: osx
           osx_image: xcode9.4
           env: EMBREE_VERSION=3.5.0
@@ -37,10 +33,6 @@ before_script:
           wget https://github.com/embree/embree/releases/download/v${EMBREE_VERSION}/embree-${EMBREE_VERSION}.x64.vc14.${TARGET_OS}.zip;
           7z x embree-${EMBREE_VERSION}.x64.vc14.${TARGET_OS}.zip -y;
           export EMBREE_DIR=`pwd`/embree-${EMBREE_VERSION}.x64.vc14.${TARGET_OS};
-      fi
-    - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
-          pip install 'travis-cargo<0.2' --user;
-          export PATH=$HOME/.local/bin:$PATH;
       fi
 
 script:
