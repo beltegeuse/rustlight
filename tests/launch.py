@@ -115,7 +115,7 @@ if __name__ == "__main__":
         SCRIPT = DEFAULT_ANALYSE_SCRIPT[:]
         SCRIPT += ["-d", "interactive-viewer/scenes/"+n+os.path.sep]
         SCRIPT += ["-r", "ref/"+t.ref+".exr"]
-        SCRIPT += ["-m", "l1", "l2", "mape"]
+        SCRIPT += ["-m", "l1", "l2", "mape", "dssim"]
         SCRIPT += ['-np']  # NP false color
         SCRIPT += ["-n"]
         for a in t.techniques:
