@@ -60,11 +60,12 @@ impl DirectionalSamplingStrategy {
                 (Some(edge), new_vertex)
             }
             Vertex::Surface(ref v) => {
-                if let Some(sampled_bsdf) = v.its.mesh.bsdf.sample(
-                    &v.its.uv,
-                    &v.its.wi,
-                    sampler.next2d(),
-                ) {
+                if let Some(sampled_bsdf) =
+                    v.its
+                        .mesh
+                        .bsdf
+                        .sample(&v.its.uv, &v.its.wi, sampler.next2d())
+                {
                     // Update the throughput
                     *throughput *= &sampled_bsdf.weight;
                     if throughput.is_zero() {

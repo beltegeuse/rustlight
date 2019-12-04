@@ -146,6 +146,7 @@ impl IntegratorPSSMLT {
                         .compute_pixel((x, y), accel, scene, &mut sampler, &emitters);
                 (c.r + c.g + c.b) / 3.0
             })
-            .sum::<f32>() / (nb_samples as f32)
+            .sum::<f32>()
+            / (nb_samples as f32)
     }
 }

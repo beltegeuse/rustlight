@@ -410,7 +410,8 @@ impl Bitmap {
                 .add_channel("R", openexr::PixelType::FLOAT)
                 .add_channel("G", openexr::PixelType::FLOAT)
                 .add_channel("B", openexr::PixelType::FLOAT),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create a `FrameBuffer` that points at our pixel data and describes it as
         // RGB data.

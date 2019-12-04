@@ -26,24 +26,33 @@ impl BSDF for BSDFSpecular {
     fn pdf(
         &self,
         _uv: &Option<Vector2<f32>>,
-        _: &Vector3<f32>,
-        _: &Vector3<f32>,
+        wi: &Vector3<f32>,
+        wo: &Vector3<f32>,
         domain: Domain,
     ) -> PDF {
         assert!(domain == Domain::Discrete);
-        PDF::Discrete(1.0)
+        if check_reflection_condition(wi, wo) {
+            PDF::Discrete(1.0)
+        } else {
+            // For now, raise an error.
+            unimplemented!();
+        }
     }
 
     fn eval(
         &self,
         uv: &Option<Vector2<f32>>,
-        _: &Vector3<f32>,
-        _: &Vector3<f32>,
+        wi: &Vector3<f32>,
+        wo: &Vector3<f32>,
         domain: Domain,
     ) -> Color {
         assert!(domain == Domain::Discrete);
-        // TODO: Double check the HV is very close to the normal (or revert normal)
-        self.specular.color(uv)
+        if check_reflection_condition(wi, wo) {
+            self.specular.color(uv)
+        } else {
+            // For now, raise an error.
+            unimplemented!();
+        }
     }
 
     fn roughness(&self, _uv: &Option<Vector2<f32>>) -> f32 {

@@ -106,7 +106,9 @@ impl Camera {
         }
         let inv_cos_theta = 1.0 / cos_theta;
         let p = Point2::new(d.x * inv_cos_theta, d.y * inv_cos_theta);
-        if p.x < self.image_rect_min.x || p.x > self.image_rect_max.x || p.y < self.image_rect_min.y
+        if p.x < self.image_rect_min.x
+            || p.x > self.image_rect_max.x
+            || p.y < self.image_rect_min.y
             || p.x > self.image_rect_max.y
         {
             return 0.0;
