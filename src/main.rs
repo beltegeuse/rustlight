@@ -246,9 +246,9 @@ fn main() {
     let recons = match matches.subcommand() {
         ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {
             let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            let recons: Box<rustlight::integrators::PoissonReconstruction + Sync> = match m.value_of(
-                "reconstruction_type",
-            ).unwrap()
+            let recons: Box<rustlight::integrators::PoissonReconstruction + Sync> = match m
+                .value_of("reconstruction_type")
+                .unwrap()
             {
                 "uniform" => Box::new(
                     rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
