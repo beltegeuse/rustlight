@@ -1,11 +1,12 @@
 use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
+use crate::volume;
 use crate::math::Distribution1DConstruct;
-
 use crate::math::Frame;
 use crate::structure::*;
 use cgmath::*;
+
 pub trait Acceleration: Sync + Send {
     fn trace(&self, ray: &Ray) -> Option<Intersection>;
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
@@ -132,6 +133,7 @@ pub struct Scene {
     // Geometry information
     pub meshes: Vec<geometry::Mesh>,
     pub emitter_environment: Option<EnvironmentLight>,
+    pub volume: Option<volume::HomogenousVolume>,
 }
 
 impl Scene {

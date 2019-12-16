@@ -59,3 +59,4 @@ pub mod scene;
 pub mod scene_loader;
 pub mod structure;
 pub mod tools;
+pub mod volume;

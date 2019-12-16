@@ -86,6 +86,20 @@ impl Color {
     pub fn sqrt(self) -> Color {
         Color::new(self.r.sqrt(), self.g.sqrt(), self.b.sqrt())
     }
+    pub fn avg(&self) -> f32 {
+        (self.r + self.g + self.b) / 3.0
+    }
+    pub fn exp(self) -> Color {
+        Color::new(self.r.exp(), self.g.exp(), self.b.exp())
+    }
+    pub fn get(&self, c: u8) -> f32 {
+        match c {
+            0 => self.r,
+            1 => self.g,
+            2 => self.b,
+            _ => unimplemented!("Impossible to have more than 3 channels"),
+        }
+    } 
 
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
@@ -124,12 +138,27 @@ impl Scale<f32> for Color {
     }
 }
 
+impl Neg for Color {
+    type Output = Color;
+    fn neg(self) -> Self::Output {
+        Color::new(-self.r, -self.g, -self.b)
+    }
+}
+
 /////////////// Operators
 impl DivAssign<f32> for Color {
     fn div_assign(&mut self, other: f32) {
         self.r /= other;
         self.g /= other;
         self.b /= other;
+    }
+}
+
+impl<'b> MulAssign<Color> for Color {
+    fn mul_assign(&mut self, other: Color) {
+        self.r *= other.r;
+        self.g *= other.g;
+        self.b *= other.b;
     }
 }
 
