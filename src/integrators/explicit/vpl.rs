@@ -28,7 +28,7 @@ enum VPL<'a> {
 pub struct TechniqueVPL {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<dyn SamplingStrategy>>,
-    pub pdf_vertex: Option<PDF>,
+    pub flux: Option<Color>,
 }
 
 impl Technique for TechniqueVPL {
@@ -40,7 +40,7 @@ impl Technique for TechniqueVPL {
         sampler: &mut dyn Sampler,
         emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
-        let (emitter, sampled_point) = emitters.random_sample_emitter_position(
+        let (emitter, sampled_point, flux) = emitters.random_sample_emitter_position(
             sampler.next(),
             sampler.next(),
             sampler.next2d(),
@@ -52,7 +52,7 @@ impl Technique for TechniqueVPL {
             edge_in: None,
             edge_out: None,
         });
-        self.pdf_vertex = Some(sampled_point.pdf); // Capture the pdf for later evaluation
+        self.flux = Some(flux); // Capture the scaled flux
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
 
@@ -95,7 +95,7 @@ impl TechniqueVPL {
                 }
             }
             Vertex::Light(ref v) => {
-                let flux = v.emitter.flux() / self.pdf_vertex.as_ref().unwrap().value();
+                let flux = *self.flux.as_ref().unwrap();
                 vpls.push(VPL::Emitter(VPLEmitter {
                     pos: v.pos,
                     n: v.n,
@@ -128,7 +128,7 @@ impl Integrator for IntegratorVPL {
             let mut technique = TechniqueVPL {
                 max_depth: self.max_depth,
                 samplings,
-                pdf_vertex: None,
+                flux: None,
             };
             let mut path = Path::default();
             let root = generate(
@@ -220,7 +220,9 @@ impl IntegratorVPL {
                         let dist = d.magnitude();
                         d /= dist;
 
-                        let emitted_radiance = vpl.emitted_radiance * vpl.n.dot(-d).max(0.0);
+                        let emitted_radiance = vpl.emitted_radiance
+                            * vpl.n.dot(-d).max(0.0)
+                            * std::f32::consts::FRAC_1_PI;
                         if !its.mesh.bsdf.is_smooth() {
                             let bsdf_val = its.mesh.bsdf.eval(
                                 &its.uv,

@@ -19,7 +19,7 @@ impl Integrator for IntegratorAverage {
         info!("Base output name: {:?}", base_output_img_path);
 
         // Open an CSV file for register the time
-        let mut csv = std::fs::File::create(base_output_img_path.clone() + ".csv").unwrap();
+        let mut csv = std::fs::File::create(base_output_img_path.clone() + "_time.csv").unwrap();
 
         // Other values
         let mut bitmap: Option<BufferCollection> = None;
@@ -65,7 +65,8 @@ impl Integrator for IntegratorAverage {
             // Write the rendering time
             write!(csv, "{}.{},\n", elapsed.as_secs(), elapsed.subsec_millis()).unwrap();
 
-            if self.time_out
+            if self
+                .time_out
                 .map_or(false, |t| elapsed.as_secs() >= t as u64)
             {
                 break;

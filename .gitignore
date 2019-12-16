@@ -8,8 +8,10 @@
 /*.png
 /*.pfm
 /*.exr
+/*.csv
+/*.sh
 /data/*.blend*
 /data/*.bak
 /data/*
 /images/
-/tests/
+

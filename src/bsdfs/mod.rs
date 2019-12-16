@@ -10,7 +10,18 @@ use std;
 pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
     -(wo) + n * 2.0 * wo.dot(n)
 }
-
+pub fn check_reflection_condition(wi: &Vector3<f32>, wo: &Vector3<f32>) -> bool {
+    return (wi.z * wo.z - wi.x * wo.x - wi.y * wo.y - 1.0).abs() < 0.0001;
+}
+pub fn check_direlectric_condition(
+    wi: &Vector3<f32>,
+    wo: &Vector3<f32>,
+    eta: f32,
+    cos_theta: f32,
+) -> bool {
+    let dotP = -wi.x * wo.x * eta - wi.y * wo.y * eta - cos_theta.copysign(wi.z) * wo.z;
+    return (dotP - 1.0).abs() < 0.0001;
+}
 // Texture or uniform color buffers
 #[derive(Deserialize)]
 pub struct Texture {
@@ -112,16 +123,10 @@ pub trait BSDF: Send + Sync {
 
 pub mod blend;
 pub mod diffuse;
-pub mod distribution;
-pub mod metal;
-pub mod pbrt;
 pub mod phong;
 pub mod specular;
 
-use crate::bsdfs::blend::BSDFBlend;
 use crate::bsdfs::diffuse::BSDFDiffuse;
-use crate::bsdfs::distribution::TrowbridgeReitzDistribution;
-use crate::bsdfs::metal::BSDFMetal;
 use crate::bsdfs::phong::BSDFPhong;
 use crate::bsdfs::specular::BSDFSpecular;
 
@@ -186,8 +191,8 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             }
         }
         pbrt_rs::BSDF::Metal(ref v) => {
-            let eta = bsdf_texture_match(&v.eta, scene_info).unwrap();
-            let k = bsdf_texture_match(&v.k, scene_info).unwrap();
+            let _eta = bsdf_texture_match(&v.eta, scene_info).unwrap();
+            let _k = bsdf_texture_match(&v.k, scene_info).unwrap();
             let (u_roughness, v_roughness) = if let (Some(ref u_rough), Some(ref v_rough)) =
                 (v.u_roughness.as_ref(), v.v_roughness.as_ref())
             {
@@ -207,21 +212,22 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             assert!(u_roughness != 0.0);
             assert!(v_roughness != 0.0);
             // FIXME: remap
-            Some(Box::new(BSDFMetal {
-                r: BSDFColor::UniformColor(Color::value(1.0)),
-                distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
-                k,
-                eta_i: BSDFColor::UniformColor(Color::one()),
-                eta_t: eta,
-            }))
+            // Some(Box::new(BSDFMetal {
+            //     r: BSDFColor::UniformColor(Color::value(1.0)),
+            //     distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
+            //     k,
+            //     eta_i: BSDFColor::UniformColor(Color::one()),
+            //     eta_t: eta,
+            // }))
+            unimplemented!();
         }
         pbrt_rs::BSDF::Mirror(ref v) => {
             let specular = bsdf_texture_match(&v.kr, scene_info).unwrap();
             Some(Box::new(BSDFSpecular { specular }))
         }
         pbrt_rs::BSDF::Substrate(ref v) => {
-            let kd = bsdf_texture_match(&v.kd, scene_info).unwrap();
-            let ks = bsdf_texture_match(&v.ks, scene_info).unwrap();
+            let _kd = bsdf_texture_match(&v.kd, scene_info).unwrap();
+            let _ks = bsdf_texture_match(&v.ks, scene_info).unwrap();
             let u_roughness = bsdf_texture_match(&v.u_roughness, scene_info).unwrap();
             let v_roughness = bsdf_texture_match(&v.v_roughness, scene_info).unwrap();
             // FIXME: be able to load float textures?
@@ -230,26 +236,19 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             assert!(u_roughness != 0.0);
             assert!(v_roughness != 0.0);
 
-            let metal = Box::new(BSDFMetal {
-                r: BSDFColor::UniformColor(Color::value(1.0)),
-                distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
-                k: ks,
-                eta_i: BSDFColor::UniformColor(Color::one()),
-                eta_t: BSDFColor::UniformColor(Color::one()),
-            });
-            let diffuse = Box::new(BSDFDiffuse { diffuse: kd });
-            Some(Box::new(BSDFBlend {
-                bsdf1: metal,
-                bsdf2: diffuse,
-            }))
-
-            // Some(Box::new(SubstratePBRTMaterial {
-            //     kd,
-            //     ks,
-            //     u_roughness,
-            //     v_roughness,
-            //     remap_roughness: false,
+            // let metal = Box::new(BSDFMetal {
+            //     r: BSDFColor::UniformColor(Color::value(1.0)),
+            //     distribution: TrowbridgeReitzDistribution::new(u_roughness, v_roughness, true),
+            //     k: ks,
+            //     eta_i: BSDFColor::UniformColor(Color::one()),
+            //     eta_t: BSDFColor::UniformColor(Color::one()),
+            // });
+            // let diffuse = Box::new(BSDFDiffuse { diffuse: kd });
+            // Some(Box::new(BSDFBlend {
+            //     bsdf1: metal,
+            //     bsdf2: diffuse,
             // }))
+            unimplemented!();
         }
         _ => None,
     };

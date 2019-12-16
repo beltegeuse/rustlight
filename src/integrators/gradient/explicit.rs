@@ -1,5 +1,5 @@
-use crate::integrators::gradient::shiftmapping::{ShiftMapping, random_replay::RandomReplay};
-use crate::integrators::{*, gradient::*};
+use crate::integrators::gradient::shiftmapping::{random_replay::RandomReplay, ShiftMapping};
+use crate::integrators::{gradient::*, *};
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use cgmath::Point2;
@@ -59,33 +59,39 @@ impl TechniqueGradientPathTracing {
     ) -> Color {
         let mut l_i = Color::zero();
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => for edge_id in &v.edge_out {
-                let edge = path.edge(*edge_id);
-                let contrib = edge.contribution(path);
-                if !contrib.is_zero() {
-                    let weight = if let PDF::SolidAngle(v) = edge.pdf_direction {
-                        let total: f32 = self.strategies(path.vertex(vertex_id))
-                            .iter()
-                            .map(|s| {
-                                if let Some(v) = s.pdf(path, scene, emitters, vertex_id, *edge_id) {
-                                    v
-                                } else {
-                                    0.0
-                                }
-                            })
-                            .sum();
-                        v / total
-                    } else {
-                        1.0
-                    };
-                    l_i += contrib * weight;
-                }
+            Vertex::Surface(ref v) => {
+                for edge_id in &v.edge_out {
+                    let edge = path.edge(*edge_id);
+                    let contrib = edge.contribution(path);
+                    if !contrib.is_zero() {
+                        let weight = if let PDF::SolidAngle(v) = edge.pdf_direction {
+                            let total: f32 = self
+                                .strategies(path.vertex(vertex_id))
+                                .iter()
+                                .map(|s| {
+                                    if let Some(v) =
+                                        s.pdf(path, scene, emitters, vertex_id, *edge_id)
+                                    {
+                                        v
+                                    } else {
+                                        0.0
+                                    }
+                                })
+                                .sum();
+                            v / total
+                        } else {
+                            1.0
+                        };
+                        l_i += contrib * weight;
+                    }
 
-                if let Some(vertex_next_id) = edge.vertices.1 {
-                    l_i += edge.weight * edge.rr_weight
-                        * self.evaluate(path, scene, emitters, vertex_next_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        l_i += edge.weight
+                            * edge.rr_weight
+                            * self.evaluate(path, scene, emitters, vertex_next_id);
+                    }
                 }
-            },
+            }
             Vertex::Sensor(ref v) => {
                 // Only one strategy where...
                 let edge = path.edge(v.edge_out.unwrap());
@@ -276,7 +282,9 @@ impl IntegratorGradientPathTracing {
 
             GRADIENT_ORDER.iter().enumerate().for_each(|(i, off)| {
                 let pix = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
-                if pix.x < 0 || pix.x > scene.camera.size().x as i32 || pix.y < 0
+                if pix.x < 0
+                    || pix.x > scene.camera.size().x as i32
+                    || pix.y < 0
                     || pix.y > scene.camera.size().y as i32
                 {
                     // Do nothing
