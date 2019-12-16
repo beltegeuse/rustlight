@@ -7,7 +7,7 @@ pub struct IntegratorPath {
 }
 
 impl Integrator for IntegratorPath {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         compute_mc(self, accel, scene)
     }
 }
@@ -15,9 +15,9 @@ impl IntegratorMC for IntegratorPath {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &EmitterSampler,
     ) -> Color {
         // Generate the first ray

@@ -1,4 +1,5 @@
 // Code from rs_pbrt
+#![allow(clippy::all)]
 
 // std
 use cgmath::{InnerSpace, Point2, Vector3};

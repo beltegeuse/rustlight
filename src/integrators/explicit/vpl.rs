@@ -27,7 +27,7 @@ enum VPL<'a> {
 
 pub struct TechniqueVPL {
     pub max_depth: Option<u32>,
-    pub samplings: Vec<Box<SamplingStrategy>>,
+    pub samplings: Vec<Box<dyn SamplingStrategy>>,
     pub pdf_vertex: Option<PDF>,
 }
 
@@ -35,9 +35,9 @@ impl Technique for TechniqueVPL {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
-        _accel: &Acceleration,
+        _accel: &dyn Acceleration,
         _scene: &'scene Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         let (emitter, sampled_point) = emitters.random_sample_emitter_position(
@@ -60,7 +60,7 @@ impl Technique for TechniqueVPL {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<dyn SamplingStrategy>> {
         &self.samplings
     }
 }
@@ -115,7 +115,7 @@ impl TechniqueVPL {
 }
 
 impl Integrator for IntegratorVPL {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         info!("Generating the VPL...");
         let buffernames = vec![String::from("primal")];
         let mut sampler = samplers::independent::IndependentSampler::default();
@@ -123,7 +123,7 @@ impl Integrator for IntegratorVPL {
         let mut vpls = vec![];
         let emitters = scene.emitters_sampler();
         while vpls.len() < self.nb_vpl as usize {
-            let samplings: Vec<Box<SamplingStrategy>> =
+            let samplings: Vec<Box<dyn SamplingStrategy>> =
                 vec![Box::new(DirectionalSamplingStrategy {})];
             let mut technique = TechniqueVPL {
                 max_depth: self.max_depth,
@@ -191,9 +191,9 @@ impl IntegratorVPL {
     fn compute_vpl_contrib<'a>(
         &self,
         (ix, iy): (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &'a Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         vpls: &[VPL<'a>],
         norm_vpl: f32,
     ) -> Color {

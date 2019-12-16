@@ -26,12 +26,12 @@ impl MCMCState {
 
 pub struct IntegratorPSSMLT {
     pub large_prob: f32,
-    pub integrator: Box<IntegratorMC>,
+    pub integrator: Box<dyn IntegratorMC>,
 }
 impl Integrator for IntegratorPSSMLT {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         ///////////// Define the closure
-        let sample = |s: &mut Sampler, emitters: &EmitterSampler| {
+        let sample = |s: &mut dyn Sampler, emitters: &EmitterSampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
             let y = (s.next() * scene.camera.size().y as f32) as u32;
             let c = {
@@ -74,10 +74,10 @@ impl Integrator for IntegratorPSSMLT {
                 let emitters = scene.emitters_sampler();
                 // Initialize the sampler
                 s.large_step = true;
-                let mut current_state = sample(s as &mut Sampler, &emitters);
+                let mut current_state = sample(s as &mut dyn Sampler, &emitters);
                 while current_state.tf == 0.0 {
                     s.reject();
-                    current_state = sample(s as &mut Sampler, &emitters);
+                    current_state = sample(s as &mut dyn Sampler, &emitters);
                 }
                 s.accept();
 
@@ -132,7 +132,7 @@ impl Integrator for IntegratorPSSMLT {
     }
 }
 impl IntegratorPSSMLT {
-    fn compute_normalization(&self, accel: &Acceleration, scene: &Scene, nb_samples: usize) -> f32 {
+    fn compute_normalization(&self, accel: &dyn Acceleration, scene: &Scene, nb_samples: usize) -> f32 {
         assert_ne!(nb_samples, 0);
 
         let mut sampler = samplers::independent::IndependentSampler::default();

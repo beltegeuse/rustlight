@@ -12,7 +12,7 @@ pub struct IntegratorLightTracing {
 /// This structure is responsible to the graph generation
 pub struct TechniqueLightTracing {
     pub max_depth: Option<u32>,
-    pub samplings: Vec<Box<SamplingStrategy>>,
+    pub samplings: Vec<Box<dyn SamplingStrategy>>,
     pub pdf_vertex: Option<PDF>,
 }
 
@@ -20,9 +20,9 @@ impl Technique for TechniqueLightTracing {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
-        _accel: &Acceleration,
+        _accel: &dyn Acceleration,
         _scene: &'scene Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         let (emitter, sampled_point) = emitters.random_sample_emitter_position(
@@ -45,7 +45,7 @@ impl Technique for TechniqueLightTracing {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<dyn SamplingStrategy>> {
         &self.samplings
     }
 }
@@ -53,7 +53,7 @@ impl TechniqueLightTracing {
     fn evaluate<'scene>(
         &self,
         path: &Path<'scene, '_>,
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &'scene Scene,
         vertex_id: VertexID,
         bitmap: &mut BufferCollection,
@@ -127,7 +127,7 @@ impl TechniqueLightTracing {
 }
 
 impl Integrator for IntegratorLightTracing {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         // Number of samples that the system will trace
         let nb_threads = rayon::current_num_threads();
         let nb_jobs = nb_threads * 4;
@@ -155,7 +155,7 @@ impl Integrator for IntegratorLightTracing {
                 let emitters = scene.emitters_sampler();
                 (0..nb_samples).for_each(|_| {
                     // The sampling strategies
-                    let samplings: Vec<Box<SamplingStrategy>> =
+                    let samplings: Vec<Box<dyn SamplingStrategy>> =
                         vec![Box::new(DirectionalSamplingStrategy {})];
                     // Do the sampling here
                     let mut technique = TechniqueLightTracing {

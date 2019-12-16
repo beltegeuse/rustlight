@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+
 // This code is from pbrt_rs
 use crate::bsdfs::distribution::*;
 use crate::bsdfs::*;
@@ -17,7 +19,7 @@ pub struct SubstratePBRTMaterial {
 }
 impl SubstratePBRTMaterial {
     fn construct(&self, uv: &Option<Vector2<f32>>) -> Bsdf {
-        let mut bxdfs: Vec<Box<Bxdf + Send + Sync>> = Vec::new();
+        let mut bxdfs: Vec<Box<dyn Bxdf + Send + Sync>> = Vec::new();
         let d = self.kd.color(uv);
         let s = self.ks.color(uv);
         let roughu = self.u_roughness;
@@ -161,11 +163,11 @@ pub struct FourierBSDFTable {
 
 pub struct Bsdf {
     pub eta: Float,
-    pub bxdfs: Vec<Box<Bxdf + Sync + Send>>,
+    pub bxdfs: Vec<Box<dyn Bxdf + Sync + Send>>,
 }
 
 impl Bsdf {
-    pub fn new(eta: Float, bxdfs: Vec<Box<Bxdf + Sync + Send>>) -> Self {
+    pub fn new(eta: Float, bxdfs: Vec<Box<dyn Bxdf + Sync + Send>>) -> Self {
         Bsdf { eta, bxdfs }
     }
     pub fn num_components(&self, flags: u8) -> u8 {
@@ -220,7 +222,7 @@ impl Bsdf {
             matching_comps - 1_u8,
         );
         // get _BxDF_ pointer for chosen component
-        let mut bxdf: Option<&Box<Bxdf + Sync + Send>> = None;
+        let mut bxdf: Option<&Box<dyn Bxdf + Sync + Send>> = None;
         let mut count: i8 = comp as i8;
         let n_bxdfs: usize = self.bxdfs.len();
         let mut bxdf_index: usize = 0_usize;
@@ -368,12 +370,12 @@ pub trait Bxdf {
 }
 
 pub struct ScaledBxDF {
-    pub bxdf: Arc<Bxdf + Sync + Send>,
+    pub bxdf: Arc<dyn Bxdf + Sync + Send>,
     pub scale: Spectrum,
 }
 
 impl ScaledBxDF {
-    pub fn new(bxdf: Arc<Bxdf + Send + Sync>, scale: Spectrum) -> Self {
+    pub fn new(bxdf: Arc<dyn Bxdf + Send + Sync>, scale: Spectrum) -> Self {
         ScaledBxDF {
             bxdf: bxdf,
             scale: scale,
@@ -445,11 +447,11 @@ impl Fresnel for FresnelNoOp {
 #[derive(Clone)]
 pub struct SpecularReflection {
     pub r: Spectrum,
-    pub fresnel: Arc<Fresnel + Send + Sync>,
+    pub fresnel: Arc<dyn Fresnel + Send + Sync>,
 }
 
 impl SpecularReflection {
-    pub fn new(r: Spectrum, fresnel: Arc<Fresnel + Send + Sync>) -> Self {
+    pub fn new(r: Spectrum, fresnel: Arc<dyn Fresnel + Send + Sync>) -> Self {
         SpecularReflection {
             r: r,
             fresnel: fresnel,
@@ -502,14 +504,14 @@ pub struct SpecularTransmission {
 impl SpecularTransmission {
     pub fn new(t: Spectrum, eta_a: Float, eta_b: Float, mode: TransportMode) -> Self {
         SpecularTransmission {
-            t: t,
-            eta_a: eta_a,
-            eta_b: eta_b,
+            t,
+            eta_a,
+            eta_b,
             fresnel: FresnelDielectric {
                 eta_i: eta_a,
                 eta_t: eta_b,
             },
-            mode: mode,
+            mode,
         }
     }
 }
@@ -795,14 +797,14 @@ impl Bxdf for OrenNayar {
 pub struct MicrofacetReflection {
     pub r: Spectrum,
     pub distribution: Option<TrowbridgeReitzDistribution>, // TODO: MicrofacetDistribution,
-    pub fresnel: Arc<Fresnel + Send + Sync>,
+    pub fresnel: Arc<dyn Fresnel + Send + Sync>,
 }
 
 impl MicrofacetReflection {
     pub fn new(
         r: Spectrum,
         distribution: Option<TrowbridgeReitzDistribution>,
-        fresnel: Arc<Fresnel + Send + Sync>,
+        fresnel: Arc<dyn Fresnel + Send + Sync>,
     ) -> Self {
         MicrofacetReflection {
             r: r,

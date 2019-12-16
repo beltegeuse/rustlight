@@ -128,9 +128,9 @@ use crate::bsdfs::specular::BSDFSpecular;
 /// Dispatch coded BSDF
 pub fn parse_bsdf(
     b: &serde_json::Value,
-) -> Result<Box<BSDF + Send + Sync>, Box<std::error::Error>> {
+) -> Result<Box<dyn BSDF + Send + Sync>, Box<dyn std::error::Error>> {
     let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
-    let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
+    let new_bsdf: Box<dyn BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
         "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
         "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
         "specular" => Box::<BSDFSpecular>::new(serde_json::from_value(b["data"].clone())?),
@@ -176,8 +176,8 @@ fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option
 // }
 
 #[cfg(feature = "pbrt")]
-pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF + Sync + Send> {
-    let bsdf: Option<Box<BSDF + Sync + Send>> = match bsdf {
+pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn BSDF + Sync + Send> {
+    let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
         pbrt_rs::BSDF::Matte(ref v) => {
             if let Some(diffuse) = bsdf_texture_match(&v.kd, scene_info) {
                 Some(Box::new(BSDFDiffuse { diffuse }))

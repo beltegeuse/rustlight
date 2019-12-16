@@ -58,7 +58,7 @@ impl Edge {
         pdf_direction: PDF,
         weight: Color,
         rr_weight: f32,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         _scene: &'scene Scene,
         id_sampling: usize,
     ) -> (EdgeID, Option<VertexID>) {
@@ -103,9 +103,9 @@ impl Edge {
 
     pub fn next_on_light_source(&self, path: &Path) -> bool {
         if let Some(v) = &self.vertices.1 {
-            return path.vertex(*v).on_light_source();
+            path.vertex(*v).on_light_source()
         } else {
-            return false; //TODO: No env map
+            false //TODO: No env map
         }
     }
 
@@ -113,9 +113,9 @@ impl Edge {
     /// @deprecated: This might be not optimal as it is not a recursive call.
     pub fn contribution(&self, path: &Path) -> Color {
         if let Some(v) = &self.vertices.1 {
-            return self.weight * self.rr_weight * path.vertex(*v).contribution(self);
+            self.weight * self.rr_weight * path.vertex(*v).contribution(self)
         } else {
-            return Color::zero(); //TODO: No env map
+            Color::zero() //TODO: No env map
         }
     }
 }

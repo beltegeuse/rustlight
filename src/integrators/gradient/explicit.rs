@@ -9,22 +9,22 @@ use cgmath::Point2;
 /// That the user have given through the command line
 pub struct IntegratorGradientPathTracing {
     pub max_depth: Option<u32>,
-    pub recons: Box<PoissonReconstruction + Sync>,
+    pub recons: Box<dyn PoissonReconstruction + Sync>,
     pub min_survival: Option<f32>,
 }
 /// This structure is responsible to the graph generation
 pub struct TechniqueGradientPathTracing {
     pub max_depth: Option<u32>,
-    pub samplings: Vec<Box<SamplingStrategy>>,
+    pub samplings: Vec<Box<dyn SamplingStrategy>>,
     pub img_pos: Point2<u32>,
 }
 impl Technique for TechniqueGradientPathTracing {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
-        _accel: &'scene Acceleration,
+        _accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         _emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor
@@ -45,7 +45,7 @@ impl Technique for TechniqueGradientPathTracing {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<dyn SamplingStrategy>> {
         &self.samplings
     }
 }
@@ -108,11 +108,11 @@ impl TechniqueGradientPathTracing {
 }
 impl Integrator for IntegratorGradientPathTracing {}
 impl IntegratorGradient for IntegratorGradientPathTracing {
-    fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync> {
+    fn reconstruct(&self) -> &Box<dyn PoissonReconstruction + Sync> {
         &self.recons
     }
 
-    fn compute_gradients(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
             generate_img_blocks_gradient(scene, &self.recons);
 
@@ -229,14 +229,14 @@ impl IntegratorGradientPathTracing {
     fn compute_pixel<T: ShiftMapping>(
         &self,
         (ix, iy): (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &Scene,
         emitters: &EmitterSampler,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         shiftmapping: &mut T,
     ) -> ColorGradient {
         let mut path = Path::default();
-        let mut samplings: Vec<Box<SamplingStrategy>> = Vec::new();
+        let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
         samplings.push(Box::new(LightSamplingStrategy {}));
         let mut technique = TechniqueGradientPathTracing {

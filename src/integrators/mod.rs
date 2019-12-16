@@ -186,16 +186,16 @@ impl Scale<f32> for BufferCollection {
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, _accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, _accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
 pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection;
-    fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync>;
+    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection;
+    fn reconstruct(&self) -> &Box<dyn PoissonReconstruction + Sync>;
 
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         // Rendering the gradient informations
         info!("Gradient Rendering...");
         let start = Instant::now();
@@ -218,8 +218,8 @@ pub trait PoissonReconstruction {
     fn need_variance_estimates(&self) -> Option<usize>;
 }
 pub enum IntegratorType {
-    Primal(Box<Integrator>),
-    Gradient(Box<IntegratorGradient>),
+    Primal(Box<dyn Integrator>),
+    Gradient(Box<dyn IntegratorGradient>),
 }
 impl IntegratorType {
     pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
@@ -284,9 +284,9 @@ pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(
         &self,
         pix: (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &EmitterSampler,
     ) -> Color;
 }
@@ -314,7 +314,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<Buff
 
 pub fn compute_mc<T: IntegratorMC + Integrator>(
     int: &T,
-    accel: &Acceleration,
+    accel: &dyn Acceleration,
     scene: &Scene,
 ) -> BufferCollection {
     // Here we can to the classical parallelisation

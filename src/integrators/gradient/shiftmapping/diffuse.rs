@@ -19,10 +19,10 @@ impl ShiftMapping for DiffuseReconnection {
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
     ) -> (Color, VertexID) {
         technique.img_pos = pos;
         let root = generate(path, accel, scene, emitters, sampler, technique);
@@ -34,10 +34,10 @@ impl ShiftMapping for DiffuseReconnection {
         _path: &mut Path<'scene, 'emitter>,
         _technique: &mut TechniqueGradientPathTracing,
         _pos: Point2<u32>,
-        _accel: &'scene Acceleration,
+        _accel: &'scene dyn Acceleration,
         _scene: &'scene Scene,
         _emitters: &'emitter EmitterSampler,
-        _sampler: &mut Sampler,
+        _sampler: &mut dyn Sampler,
         _base_id: VertexID,
     ) -> ShiftValue {
         unimplemented!();

@@ -7,7 +7,7 @@ pub struct IntegratorDirect {
 }
 
 impl Integrator for IntegratorDirect {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         compute_mc(self, accel, scene)
     }
 }
@@ -15,9 +15,9 @@ impl IntegratorMC for IntegratorDirect {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &EmitterSampler,
     ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());

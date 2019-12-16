@@ -70,7 +70,7 @@ pub struct IndependentSamplerReplay {
     rnd: StdRng,
     values: Vec<SampleReplayValue>,
     backup: Vec<(usize, f32)>,
-    mutator: Box<Mutator>,
+    mutator: Box<dyn Mutator>,
     time: usize,
     time_large: usize,
     indice: usize,
@@ -133,7 +133,7 @@ impl Default for IndependentSamplerReplay {
 //FIXME: Make not representable a sampler that are not accept
 impl IndependentSamplerReplay {
     // Constructor to change the mutator technique
-    pub fn mutator(mut self, mutator: Box<Mutator>) -> Self {
+    pub fn mutator(mut self, mutator: Box<dyn Mutator>) -> Self {
         self.mutator = mutator;
         self
     }

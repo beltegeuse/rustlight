@@ -13,11 +13,11 @@ pub trait SamplingStrategy {
         &self,
         path: &mut Path<'scene, 'emitter>,
         vertex_id: VertexID,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         throughput: Color,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)>;
 
@@ -37,10 +37,10 @@ impl DirectionalSamplingStrategy {
     pub fn bounce<'scene>(
         path: &mut Path<'scene, '_>,
         vertex_id: VertexID,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         throughput: &mut Color,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         id_strategy: usize,
     ) -> (Option<EdgeID>, Option<VertexID>) {
         match path.vertex(vertex_id) {
@@ -134,11 +134,11 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         &self,
         path: &mut Path<'scene, 'emitter>,
         vertex_id: VertexID,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         _emitters: &'emitter EmitterSampler,
         mut throughput: Color,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)> {
         // Generate the next edge and the next vertex
@@ -213,11 +213,11 @@ impl SamplingStrategy for LightSamplingStrategy {
         &self,
         path: &mut Path<'scene, 'emitter>,
         vertex_id: VertexID,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         _scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
         _throughput: Color,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)> {
         let (edge, _next_vertex) = match path.vertex(vertex_id) {
@@ -349,10 +349,10 @@ impl SamplingStrategy for LightSamplingStrategy {
 
 pub fn generate<'scene, 'emitter, T: Technique>(
     path: &mut Path<'scene, 'emitter>,
-    accel: &'scene Acceleration,
+    accel: &'scene dyn Acceleration,
     scene: &'scene Scene,
     emitters: &'emitter EmitterSampler,
-    sampler: &mut Sampler,
+    sampler: &mut dyn Sampler,
     technique: &mut T,
 ) -> Vec<(VertexID, Color)> {
     let root = technique.init(path, accel, scene, sampler, emitters);
@@ -400,11 +400,11 @@ pub trait Technique {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)>;
-    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<SamplingStrategy>>;
+    fn strategies(&self, vertex: &Vertex) -> &Vec<Box<dyn SamplingStrategy>>;
     fn expand(&self, vertex: &Vertex, depth: u32) -> bool;
 }

@@ -1,8 +1,8 @@
 use crate::bsdfs::*;
 
 pub struct BSDFBlend {
-    pub bsdf1: Box<BSDF + Sync + Send>,
-    pub bsdf2: Box<BSDF + Sync + Send>,
+    pub bsdf1: Box<dyn BSDF + Sync + Send>,
+    pub bsdf2: Box<dyn BSDF + Sync + Send>,
 }
 
 impl BSDF for BSDFBlend {

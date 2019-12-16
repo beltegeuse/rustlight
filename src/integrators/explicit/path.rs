@@ -17,16 +17,16 @@ pub struct IntegratorPathTracing {
 /// This structure is responsible to the graph generation
 pub struct TechniquePathTracing {
     pub max_depth: Option<u32>,
-    pub samplings: Vec<Box<SamplingStrategy>>,
+    pub samplings: Vec<Box<dyn SamplingStrategy>>,
     pub img_pos: Point2<u32>,
 }
 impl Technique for TechniquePathTracing {
     fn init<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
-        _accel: &Acceleration,
+        _accel: &dyn Acceleration,
         scene: &'scene Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         _emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor
@@ -47,7 +47,7 @@ impl Technique for TechniquePathTracing {
         self.max_depth.map_or(true, |max| depth < max)
     }
 
-    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<SamplingStrategy>> {
+    fn strategies(&self, _vertex: &Vertex) -> &Vec<Box<dyn SamplingStrategy>> {
         &self.samplings
     }
 }
@@ -142,7 +142,7 @@ impl TechniquePathTracing {
 }
 
 impl Integrator for IntegratorPathTracing {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         compute_mc(self, accel, scene)
     }
 }
@@ -150,13 +150,13 @@ impl IntegratorMC for IntegratorPathTracing {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &EmitterSampler,
     ) -> Color {
         // Initialize the technique
-        let mut samplings: Vec<Box<SamplingStrategy>> = Vec::new();
+        let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
         samplings.push(Box::new(LightSamplingStrategy {}));
         let mut technique = TechniquePathTracing {

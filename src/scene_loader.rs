@@ -15,7 +15,7 @@ use std::io::Read;
 use std::rc::Rc;
 
 pub trait SceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<Error>>;
+    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>>;
 }
 pub struct SceneLoaderManager {
     loader: HashMap<String, Rc<dyn SceneLoader>>,
@@ -24,7 +24,7 @@ impl SceneLoaderManager {
     pub fn register(&mut self, name: &str, loader: Rc<dyn SceneLoader>) {
         self.loader.insert(name.to_string(), loader);
     }
-    pub fn load(&self, filename: String) -> Result<Scene, Box<Error>> {
+    pub fn load(&self, filename: String) -> Result<Scene, Box<dyn Error>> {
         let filename_ext = match std::path::Path::new(&filename).extension() {
             None => panic!("No file extension provided"),
             Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
@@ -54,7 +54,7 @@ impl Default for SceneLoaderManager {
 
 pub struct JSONSceneLoader {}
 impl SceneLoader for JSONSceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<Error>> {
+    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
         // Reading the scene
         let scene_path = std::path::Path::new(filename);
         let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
@@ -173,7 +173,7 @@ impl SceneLoader for JSONSceneLoader {
 pub struct PBRTSceneLoader {}
 #[cfg(feature = "pbrt")]
 impl SceneLoader for PBRTSceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<Error>> {
+    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
         let working_dir = std::path::Path::new(filename).parent().unwrap();
