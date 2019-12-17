@@ -2,6 +2,7 @@
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 #![allow(dead_code)]
 #![allow(clippy::float_cmp)]
+#![allow(clippy::cognitive_complexity)]
 
 extern crate cgmath;
 #[macro_use]
@@ -144,7 +145,11 @@ fn main() {
             .subcommand(
                 SubCommand::with_name("light-explicit")
                     .about("light tracing with explict light path construction")
-                    .arg(&max_arg),
+                    .arg(&max_arg)
+                    .arg(Arg::with_name("lightpaths")
+                        .takes_value(true)
+                        .short("p")
+                        .default_value("all"),),
             )
             .subcommand(
                 SubCommand::with_name("vpl")
@@ -313,8 +318,19 @@ fn main() {
         }
         ("light-explicit", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let strategy = value_t_or_exit!(m.value_of("lightpaths"), String);
+            let (render_surface, render_volume) =  match strategy.as_ref() {
+                "all" => (true, true),
+                "surface" => (true, false),
+                "volume" => (false, true),
+                _ => panic!("invalid lightpaths type to render"),
+            };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth },
+                rustlight::integrators::explicit::light::IntegratorLightTracing { 
+                    max_depth,
+                    render_surface,
+                    render_volume,
+                },
             ))
         }
         ("gradient-path", Some(m)) => {
