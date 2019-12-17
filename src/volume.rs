@@ -90,18 +90,21 @@ impl HomogenousVolume {
 		// The different tau depending if we treat surfaces or not
 		// compute the weight that containts the ratio between the transmittance
 		// and pdf
-		let tau = t_min*self.sigma_t;
-		let continued_tau  =t*self.sigma_t;
+		let tau = t_min*self.sigma_t; //< Sampled transport
+		let continued_tau  =t*self.sigma_t; //< Sampled transport ignoring surfaces
 		let mut w = (-tau).exp();
 		let continued_w = (-continued_tau).exp();
 		let pdf = if exited {
 			// Hit the surface
 			(-tau).exp().avg()
 		} else {
+			// Incorporating the scattering coefficient
+			// inside the transmittance weight
 			w *= self.sigma_s;
 			(self.sigma_t * (-tau).exp()).avg()
 		};
 		w /= pdf;
+		// This always consider the volume only (transmittance * scattering) / (pdf sample isnide media)
 		let continued_w = (self.sigma_s * continued_w) / (self.sigma_t * (-continued_tau).exp()).avg();
 		// Finish by constructing the object
 		SampledDistance {

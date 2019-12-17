@@ -20,7 +20,7 @@ pub fn check_direlectric_condition(
     cos_theta: f32,
 ) -> bool {
     let dot_p= -wi.x * wo.x * eta - wi.y * wo.y * eta - cos_theta.copysign(wi.z) * wo.z;
-    return (dot_p - 1.0).abs() < 0.0001;
+    (dot_p - 1.0).abs() < 0.0001
 }
 // Texture or uniform color buffers
 #[derive(Deserialize)]

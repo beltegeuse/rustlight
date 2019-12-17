@@ -136,7 +136,7 @@ impl DirectionalSamplingStrategy {
                     medium,
                     id_strategy,
                 );
-                return (Some(edge), new_vertex);
+                (Some(edge), new_vertex)
             }
             Vertex::Light(ref v) => {
                 // For now, just computing the outgoing direction
@@ -152,6 +152,9 @@ impl DirectionalSamplingStrategy {
                 let ray = Ray::new(v.pos, d_out_global);
                 let weight = Color::one(); // Perfectly importance sampled
 
+                // This will generate the edge
+                // if there is a participating media
+                // the edge will be generated properly
                 let (edge, new_vertex) = Edge::from_ray(
                     path,
                     &ray,
@@ -205,6 +208,9 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                     v.edge_out.push(e);
                 }
                 Vertex::Light(ref mut v) => {
+                    // For light tracing
+                    // note that the direction of light
+                    // if not correct in this case
                     v.edge_out = Some(e);
                 }
                 Vertex::Volume(ref mut v) => {
@@ -227,13 +233,22 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {
+        // FIXME: It seems to have a design flaw here
+        // here the pdf here is the light sampling opponent
+        // in this case, it makes sense that the PDF for this strategy
+        // if None in case of delta distribution... 
         let edge = path.edge(edge_id);
         if !edge.next_on_light_source(path) {
             return None;
         }
 
+        // FIXME: Add the PDF of sampling between the two points 
+        // TODO: Do we need to store this information somehow here?
+        //       as it might be required in case of heterogenous PM
+
         match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
+                // TODO: Check why in the case of smooth, we cannot sample the light source...
                 if v.its.mesh.bsdf.is_smooth() {
                     return None;
                 }
@@ -250,8 +265,8 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
             Vertex::Volume(ref v) => {
                 Some(v.phase_function.pdf(&v.d_in, &edge.d))
             }
-            Vertex::Sensor(ref _v) => Some(1.0),
-            Vertex::Light(ref _v) => None,
+            Vertex::Sensor(ref _v) => Some(1.0), // TODO: Why this value?
+            Vertex::Light(ref _v) => None, // Impossible to do BSDF sampling on a light source
         }
     }
 }
@@ -271,7 +286,7 @@ impl LightSamplingStrategy {
                 if let PDF::SolidAngle(light_pdf) = emitters
                     .direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
                 {
-                    return Some(light_pdf);
+                    Some(light_pdf)
                 } else {
                     None
                 }
@@ -286,13 +301,13 @@ impl LightSamplingStrategy {
                         dir: ray.d,
                     },
                 ) {
-                    return Some(light_pdf);
+                    Some(light_pdf)
                 } else {
                     None
                 }
             }
-            Vertex::Sensor(ref _v) => return None,
-            Vertex::Volume(ref _v) => return None,
+            Vertex::Sensor(ref _v) => None,
+            Vertex::Volume(ref _v) => None,
         }
     }
 }
@@ -356,7 +371,10 @@ impl SamplingStrategy for LightSamplingStrategy {
                         // Evaluate the transmittance
                         let mut ray = Ray::new(v.its.p, light_record.d);
                         let d = light_record.p - v.its.p;
-                        ray.tfar = d.dot(light_record.d).abs();
+                        // Trick to compute the distance
+                        ray.tfar = d.dot(light_record.d);
+                        assert!(ray.tfar > 0.0);
+                        // Compute the transmittance
                         let transmittance = m.transmittance(ray);
                         weight *= transmittance;
                     }
@@ -416,7 +434,10 @@ impl SamplingStrategy for LightSamplingStrategy {
                         // Evaluate the transmittance
                         let mut ray = Ray::new(v.pos, light_record.d);
                         let d = light_record.p - v.pos;
-                        ray.tfar = d.dot(light_record.d).abs();
+                        // Trick to compute the distance
+                        ray.tfar = d.dot(light_record.d);
+                        assert!(ray.tfar > 0.0);
+                        // Generate the ray and compute the transmittance
                         let transmittance = m.transmittance(ray);
                         weight *= transmittance;
                     }
@@ -469,15 +490,16 @@ impl SamplingStrategy for LightSamplingStrategy {
             return None;
         }
 
+        // Retrive the proper pdf in this case
         let vertex = path.vertex(vertex_id);
         match vertex {
             Vertex::Volume(ref _v) => {
                 // Always ok for have sampling a light source
                 let ray = Ray::new(vertex.position(), edge.d);
                 if let Some(next_vertex_id) = edge.vertices.1 {
-                    return self.pdf_emitter(path, emitters, ray, next_vertex_id);
+                    self.pdf_emitter(path, emitters, ray, next_vertex_id)
                 } else {
-                    return None;
+                    None
                 }
             }
             Vertex::Surface(ref v) => {
@@ -488,9 +510,9 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Know the the light is intersectable so have a solid angle PDF
                 let ray = Ray::new(vertex.position(), edge.d);
                 if let Some(next_vertex_id) = edge.vertices.1 {
-                    return self.pdf_emitter(path, emitters, ray, next_vertex_id);
+                    self.pdf_emitter(path, emitters, ray, next_vertex_id)
                 } else {
-                    return None;
+                    None
                 }
             }
             _ => None,

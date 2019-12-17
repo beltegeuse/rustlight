@@ -152,7 +152,7 @@ impl Scene {
         self
     }
 
-    pub fn emitters_sampler<'scene>(&'scene self) -> EmitterSampler<'scene> {
+    pub fn emitters_sampler(&self) -> EmitterSampler {
         // Append emission mesh to the emitter list
         let mut emitters: Vec<&dyn Emitter> = vec![];
         for e in &self.meshes {
