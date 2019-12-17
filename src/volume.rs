@@ -9,16 +9,17 @@ pub struct SampledPhase {
 	pub pdf: f32,
 }
 
+#[derive(Clone)]
 pub enum PhaseFunction {
 	Isotropic(),
 	HenyeyGreenstein(f32),
 }
 
 impl PhaseFunction {
-	pub fn eval(&self, w_i: Vector3<f32>, w_o: Vector3<f32>) -> Color {
+	pub fn eval(&self, _w_i: &Vector3<f32>, _w_o: &Vector3<f32>) -> Color {
 		match self {
 			Self::Isotropic() => {
-				Color::value(std::f32::consts::PI * 4.0)
+				Color::value( 1.0 / (std::f32::consts::PI * 4.0) )
 			}
 			Self::HenyeyGreenstein(ref _g) => {
 				unimplemented!();
@@ -26,10 +27,10 @@ impl PhaseFunction {
 		}
 	}
 
-	pub fn pdf(&self, w_i: Vector3<f32>, w_o: Vector3<f32>) -> f32 {
+	pub fn pdf(&self, _w_i: &Vector3<f32>, _w_o: &Vector3<f32>) -> f32 {
 		match self {
 			Self::Isotropic() => {
-				std::f32::consts::PI * 4.0
+				1.0 / (std::f32::consts::PI * 4.0)
 			}
 			Self::HenyeyGreenstein(ref _g) => {
 				unimplemented!();
@@ -37,13 +38,13 @@ impl PhaseFunction {
 		}
 	}
 
-	pub fn sample(&self, d_in: Vector3<f32>, u: Point2<f32>) -> SampledPhase {
+	pub fn sample(&self, _d_in: &Vector3<f32>, u: Point2<f32>) -> SampledPhase {
 		match self {
 			Self::Isotropic() => {
 				SampledPhase {
 					d: math::sample_uniform_sphere(u),
 					weight: Color::one(),
-					pdf: std::f32::consts::PI * 4.0,
+					pdf: 1.0 / (std::f32::consts::PI * 4.0),
 				}
 			}
 			Self::HenyeyGreenstein(ref _g) => {
@@ -62,7 +63,8 @@ pub struct HomogenousVolume {
 }
 
 // Take the tungsten convention
-pub struct DistanceSample {
+#[derive(Clone)]
+pub struct SampledDistance {
 	// The real distance and weight
 	pub t: f32,
 	pub w: Color,
@@ -76,7 +78,7 @@ pub struct DistanceSample {
 
 // TODO: Check that sigma_t is non 0
 impl HomogenousVolume {
-	pub fn sample(&self, r: Ray, u: Point2<f32>) -> DistanceSample {
+	pub fn sample(&self, r: &Ray, u: Point2<f32>) -> SampledDistance {
 		let max_t = r.tfar;
 		// Select randomly one channel
 		let component = (u.x * 3.0) as u8;
@@ -102,7 +104,7 @@ impl HomogenousVolume {
 		w /= pdf;
 		let continued_w = (self.sigma_s * continued_w) / (self.sigma_t * (-continued_tau).exp()).avg();
 		// Finish by constructing the object
-		DistanceSample {
+		SampledDistance {
 			t: t_min,
 			w,
 			continued_t: t,

@@ -4,9 +4,11 @@ use crate::paths::vertex::*;
 use crate::samplers::*;
 use crate::scene::*;
 use crate::structure::*;
+use crate::volume::*;
 use crate::Scale;
 use std;
 use std::mem;
+use crate::cgmath::InnerSpace;
 
 pub trait SamplingStrategy {
     fn sample<'scene, 'emitter>(
@@ -18,6 +20,7 @@ pub trait SamplingStrategy {
         emitters: &'emitter EmitterSampler,
         throughput: Color,
         sampler: &mut dyn Sampler,
+        medium: Option<&HomogenousVolume>,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)>;
 
@@ -41,6 +44,7 @@ impl DirectionalSamplingStrategy {
         scene: &'scene Scene,
         throughput: &mut Color,
         sampler: &mut dyn Sampler,
+        medium: Option<&HomogenousVolume>,
         id_strategy: usize,
     ) -> (Option<EdgeID>, Option<VertexID>) {
         match path.vertex(vertex_id) {
@@ -52,9 +56,10 @@ impl DirectionalSamplingStrategy {
                     vertex_id,
                     PDF::SolidAngle(1.0),
                     Color::one(),
-                    1.0,
+                    1.0, 
+                    sampler,
                     accel,
-                    scene,
+                    medium,
                     id_strategy,
                 );
                 (Some(edge), new_vertex)
@@ -90,14 +95,48 @@ impl DirectionalSamplingStrategy {
                         sampled_bsdf.pdf.clone(),
                         sampled_bsdf.weight,
                         rr_weight,
+                        sampler,
                         accel,
-                        scene,
+                        medium,
                         id_strategy,
                     );
                     return (Some(edge), new_vertex);
                 }
 
                 (None, None)
+            }
+            Vertex::Volume(ref v) => {
+                let sampled_phase = v.phase_function.sample(&v.d_in, sampler.next2d());
+
+                // Update the throughput
+                *throughput *= &sampled_phase.weight;
+                if throughput.is_zero() {
+                    return (None, None);
+                }
+
+                // Check RR
+                let rr_weight = throughput.channel_max().min(0.95);
+                if rr_weight < sampler.next() {
+                    return (None, None);
+                }
+                let rr_weight = 1.0 / rr_weight;
+                throughput.scale(rr_weight);
+
+                // Generate the new ray and do the intersection
+                let ray = Ray::new(v.pos, sampled_phase.d);
+                let (edge, new_vertex) = Edge::from_ray(
+                    path,
+                    &ray,
+                    vertex_id,
+                    PDF::SolidAngle(sampled_phase.pdf),
+                    sampled_phase.weight,
+                    rr_weight,
+                    sampler,
+                    accel,
+                    medium,
+                    id_strategy,
+                );
+                return (Some(edge), new_vertex);
             }
             Vertex::Light(ref v) => {
                 // For now, just computing the outgoing direction
@@ -120,8 +159,9 @@ impl DirectionalSamplingStrategy {
                     PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
                     weight,
                     1.0,
+                    sampler,
                     accel,
-                    scene,
+                    medium,
                     id_strategy,
                 );
 
@@ -140,6 +180,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         _emitters: &'emitter EmitterSampler,
         mut throughput: Color,
         sampler: &mut dyn Sampler,
+        medium: Option<&HomogenousVolume>,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)> {
         // Generate the next edge and the next vertex
@@ -150,6 +191,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
             scene,
             &mut throughput,
             sampler,
+            medium,
             id_strategy,
         );
 
@@ -164,6 +206,9 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                 }
                 Vertex::Light(ref mut v) => {
                     v.edge_out = Some(e);
+                }
+                Vertex::Volume(ref mut v) => {
+                    v.edge_out.push(e);
                 }
             }
         }
@@ -202,8 +247,11 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                 }
                 unimplemented!();
             }
+            Vertex::Volume(ref v) => {
+                Some(v.phase_function.pdf(&v.d_in, &edge.d))
+            }
             Vertex::Sensor(ref _v) => Some(1.0),
-            _ => None,
+            Vertex::Light(ref _v) => None,
         }
     }
 }
@@ -219,6 +267,7 @@ impl SamplingStrategy for LightSamplingStrategy {
         emitters: &'emitter EmitterSampler,
         _throughput: Color,
         sampler: &mut dyn Sampler,
+        medium: Option<&HomogenousVolume>,
         id_strategy: usize,
     ) -> Option<(VertexID, Color)> {
         let (edge, _next_vertex) = match path.vertex(vertex_id) {
@@ -237,9 +286,9 @@ impl SamplingStrategy for LightSamplingStrategy {
                     sampler.next(),
                     sampler.next2d(),
                 );
-                let d_out_local = v.its.frame.to_local(light_record.d);
                 let visible = accel.visible(&v.its.p, &light_record.p);
-                if light_record.is_valid() && d_out_local.z > 0.0 && visible {
+                if light_record.is_valid() && visible {
+                    // We create a new vertex as it is a light
                     let next_vertex = Vertex::Light(EmitterVertex {
                         pos: light_record.p,
                         n: light_record.n,
@@ -249,8 +298,9 @@ impl SamplingStrategy for LightSamplingStrategy {
                     });
 
                     // FIXME: Only work for diffuse light
+                    // FIXME: Check the direction of hte light
                     let mut weight = light_record.weight;
-                    let emission = light_record.emitter.emitted_luminance(-d_out_local);
+                    let emission = light_record.emitter.emitted_luminance(light_record.d);
                     weight.r /= emission.r;
                     weight.g /= emission.g;
                     weight.b /= emission.b;
@@ -259,9 +309,78 @@ impl SamplingStrategy for LightSamplingStrategy {
                     weight *= &v.its.mesh.bsdf.eval(
                         &v.its.uv,
                         &v.its.wi,
-                        &d_out_local,
+                        &v.its.to_local(&light_record.d),
                         Domain::SolidAngle,
                     );
+
+                    if let Some(m) = medium {
+                        // Evaluate the transmittance
+                        let mut ray = Ray::new(v.its.p, light_record.d);
+                        let d = light_record.p - v.its.p;
+                        ray.tfar = d.dot(light_record.d).abs();
+                        let transmittance = m.transmittance(ray);
+                        weight *= transmittance;
+                    }
+
+                    let next_vertex_id = path.register_vertex(next_vertex);
+                    (
+                        Edge::from_vertex(
+                            path,
+                            vertex_id,
+                            light_record.pdf,
+                            weight,
+                            1.0,
+                            next_vertex_id,
+                            id_strategy,
+                        ),
+                        next_vertex_id,
+                    )
+                } else {
+                    return None;
+                }
+            }
+            Vertex::Volume(ref v) => {
+                // Generate the light sampling record based on the current vertex location
+                // Note that during this procedure, we did not evaluate the product of the path throughput
+                // and the incomming direct light. This evaluation will be done later when MIS
+                // will be computed.
+                let light_record = emitters.sample_light(
+                    &v.pos,
+                    sampler.next(),
+                    sampler.next(),
+                    sampler.next2d(),
+                );
+                let visible = accel.visible(&v.pos, &light_record.p);
+                if light_record.is_valid() && visible {
+                    let next_vertex = Vertex::Light(EmitterVertex {
+                        pos: light_record.p,
+                        n: light_record.n,
+                        emitter: light_record.emitter,
+                        edge_in: None,
+                        edge_out: None,
+                    });
+
+                    // FIXME: Only work for diffuse light
+                    // FIXME: This is the wrong -d_out_local, no?
+                    let mut weight = light_record.weight;
+                    let emission = light_record.emitter.emitted_luminance(-light_record.d);
+                    weight.r /= emission.r;
+                    weight.g /= emission.g;
+                    weight.b /= emission.b;
+
+                    // Need to evaluate the phase function
+                    weight *= &v.phase_function.eval(
+                        &v.d_in, 
+                        &light_record.d);
+
+                    if let Some(m) = medium {
+                        // Evaluate the transmittance
+                        let mut ray = Ray::new(v.pos, light_record.d);
+                        let d = light_record.p - v.pos;
+                        ray.tfar = d.dot(light_record.d).abs();
+                        let transmittance = m.transmittance(ray);
+                        weight *= transmittance;
+                    }
 
                     let next_vertex_id = path.register_vertex(next_vertex);
                     (
@@ -288,6 +407,9 @@ impl SamplingStrategy for LightSamplingStrategy {
             Vertex::Surface(ref mut v) => {
                 v.edge_out.push(edge);
             }
+            Vertex::Volume(ref mut v) => {
+                v.edge_out.push(edge);
+            }
             _ => unimplemented!(),
         }
 
@@ -302,6 +424,7 @@ impl SamplingStrategy for LightSamplingStrategy {
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {
+        // Get the edge and check the condition
         let edge = path.edge(edge_id);
         if !edge.next_on_light_source(path) {
             return None;
@@ -309,6 +432,38 @@ impl SamplingStrategy for LightSamplingStrategy {
 
         let vertex = path.vertex(vertex_id);
         match vertex {
+            Vertex::Volume(ref v) => {
+                // Always ok for have sampling a light source
+                let ray = Ray::new(vertex.position(), edge.d);
+                if let Some(next_vertex_id) = edge.vertices.1 {
+                    match path.vertex(next_vertex_id) {
+                        Vertex::Surface(ref v) => {
+                            // TODO: Check what this condition means...
+                            if let PDF::SolidAngle(light_pdf) = emitters
+                                .direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
+                            {
+                                return Some(light_pdf);
+                            }
+                        }
+                        Vertex::Light(ref v) => {
+                            if let PDF::SolidAngle(light_pdf) = emitters.direct_pdf(
+                                v.emitter,
+                                &LightSamplingPDF {
+                                    o: ray.o,
+                                    p: v.pos,
+                                    n: v.n,
+                                    dir: ray.d,
+                                },
+                            ) {
+                                return Some(light_pdf);
+                            }
+                        }
+                        Vertex::Sensor(ref _v) => return None,
+                        Vertex::Volume(ref _v) => return None,
+                    }
+                }
+                None
+            }
             Vertex::Surface(ref v) => {
                 // Impossible to sample from a Dirac distribution
                 if v.its.mesh.bsdf.is_smooth() {
@@ -338,7 +493,8 @@ impl SamplingStrategy for LightSamplingStrategy {
                                 return Some(light_pdf);
                             }
                         }
-                        _ => return None,
+                        Vertex::Volume(ref _v) => return None,
+                        Vertex::Sensor(ref _v) => return None,
                     }
                 }
                 None
@@ -382,6 +538,7 @@ pub fn generate<'scene, 'emitter, T: Technique>(
                         emitters,
                         *throughput,
                         sampler,
+                        scene.volume.as_ref(), // TODO: For now volume is global
                         id_sampling,
                     ) {
                         next.push((new_vertex, new_throughput));

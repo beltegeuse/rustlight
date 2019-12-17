@@ -1,20 +1,22 @@
 use crate::emitter::Emitter;
 use crate::scene::*;
 use crate::structure::*;
+use crate::volume::*;
+use crate::samplers::*;
 use cgmath::*;
 
 #[derive(Clone)]
 pub struct Edge {
     /// Geometric informations
-    pub dist: Option<f32>,
-    pub d: Vector3<f32>,
+    pub dist: Option<f32>,      // distance between points
+    pub d: Vector3<f32>,        // edge direction
     /// Connecting two vertices
     pub vertices: (VertexID, Option<VertexID>),
-    /// Sampling information
-    pub pdf_distance: f32,
+    /// Sampling information (from the BSDF or Phase function)
+    pub sampled_distance: Option<SampledDistance>,
     pub pdf_direction: PDF,
-    pub weight: Color,
-    pub rr_weight: f32,
+    pub weight: Color, // BSDF * Transmittance
+    pub rr_weight: f32, 
     pub id_sampling: usize,
 }
 
@@ -36,7 +38,7 @@ impl Edge {
             dist: Some(dist),
             d,
             vertices: (org_vertex_id, Some(next_vertex_id)),
-            pdf_distance: 1.0,
+            sampled_distance: None,
             pdf_direction,
             weight,
             rr_weight,
@@ -58,16 +60,16 @@ impl Edge {
         pdf_direction: PDF,
         weight: Color,
         rr_weight: f32,
+        sampler: &mut dyn Sampler,
         accel: &'scene dyn Acceleration,
-        _scene: &'scene Scene,
+        medium: Option<&HomogenousVolume>,
         id_sampling: usize,
     ) -> (EdgeID, Option<VertexID>) {
-        // TODO: When there will be volume, we need to sample a distance inside the volume
         let edge = Edge {
             dist: None,
             d: ray.d,
             vertices: (org_vertex_id, None),
-            pdf_distance: 1.0,
+            sampled_distance: None,
             pdf_direction,
             weight,
             rr_weight,
@@ -77,19 +79,86 @@ impl Edge {
         let its = match accel.trace(&ray) {
             Some(its) => its,
             None => {
-                // Create an edge without distance
-                return (edge, None);
+                if let Some(ref m) = medium {
+                    // Sample the participating media
+                    let mrec = m.sample(ray, sampler.next2d());
+                    let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
+                    // We are sure to suceed as the distance is infine...
+                    // TODO: Note that this design decision makes the env map incompatible with participating media presence
+                    assert_eq!(mrec.exited, false);
+                    let new_vertex = Vertex::Volume( VolumeVertex {
+                        phase_function: PhaseFunction::Isotropic(),
+                        pos,
+                        d_in: -ray.d,
+                        rr_weight: 1.0,
+                        edge_in: edge,
+                        edge_out: vec![],
+                    });
+                    let new_vertex = path.register_vertex(new_vertex);
+
+                    // Update the edge
+                    {
+                        let edge = path.edge_mut(edge);
+                        edge.dist = Some(mrec.t);
+                        edge.vertices.1 = Some(new_vertex);
+                        edge.weight *= mrec.w;
+                        edge.sampled_distance = Some(mrec);
+                    }
+
+                    return (edge, Some(new_vertex));    
+                } else {
+                    // Create an edge without distance
+                    return (edge, None);
+                }
             }
         };
 
-        // Create the new vertex
-        let intersection_distance = its.dist;
-        let new_vertex = Vertex::Surface(SurfaceVertex {
-            its,
-            rr_weight: 1.0,
-            edge_in: edge,
-            edge_out: vec![],
-        });
+        // Create the new vertex 
+        // This depends if there is a participating media or not
+        let mut intersection_distance = its.dist;
+        let (mrec, new_vertex) = if let Some(ref m) = medium {
+            // Sample the participating media
+            // Need to create a new ray as tfar need to store
+            // the distance to the surface
+            let mut ray_med = ray.clone();
+            ray_med.tfar = intersection_distance;
+            let mrec = m.sample(&ray_med, sampler.next2d());
+            let new_vertex = if mrec.exited {
+                // Hit the volume
+                // --- Update the distance
+                intersection_distance = mrec.t;
+                // --- Create the volume vertex
+                let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
+                Vertex::Volume( VolumeVertex {
+                    phase_function: PhaseFunction::Isotropic(),
+                    pos,
+                    d_in: -ray.d,
+                    rr_weight: 1.0,
+                    edge_in: edge,
+                    edge_out: vec![],
+                })
+            } else {
+                // Hit the surface
+                Vertex::Surface(SurfaceVertex {
+                    its,
+                    rr_weight: 1.0,
+                    edge_in: edge,
+                    edge_out: vec![],
+                })
+            };
+            (Some(mrec), new_vertex)
+        } else {
+            (
+                None, Vertex::Surface(SurfaceVertex {
+                    its,
+                    rr_weight: 1.0,
+                    edge_in: edge,
+                    edge_out: vec![],
+                })
+            )
+        };
+
+        // Register the new vertex
         let new_vertex = path.register_vertex(new_vertex);
 
         // Update the edge information
@@ -97,6 +166,10 @@ impl Edge {
             let edge = path.edge_mut(edge);
             edge.dist = Some(intersection_distance);
             edge.vertices.1 = Some(new_vertex);
+            if mrec.is_some() {
+                edge.weight *= mrec.as_ref().unwrap().w;
+            }
+            edge.sampled_distance = mrec;
         }
         (edge, Some(new_vertex))
     }
@@ -146,10 +219,21 @@ pub struct EmitterVertex<'emitter> {
 }
 
 #[derive(Clone)]
+pub struct VolumeVertex {
+    pub phase_function: PhaseFunction,
+    pub pos: Point3<f32>,
+    pub d_in: Vector3<f32>,
+    pub rr_weight: f32,
+    pub edge_in: EdgeID,
+    pub edge_out: Vec<EdgeID>,
+}
+
+#[derive(Clone)]
 pub enum Vertex<'scene, 'emitter> {
     Sensor(SensorVertex),
     Surface(SurfaceVertex<'scene>),
     Light(EmitterVertex<'emitter>),
+    Volume(VolumeVertex)
 }
 impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
     pub fn pixel_pos(&self) -> Point2<f32> {
@@ -163,6 +247,7 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
             Vertex::Surface(ref v) => v.its.p,
             Vertex::Sensor(ref v) => v.pos,
             Vertex::Light(ref v) => v.pos,
+            Vertex::Volume(ref v) => v.pos,
         }
     }
 
@@ -171,6 +256,7 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
             Vertex::Surface(ref v) => !v.its.mesh.emission.is_zero(),
             Vertex::Sensor(ref _v) => false,
             Vertex::Light(ref _v) => true,
+            Vertex::Volume(ref _v) => false,
         }
     }
 
@@ -183,6 +269,7 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
                     Color::zero()
                 }
             }
+            Vertex::Volume(ref _v) => Color::zero(),
             Vertex::Sensor(ref _v) => Color::zero(),
             Vertex::Light(ref v) => v.emitter.emitted_luminance(-edge.d), // FIXME: Check the normal orientation
         }

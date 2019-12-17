@@ -121,6 +121,66 @@ impl TechniquePathTracing {
                     }
                 }
             }
+            Vertex::Volume(ref v) => {
+                // TODO: Fix the repetition here...
+                for edge_id in &v.edge_out {
+                    let edge = path.edge(*edge_id);
+                    let contrib = edge.contribution(path);
+                    let contrib = match strategy {
+                        IntegratorPathTracingStrategies::All => contrib,
+                        IntegratorPathTracingStrategies::BSDF => {
+                            if edge.id_sampling != 0 {
+                                Color::zero()
+                            } else {
+                                contrib
+                            }
+                        }
+                        IntegratorPathTracingStrategies::Emitter => {
+                            if edge.id_sampling != 1 {
+                                Color::zero()
+                            } else {
+                                contrib
+                            }
+                        }
+                    };
+
+                    if !contrib.is_zero() {
+                        let weight = match strategy {
+                            IntegratorPathTracingStrategies::All => {
+                                // Balance heuristic
+                                if let PDF::SolidAngle(v) = edge.pdf_direction {
+                                    let total: f32 = self
+                                        .strategies(path.vertex(vertex_id))
+                                        .iter()
+                                        .map(|s| {
+                                            if let Some(v) =
+                                                s.pdf(path, scene, emitters, vertex_id, *edge_id)
+                                            {
+                                                v
+                                            } else {
+                                                0.0
+                                            }
+                                        })
+                                        .sum();
+                                    v / total
+                                } else {
+                                    1.0
+                                }
+                            }
+                            IntegratorPathTracingStrategies::BSDF
+                            | IntegratorPathTracingStrategies::Emitter => 1.0,
+                        };
+
+                        l_i += contrib * weight;
+                    }
+
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        l_i += edge.weight
+                            * edge.rr_weight
+                            * self.evaluate(path, scene, emitters, vertex_next_id, strategy);
+                    }
+                }
+            }
             Vertex::Sensor(ref v) => {
                 // Only one strategy where...
                 let edge = path.edge(v.edge_out.unwrap());
