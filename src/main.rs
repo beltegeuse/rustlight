@@ -77,6 +77,7 @@ fn main() {
                     .short("o")
                     .help("output image file"),
             )
+            .arg(Arg::with_name("medium").short("m").help("add a test medium"))
             .arg(Arg::with_name("debug").short("d").help("debug output"))
             .arg(
                 Arg::with_name("nbsamples")
@@ -232,6 +233,19 @@ fn main() {
     };
     let mut scene = scene.nb_samples(nb_samples).output_img(imgout_path_str);
 
+    ///////////////// Medium
+    // TODO: Read from PBRT file
+    if matches.is_present("medium") {
+        let sigma_a = rustlight::structure::Color::value(0.05);
+        let sigma_s = rustlight::structure::Color::value(0.9);
+        let sigma_t = sigma_a + sigma_s;
+        scene.volume = Some(rustlight::volume::HomogenousVolume {
+            sigma_a,
+            sigma_s,
+            sigma_t,
+            density: 1.0
+        });
+    }
     ///////////////// Tweak the image size
     {
         let image_scale = value_t_or_exit!(matches.value_of("image_scale"), f32);
