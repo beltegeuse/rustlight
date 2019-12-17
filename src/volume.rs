@@ -84,7 +84,8 @@ impl HomogenousVolume {
 		let component = (u.x * 3.0) as u8;
 		let sigma_t_c = self.sigma_t.get(component);
 		// Sample a distance with the selected channel
-		let t = (1.0 - u.y).exp() / sigma_t_c;
+		let t = -(1.0 - u.y).ln() / sigma_t_c;
+		assert!(t >= 0.0);
 		let t_min = t.min(max_t); // If there is a surface
 		let exited = t >= max_t;
 		// The different tau depending if we treat surfaces or not
