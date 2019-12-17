@@ -257,6 +257,45 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
 }
 
 pub struct LightSamplingStrategy {}
+impl LightSamplingStrategy {
+    fn pdf_emitter<'scene, 'emitter>(
+        &self,
+        path: &Path<'scene, 'emitter>,
+        emitters: &'emitter EmitterSampler, 
+        ray: Ray,
+        next_vertex_id: VertexID) -> Option<f32> {    
+        match path.vertex(next_vertex_id) {
+            Vertex::Surface(ref v) => {
+                // We could create a emitter sampling
+                // if we have intersected the light source randomly
+                if let PDF::SolidAngle(light_pdf) = emitters
+                    .direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
+                {
+                    return Some(light_pdf);
+                } else {
+                    None
+                }
+            }
+            Vertex::Light(ref v) => {
+                if let PDF::SolidAngle(light_pdf) = emitters.direct_pdf(
+                    v.emitter,
+                    &LightSamplingPDF {
+                        o: ray.o,
+                        p: v.pos,
+                        n: v.n,
+                        dir: ray.d,
+                    },
+                ) {
+                    return Some(light_pdf);
+                } else {
+                    None
+                }
+            }
+            Vertex::Sensor(ref _v) => return None,
+            Vertex::Volume(ref _v) => return None,
+        }
+    }
+}
 impl SamplingStrategy for LightSamplingStrategy {
     fn sample<'scene, 'emitter>(
         &self,
@@ -432,37 +471,14 @@ impl SamplingStrategy for LightSamplingStrategy {
 
         let vertex = path.vertex(vertex_id);
         match vertex {
-            Vertex::Volume(ref v) => {
+            Vertex::Volume(ref _v) => {
                 // Always ok for have sampling a light source
                 let ray = Ray::new(vertex.position(), edge.d);
                 if let Some(next_vertex_id) = edge.vertices.1 {
-                    match path.vertex(next_vertex_id) {
-                        Vertex::Surface(ref v) => {
-                            // TODO: Check what this condition means...
-                            if let PDF::SolidAngle(light_pdf) = emitters
-                                .direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
-                            {
-                                return Some(light_pdf);
-                            }
-                        }
-                        Vertex::Light(ref v) => {
-                            if let PDF::SolidAngle(light_pdf) = emitters.direct_pdf(
-                                v.emitter,
-                                &LightSamplingPDF {
-                                    o: ray.o,
-                                    p: v.pos,
-                                    n: v.n,
-                                    dir: ray.d,
-                                },
-                            ) {
-                                return Some(light_pdf);
-                            }
-                        }
-                        Vertex::Sensor(ref _v) => return None,
-                        Vertex::Volume(ref _v) => return None,
-                    }
+                    return self.pdf_emitter(path, emitters, ray, next_vertex_id);
+                } else {
+                    return None;
                 }
-                None
             }
             Vertex::Surface(ref v) => {
                 // Impossible to sample from a Dirac distribution
@@ -472,32 +488,10 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Know the the light is intersectable so have a solid angle PDF
                 let ray = Ray::new(vertex.position(), edge.d);
                 if let Some(next_vertex_id) = edge.vertices.1 {
-                    match path.vertex(next_vertex_id) {
-                        Vertex::Surface(ref v) => {
-                            if let PDF::SolidAngle(light_pdf) = emitters
-                                .direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
-                            {
-                                return Some(light_pdf);
-                            }
-                        }
-                        Vertex::Light(ref v) => {
-                            if let PDF::SolidAngle(light_pdf) = emitters.direct_pdf(
-                                v.emitter,
-                                &LightSamplingPDF {
-                                    o: ray.o,
-                                    p: v.pos,
-                                    n: v.n,
-                                    dir: ray.d,
-                                },
-                            ) {
-                                return Some(light_pdf);
-                            }
-                        }
-                        Vertex::Volume(ref _v) => return None,
-                        Vertex::Sensor(ref _v) => return None,
-                    }
+                    return self.pdf_emitter(path, emitters, ray, next_vertex_id);
+                } else {
+                    return None;
                 }
-                None
             }
             _ => None,
         }
