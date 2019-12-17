@@ -34,6 +34,9 @@ impl Edge {
         let dist = d.magnitude();
         d /= dist;
 
+        // Sampled distance is None here
+        // as the distance inside the participating media
+        // have not been sampled
         let edge = Edge {
             dist: Some(dist),
             d,
@@ -46,6 +49,7 @@ impl Edge {
         };
         let edge = path.register_edge(edge);
 
+        // This constructor have been only design for light vertex creation
         match path.vertex_mut(next_vertex_id) {
             Vertex::Light(ref mut v) => v.edge_in = Some(edge),
             _ => unimplemented!(),
@@ -120,10 +124,10 @@ impl Edge {
             // Sample the participating media
             // Need to create a new ray as tfar need to store
             // the distance to the surface
-            let mut ray_med = ray.clone();
+            let mut ray_med = *ray;
             ray_med.tfar = intersection_distance;
             let mrec = m.sample(&ray_med, sampler.next2d());
-            let new_vertex = if mrec.exited {
+            let new_vertex = if !mrec.exited {
                 // Hit the volume
                 // --- Update the distance
                 intersection_distance = mrec.t;
