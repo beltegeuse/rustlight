@@ -52,6 +52,71 @@ impl Technique for TechniquePathTracing {
     }
 }
 impl TechniquePathTracing {
+    fn evalute_edge<'scene, 'emitter>(
+        &self,
+        path: &Path<'scene, 'emitter>,
+        scene: &'scene Scene,
+        emitters: &'emitter EmitterSampler,
+        vertex_id: VertexID,
+        edge_id: EdgeID,
+        strategy: &IntegratorPathTracingStrategies,
+    ) -> Color {
+        // Get the edge that we considering
+        let edge = path.edge(edge_id);
+        // Compute the contribution
+        let contrib = edge.contribution(path);
+        let contrib = match strategy {
+            IntegratorPathTracingStrategies::All => contrib,
+            IntegratorPathTracingStrategies::BSDF => {
+                if edge.id_sampling != 0 {
+                    Color::zero()
+                } else {
+                    contrib
+                }
+            }
+            IntegratorPathTracingStrategies::Emitter => {
+                if edge.id_sampling != 1 {
+                    Color::zero()
+                } else {
+                    contrib
+                }
+            }
+        };
+
+        // If needed, we compute the MIS weight
+        if !contrib.is_zero() {
+            let weight = match strategy {
+                IntegratorPathTracingStrategies::All => {
+                    // Balance heuristic
+                    if let PDF::SolidAngle(v) = edge.pdf_direction {
+                        let total: f32 = self
+                            .strategies(path.vertex(vertex_id))
+                            .iter()
+                            .map(|s| {
+                                if let Some(v) =
+                                    s.pdf(path, scene, emitters, vertex_id, edge_id)
+                                {
+                                    v
+                                } else {
+                                    0.0
+                                }
+                            })
+                            .sum();
+                        v / total
+                    } else {
+                        1.0
+                    }
+                }
+                // No MIS in this case
+                IntegratorPathTracingStrategies::BSDF
+                | IntegratorPathTracingStrategies::Emitter => 1.0,
+            };
+            contrib * weight
+        } else {
+            Color::zero()
+        }
+    }
+
     fn evaluate<'scene, 'emitter>(
         &self,
         path: &Path<'scene, 'emitter>,
@@ -64,56 +129,13 @@ impl TechniquePathTracing {
         match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
                 for edge_id in &v.edge_out {
+                    // Compute the contribution along this edge
+                    // this only cover the fact that some next vertices are on some light sources
+                    // TODO: Modify this scheme at some point
+                    l_i += self.evalute_edge(path, scene, emitters, vertex_id, *edge_id, strategy);
+                    
+                    // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
-                    let contrib = edge.contribution(path);
-                    let contrib = match strategy {
-                        IntegratorPathTracingStrategies::All => contrib,
-                        IntegratorPathTracingStrategies::BSDF => {
-                            if edge.id_sampling != 0 {
-                                Color::zero()
-                            } else {
-                                contrib
-                            }
-                        }
-                        IntegratorPathTracingStrategies::Emitter => {
-                            if edge.id_sampling != 1 {
-                                Color::zero()
-                            } else {
-                                contrib
-                            }
-                        }
-                    };
-
-                    if !contrib.is_zero() {
-                        let weight = match strategy {
-                            IntegratorPathTracingStrategies::All => {
-                                // Balance heuristic
-                                if let PDF::SolidAngle(v) = edge.pdf_direction {
-                                    let total: f32 = self
-                                        .strategies(path.vertex(vertex_id))
-                                        .iter()
-                                        .map(|s| {
-                                            if let Some(v) =
-                                                s.pdf(path, scene, emitters, vertex_id, *edge_id)
-                                            {
-                                                v
-                                            } else {
-                                                0.0
-                                            }
-                                        })
-                                        .sum();
-                                    v / total
-                                } else {
-                                    1.0
-                                }
-                            }
-                            IntegratorPathTracingStrategies::BSDF
-                            | IntegratorPathTracingStrategies::Emitter => 1.0,
-                        };
-
-                        l_i += contrib * weight;
-                    }
-
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         l_i += edge.weight
                             * edge.rr_weight
@@ -122,57 +144,14 @@ impl TechniquePathTracing {
                 }
             }
             Vertex::Volume(ref v) => {
-                // TODO: Fix the repetition here...
                 for edge_id in &v.edge_out {
+                    // Compute the contribution along this edge
+                    // this only cover the fact that some next vertices are on some light sources
+                    // TODO: Modify this scheme at some point
+                    l_i += self.evalute_edge(path, scene, emitters, vertex_id, *edge_id, strategy);
+                    
+                    // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
-                    let contrib = edge.contribution(path);
-                    let contrib = match strategy {
-                        IntegratorPathTracingStrategies::All => contrib,
-                        IntegratorPathTracingStrategies::BSDF => {
-                            if edge.id_sampling != 0 {
-                                Color::zero()
-                            } else {
-                                contrib
-                            }
-                        }
-                        IntegratorPathTracingStrategies::Emitter => {
-                            if edge.id_sampling != 1 {
-                                Color::zero()
-                            } else {
-                                contrib
-                            }
-                        }
-                    };
-
-                    if !contrib.is_zero() {
-                        let weight = match strategy {
-                            IntegratorPathTracingStrategies::All => {
-                                // Balance heuristic
-                                if let PDF::SolidAngle(v) = edge.pdf_direction {
-                                    let total: f32 = self
-                                        .strategies(path.vertex(vertex_id))
-                                        .iter()
-                                        .map(|s| {
-                                            if let Some(v) =
-                                                s.pdf(path, scene, emitters, vertex_id, *edge_id)
-                                            {
-                                                v
-                                            } else {
-                                                0.0
-                                            }
-                                        })
-                                        .sum();
-                                    v / total
-                                } else {
-                                    1.0
-                                }
-                            }
-                            IntegratorPathTracingStrategies::BSDF
-                            | IntegratorPathTracingStrategies::Emitter => 1.0,
-                        };
-
-                        l_i += contrib * weight;
-                    }
 
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         l_i += edge.weight
@@ -194,6 +173,7 @@ impl TechniquePathTracing {
                 // Do the reccursive call
                 if let Some(vertex_next_id) = edge.vertices.1 {
                     l_i += edge.weight
+                        * edge.rr_weight
                         * self.evaluate(path, scene, emitters, vertex_next_id, strategy);
                 }
             }
@@ -219,8 +199,18 @@ impl IntegratorMC for IntegratorPathTracing {
     ) -> Color {
         // Initialize the technique
         let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
+        
+        // Always need the directional strategy to expend the path
         samplings.push(Box::new(DirectionalSamplingStrategy {}));
-        samplings.push(Box::new(LightSamplingStrategy {}));
+        match self.strategy {
+            IntegratorPathTracingStrategies::All | IntegratorPathTracingStrategies::Emitter => {
+                // This strategy only make sense in case of light sampling
+                samplings.push(Box::new(LightSamplingStrategy {}));
+            }
+            _ => {}
+        }
+
+        // Create the technique responsible for the actual tracing
         let mut technique = TechniquePathTracing {
             max_depth: self.max_depth,
             samplings,

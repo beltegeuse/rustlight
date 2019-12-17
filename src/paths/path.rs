@@ -49,6 +49,7 @@ impl DirectionalSamplingStrategy {
     ) -> (Option<EdgeID>, Option<VertexID>) {
         match path.vertex(vertex_id) {
             Vertex::Sensor(ref v) => {
+                // Generate the path from the sensor
                 let ray = scene.camera.generate(v.uv);
                 let (edge, new_vertex) = Edge::from_ray(
                     path,
