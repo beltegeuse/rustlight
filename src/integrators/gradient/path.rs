@@ -7,7 +7,7 @@ use cgmath::*;
 pub struct IntegratorGradientPath {
     pub max_depth: Option<u32>,
     pub min_depth: Option<u32>,
-    pub recons: Box<PoissonReconstruction + Sync>,
+    pub recons: Box<dyn PoissonReconstruction + Sync>,
 }
 
 struct RayStateData<'a> {
