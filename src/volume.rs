@@ -120,12 +120,12 @@ impl HomogenousVolume {
 
 	pub fn transmittance(&self, r: Ray) -> Color {
 		// TODO: When no intersection, transmittance need to be 0
-		let tau = self.sigma_t*(r.tfar-r.tnear);
+		let tau = self.sigma_t*(r.tfar);
 		(-tau).exp()
 	}
 
 	pub fn pdf(&self, r: Ray, end_on_surface: bool) -> f32 {
-		let tau = self.sigma_t*(r.tfar-r.tnear);
+		let tau = self.sigma_t*(r.tfar);
 		if end_on_surface {
 			(-tau).exp().avg()
 		} else {
