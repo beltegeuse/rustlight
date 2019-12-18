@@ -241,8 +241,8 @@ fn main() {
     ///////////////// Medium
     // TODO: Read from PBRT file
     if matches.is_present("medium") {
-        let sigma_a = rustlight::structure::Color::value(0.05);
-        let sigma_s = rustlight::structure::Color::value(0.9);
+        let sigma_a = rustlight::structure::Color::value(0.05) * 0.1;
+        let sigma_s = rustlight::structure::Color::value(0.9) * 0.1;
         let sigma_t = sigma_a + sigma_s;
         scene.volume = Some(rustlight::volume::HomogenousVolume {
             sigma_a,
