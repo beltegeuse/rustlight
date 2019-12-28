@@ -89,17 +89,6 @@ fn main() {
                     .help("integration technique"),
             )
             .subcommand(
-                SubCommand::with_name("path")
-                    .about("path tracing")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(
-                        Arg::with_name("primitive")
-                            .short("p")
-                            .help("do not use next event estimation"),
-                    ),
-            )
-            .subcommand(
                 SubCommand::with_name("gradient-path")
                     .about("gradient path tracing")
                     .arg(&max_arg)
@@ -125,7 +114,6 @@ fn main() {
                 SubCommand::with_name("pssmlt")
                     .about("path tracing with MCMC sampling")
                     .arg(&max_arg)
-                    .arg(&min_arg)
                     .arg(
                         Arg::with_name("large_prob")
                             .takes_value(true)
@@ -134,8 +122,8 @@ fn main() {
                     ),
             )
             .subcommand(
-                SubCommand::with_name("path-explicit")
-                    .about("path tracing with explict light path construction")
+                SubCommand::with_name("path")
+                    .about("path tracing generating path from the sensor")
                     .arg(&max_arg)
                     .arg(
                         Arg::with_name("strategy")
@@ -145,8 +133,8 @@ fn main() {
                     ),
             )
             .subcommand(
-                SubCommand::with_name("light-explicit")
-                    .about("light tracing with explict light path construction")
+                SubCommand::with_name("light")
+                    .about("light tracing generating path from the lights")
                     .arg(&max_arg)
                     .arg(Arg::with_name("lightpaths")
                         .takes_value(true)
@@ -315,7 +303,7 @@ fn main() {
 
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
-        ("path-explicit", Some(m)) => {
+        ("path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             let strategy = match strategy.as_ref() {
@@ -337,7 +325,7 @@ fn main() {
                 },
             ))
         }
-        ("light-explicit", Some(m)) => {
+        ("light", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let strategy = value_t_or_exit!(m.value_of("lightpaths"), String);
             let (render_surface, render_volume) =  match strategy.as_ref() {
@@ -396,28 +384,18 @@ fn main() {
                 },
             ))
         }
-        ("path", Some(m)) => {
-            let primitive = m.is_present("primitive");
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            IntegratorType::Primal(Box::new(rustlight::integrators::path::IntegratorPath {
-                max_depth,
-                min_depth,
-                next_event_estimation: !primitive,
-            }))
-        }
         ("pssmlt", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
             let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
             assert!(large_prob > 0.0 && large_prob <= 1.0);
             IntegratorType::Primal(Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
                 large_prob,
-                integrator: Box::new(rustlight::integrators::path::IntegratorPath {
-                    max_depth,
-                    min_depth,
-                    next_event_estimation: true,
-                }),
+                integrator: Box::new(
+                    rustlight::integrators::explicit::path::IntegratorPathTracing {
+                        max_depth,
+                        strategy: rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All,
+                    },
+                ),
             }))
         }
         ("ao", Some(m)) => {

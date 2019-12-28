@@ -393,5 +393,4 @@ pub mod avg;
 pub mod direct;
 pub mod explicit;
 pub mod gradient;
-pub mod path;
 pub mod pssmlt;

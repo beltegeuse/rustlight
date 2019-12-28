@@ -3,7 +3,6 @@ use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers;
 use cgmath::InnerSpace;
-use cgmath::EuclideanSpace;
 use cgmath::Point2;
 
 pub struct IntegratorLightTracing {
