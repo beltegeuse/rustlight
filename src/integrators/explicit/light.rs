@@ -73,16 +73,16 @@ impl TechniqueLightTracing {
                     if accel.visible(&v.pos, &pos_sensor) {
                         // Splat the contribution
                         if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
+                            let m = scene.volume.as_ref().unwrap();
+
                             // Compute BSDF for the splatting
                             let bsdf_value = v.phase_function.eval(&v.d_in, &d);
 
                             // If medium, need to take into account the transmittance
-                            let transmittance = if let Some(ref m) = scene.volume {
+                            let transmittance = {
                                 let mut ray = Ray::new(v.pos, d);
                                 ray.tfar = (v.pos - d).to_vec().magnitude();
                                 m.transmittance(ray)
-                            } else {
-                                Color::one()
                             };
 
                             // Accumulate the results

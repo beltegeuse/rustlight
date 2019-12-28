@@ -11,7 +11,7 @@ pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
     -(wo) + n * 2.0 * wo.dot(n)
 }
 pub fn check_reflection_condition(wi: &Vector3<f32>, wo: &Vector3<f32>) -> bool {
-    return (wi.z * wo.z - wi.x * wo.x - wi.y * wo.y - 1.0).abs() < 0.0001;
+    (wi.z * wo.z - wi.x * wo.x - wi.y * wo.y - 1.0).abs() < 0.0001
 }
 pub fn check_direlectric_condition(
     wi: &Vector3<f32>,

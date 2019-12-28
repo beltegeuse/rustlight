@@ -26,7 +26,7 @@ pub struct BufferCollection {
 
 impl BufferCollection {
     /// Create a new Bitmap
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<String>) -> BufferCollection {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &[String]) -> BufferCollection {
         let mut bitmap = BufferCollection {
             pos,
             size,
@@ -76,7 +76,7 @@ impl BufferCollection {
         &mut self,
         base_name: &str,
         o: &BufferCollection,
-        buffers: &Vec<String>,
+        buffers: &[String],
     ) {
         // Create buffers
         let mean_name = format!("{}_mean", base_name);
@@ -272,7 +272,7 @@ impl IntegratorType {
         let elapsed = start.elapsed();
         info!(
             "Elapsed Integrator: {} ms",
-            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
+            elapsed.as_millis()
         );
 
         img
@@ -291,7 +291,7 @@ pub trait IntegratorMC: Sync + Send {
     ) -> Color;
 }
 
-pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<BufferCollection> {
+pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferCollection> {
     let mut image_blocks: Vec<BufferCollection> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {

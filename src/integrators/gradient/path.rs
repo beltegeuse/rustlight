@@ -773,12 +773,8 @@ impl IntegratorGradientPath {
                                     let shift_d_out_global = s.its.frame.to_world(wo);
                                     s.ray = Ray::new(s.its.p, shift_d_out_global);
                                     let new_its = accel.trace(&s.ray);
-                                    if new_its.is_none() {
-                                        let mut result = ShiftResult::default();
-                                        result.half_vector = true;
-                                        result
-                                    } else {
-                                        s.its = new_its.unwrap();
+                                    if let Some(new_its) = new_its {
+                                        s.its = new_its;
                                         let shift_emitter_rad = if s.its.mesh.is_light() {
                                             s.its.mesh.emission
                                         } else {
@@ -790,6 +786,10 @@ impl IntegratorGradientPath {
                                             state: RayState::NotConnected(s),
                                             half_vector: true,
                                         }
+                                    } else {
+                                        let mut result = ShiftResult::default();
+                                        result.half_vector = true;
+                                        result
                                     }
                                 }
                             }

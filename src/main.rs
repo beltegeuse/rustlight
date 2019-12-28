@@ -4,6 +4,7 @@
 #![allow(clippy::float_cmp)]
 #![allow(clippy::cognitive_complexity)]
 
+extern crate num_cpus;
 extern crate cgmath;
 #[macro_use]
 extern crate clap;
@@ -61,6 +62,7 @@ fn main() {
             .arg(
                 Arg::with_name("nbthreads")
                     .takes_value(true)
+                    .allow_hyphen_values(true)
                     .short("t")
                     .default_value("auto")
                     .help("number of thread for the computation"),
@@ -229,11 +231,23 @@ fn main() {
     let scene = match matches.value_of("nbthreads").unwrap() {
         "auto" => scene,
         x => {
-            let v = x.parse::<usize>().expect("Wrong number of thread");
-            if v == 0 {
-                panic!("Impossible to use 0 thread for the computation");
+            let v = x.parse::<i32>().expect("Wrong number of thread");
+            match v {
+                v if v > 0 => {
+                    scene.nb_threads(v as usize)
+                }
+                v if v < 0 => {
+                    let nb_threads = num_cpus::get() as i32 + v;
+                    if nb_threads < 0 {
+                        panic!("Not enough threads: {} removing {}", num_cpus::get(), v);
+                    }
+                    info!("Run with {} threads", nb_threads);
+                    scene.nb_threads(nb_threads as usize)
+                }
+                _ => {
+                    panic!("Impossible to use 0 thread for the computation");
+                }
             }
-            scene.nb_threads(v)
         }
     };
     let mut scene = scene.nb_samples(nb_samples).output_img(imgout_path_str);
@@ -241,8 +255,9 @@ fn main() {
     ///////////////// Medium
     // TODO: Read from PBRT file
     if matches.is_present("medium") {
-        let sigma_a = rustlight::structure::Color::value(0.05) * 0.1;
-        let sigma_s = rustlight::structure::Color::value(0.9) * 0.1;
+        const FACTOR_DENSITY: f32 = 0.5;
+        let sigma_a = rustlight::structure::Color::value(0.05) * FACTOR_DENSITY;
+        let sigma_s = rustlight::structure::Color::value(0.9) * FACTOR_DENSITY;
         let sigma_t = sigma_a + sigma_s;
         scene.volume = Some(rustlight::volume::HomogenousVolume {
             sigma_a,
@@ -250,6 +265,12 @@ fn main() {
             sigma_t,
             density: 1.0
         });
+
+        info!("Create volume with: ");
+        info!(" - sigma_a: {:?}", sigma_a);
+        info!(" - sigma_s: {:?}", sigma_s);
+        info!(" - sigma_t: {:?}", sigma_t);
+        
     }
     ///////////////// Tweak the image size
     {
