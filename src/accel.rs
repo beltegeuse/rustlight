@@ -16,23 +16,24 @@ impl BVHNode {
     }
 }
 
-pub struct BHVAccel<T: BVHElement> {
+pub struct BHVAccel<D, T: BVHElement<D>> {
     pub elements: Vec<T>,
     nodes: Vec<BVHNode>,
-    pub root: Option<usize>, // Root node
+	pub root: Option<usize>, // Root node
+	phantom: std::marker::PhantomData<D>,
 }
 
-pub trait BVHElement {
+pub trait BVHElement<D> {
     // Used to build AABB hierachy
     fn aabb(&self) -> AABB;
     // Used to construct AABB (by sorting elements)
     fn position(&self) -> Point3<f32>;
     // Used when collecting the different objects
-    fn intersection(&self, r: &Ray) -> Option<f32>;
+    fn intersection(&self, r: &Ray) -> Option<D>;
 }
 
 // Implementation from (C++): https://github.com/shiinamiyuki/minpt/blob/master/minpt.cpp
-impl<T: BVHElement> BHVAccel<T> {
+impl<D, T: BVHElement<D>> BHVAccel<D, T> {
     // Internal build function
     // return the node ID (allocate node on the fly)
     fn build(&mut self, begin: usize, end: usize, depth: u32) -> Option<usize> {
@@ -104,11 +105,12 @@ impl<T: BVHElement> BHVAccel<T> {
         }
     }
 
-    pub fn create(elements: Vec<T>) -> BHVAccel<T> {
+    pub fn create(elements: Vec<T>) -> BHVAccel<D, T> {
         let mut accel = BHVAccel {
             elements,
             nodes: Vec::new(),
-            root: None,
+			root: None,
+			phantom: std::marker::PhantomData,
         };
         accel.root = accel.build(0, accel.elements.len(), 0);
         info!("BVH stats: ");
@@ -121,7 +123,7 @@ impl<T: BVHElement> BHVAccel<T> {
         accel
     }
 
-    pub fn gather(&self, r: Ray) -> Vec<(f32, usize)> {
+    pub fn gather(&self, r: Ray) -> Vec<(D, usize)> {
         let mut res = vec![];
         if self.root.is_none() {
             return res;

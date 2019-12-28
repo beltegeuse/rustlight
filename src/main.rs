@@ -165,14 +165,18 @@ fn main() {
                     ),
             )
             .subcommand(
-                SubCommand::with_name("bre")
-                    .about("beam radiance estimate")
+                SubCommand::with_name("vol_primitives")
+                    .about("BRE/Photon beam estimators")
                     .arg(&max_arg)
                     .arg(
-                        Arg::with_name("nb_photon")
+                        Arg::with_name("nb_primitive")
                             .takes_value(true)
                             .short("n")
                             .default_value("128"),
+                    )
+                    .arg(
+                        Arg::with_name("beam")
+                            .short("b"),
                     ),
             )
             .subcommand(
@@ -398,13 +402,14 @@ fn main() {
                 },
             ))
         }
-        ("bre", Some(m)) => {
+        ("vol_primitives", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            let nb_photons = value_t_or_exit!(m.value_of("nb_photon"), usize);
+            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::bre::IntegratorBRE {
-                    nb_photons,
+                rustlight::integrators::explicit::vol_primitives::IntegratorVolPrimitives {
+                    nb_primitive,
                     max_depth,
+                    beams: m.is_present("beam"),
                 },
             ))
         }
