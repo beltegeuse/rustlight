@@ -243,9 +243,7 @@ impl IntegratorGradientPathTracing {
     ) -> ColorGradient {
         let mut path = Path::default();
         let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
-        samplings.push(Box::new(DirectionalSamplingStrategy {
-            from_sensor: true,
-        }));
+        samplings.push(Box::new(DirectionalSamplingStrategy { from_sensor: true }));
         samplings.push(Box::new(LightSamplingStrategy {}));
         let mut technique = TechniqueGradientPathTracing {
             max_depth: None, // FIXME

@@ -4,7 +4,7 @@ use crate::math::Frame;
 use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use cgmath::{Point2, Point3, Vector2, Vector3};
+use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Vector3};
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, Pixel};
 #[cfg(feature = "openexr")]
@@ -99,7 +99,7 @@ impl Color {
             2 => self.b,
             _ => unimplemented!("Impossible to have more than 3 channels"),
         }
-    } 
+    }
 
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
@@ -629,52 +629,84 @@ impl Ray {
     }
 }
 
-pub struct AABB {
-    pub min: Vector3<f32>,
-    pub max: Vector3<f32>,
+// Some function based on vectors
+fn vec_min(v1: &Vector3<f32>, v2: &Vector3<f32>) -> Vector3<f32> {
+    Vector3::new(v1.x.min(v2.x), v1.y.min(v2.y), v1.z.min(v2.z))
 }
+
+fn vec_max(v1: &Vector3<f32>, v2: &Vector3<f32>) -> Vector3<f32> {
+    Vector3::new(v1.x.max(v2.x), v1.y.max(v2.y), v1.z.max(v2.z))
+}
+
+fn vec_div(v1: &Vector3<f32>, v2: &Vector3<f32>) -> Vector3<f32> {
+    Vector3::new(v1.x / v2.x, v1.y / v2.y, v1.z / v2.z)
+}
+
+fn vec_mult(v1: &Vector3<f32>, v2: &Vector3<f32>) -> Vector3<f32> {
+    Vector3::new(v1.x * v2.x, v1.y * v2.y, v1.z * v2.z)
+}
+
+fn vec_max_coords(v: Vector3<f32>) -> f32 {
+    v.x.max(v.y.max(v.z))
+}
+
+fn vec_min_coords(v: Vector3<f32>) -> f32 {
+    v.x.min(v.y.min(v.z))
+}
+
+#[derive(Debug)]
+pub struct AABB {
+    pub p_min: Vector3<f32>,
+    pub p_max: Vector3<f32>,
+}
+
 impl Default for AABB {
     fn default() -> Self {
         Self {
-            min: Vector3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX),
-            max: Vector3::new(std::f32::MIN, std::f32::MIN, std::f32::MIN),
+            p_min: Vector3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX),
+            p_max: Vector3::new(std::f32::MIN, std::f32::MIN, std::f32::MIN),
         }
     }
 }
+
 impl AABB {
-    pub fn center(&self) -> Vector3<f32> {
-        (self.min + self.max) * 0.5
-    }
-    pub fn surface_area(&self) -> f32 {
-        let d = self.max - self.min;
-        2.0 * (d.x * d.y + d.y + d.z + d.z * d.x)
-    }
-    pub fn merge_point(self, p: Vector3<f32>) -> AABB {
+    pub fn union_aabb(&self, b: &AABB) -> AABB {
         AABB {
-            min: Vector3::new(
-                self.min.x.min(p.x),
-                self.min.y.min(p.y),
-                self.min.z.min(p.z),
-            ),
-            max: Vector3::new(
-                self.max.x.max(p.x),
-                self.max.y.max(p.y),
-                self.max.z.max(p.z),
-            ),
+            p_min: vec_min(&self.p_min, &b.p_min),
+            p_max: vec_max(&self.p_max, &b.p_max),
         }
     }
-    pub fn merge_aabb(self, b: AABB) -> AABB {
+
+    pub fn union_vec(&self, v: &Vector3<f32>) -> AABB {
         AABB {
-            min: Vector3::new(
-                self.min.x.min(b.min.x),
-                self.min.y.min(b.min.y),
-                self.min.z.min(b.min.z),
-            ),
-            max: Vector3::new(
-                self.max.x.max(b.max.x),
-                self.max.y.max(b.max.y),
-                self.max.z.max(b.max.z),
-            ),
+            p_min: vec_min(&self.p_min, v),
+            p_max: vec_max(&self.p_max, v),
+        }
+    }
+
+    pub fn size(&self) -> Vector3<f32> {
+        self.p_max - self.p_min
+    }
+
+    pub fn center(&self) -> Vector3<f32> {
+        self.size() * 0.5 + self.p_min
+    }
+
+    pub fn intersect(&self, r: &Ray) -> Option<f32> {
+        // TODO: direction inverse could be precomputed
+        let t_0 = vec_div(&(self.p_min - r.o.to_vec()), &r.d);
+        let t_1 = vec_div(&(self.p_max - r.o.to_vec()), &r.d);
+        let t_min = vec_max_coords(vec_min(&t_0, &t_1));
+        let t_max = vec_min_coords(vec_max(&t_0, &t_1));
+        if t_min <= t_max {
+            // FIXME: Maybe wrong if tmin is different
+            if t_min >= r.tfar {
+                None
+            } else {
+                Some(t_min)
+            }
+        } else {
+            None
         }
     }
 }

@@ -19,7 +19,7 @@ pub fn check_direlectric_condition(
     eta: f32,
     cos_theta: f32,
 ) -> bool {
-    let dot_p= -wi.x * wo.x * eta - wi.y * wo.y * eta - cos_theta.copysign(wi.z) * wo.z;
+    let dot_p = -wi.x * wo.x * eta - wi.y * wo.y * eta - cos_theta.copysign(wi.z) * wo.z;
     (dot_p - 1.0).abs() < 0.0001
 }
 // Texture or uniform color buffers

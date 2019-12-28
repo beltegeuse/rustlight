@@ -1,3 +1,4 @@
+use crate::cgmath::InnerSpace;
 use crate::emitter::*;
 use crate::math::*;
 use crate::paths::vertex::*;
@@ -8,7 +9,6 @@ use crate::volume::*;
 use crate::Scale;
 use std;
 use std::mem;
-use crate::cgmath::InnerSpace;
 
 pub trait SamplingStrategy {
     fn sample<'scene, 'emitter>(
@@ -40,7 +40,7 @@ pub struct DirectionalSamplingStrategy {
 }
 impl DirectionalSamplingStrategy {
     pub fn bounce<'scene>(
-        &self, 
+        &self,
         path: &mut Path<'scene, '_>,
         vertex_id: VertexID,
         accel: &'scene dyn Acceleration,
@@ -60,7 +60,7 @@ impl DirectionalSamplingStrategy {
                     vertex_id,
                     PDF::SolidAngle(1.0),
                     Color::one(),
-                    1.0, 
+                    1.0,
                     sampler,
                     accel,
                     medium,
@@ -79,16 +79,16 @@ impl DirectionalSamplingStrategy {
 
                     // Update the throughput
                     *throughput *= &sampled_bsdf.weight;
-                    
+
                     // TODO: Need to further test this part
                     // TODO: This might be problematic for BDPT implementation
                     if !self.from_sensor {
                         let wi_global = v.its.frame.to_world(v.its.wi);
                         let correction = (v.its.wi.z * d_out_global.dot(v.its.n_g))
-                        / (sampled_bsdf.d.z * wi_global.dot(v.its.n_g));
+                            / (sampled_bsdf.d.z * wi_global.dot(v.its.n_g));
                         *throughput *= correction;
                     }
-                    
+
                     if throughput.is_zero() {
                         return (None, None);
                     }
@@ -251,13 +251,13 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         // FIXME: It seems to have a design flaw here
         // here the pdf here is the light sampling opponent
         // in this case, it makes sense that the PDF for this strategy
-        // if None in case of delta distribution... 
+        // if None in case of delta distribution...
         let edge = path.edge(edge_id);
         if !edge.next_on_light_source(path) {
             return None;
         }
 
-        // FIXME: Add the PDF of sampling between the two points 
+        // FIXME: Add the PDF of sampling between the two points
         // TODO: Do we need to store this information somehow here?
         //       as it might be required in case of heterogenous PM
 
@@ -277,11 +277,9 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                 }
                 unimplemented!();
             }
-            Vertex::Volume(ref v) => {
-                Some(v.phase_function.pdf(&v.d_in, &edge.d))
-            }
+            Vertex::Volume(ref v) => Some(v.phase_function.pdf(&v.d_in, &edge.d)),
             Vertex::Sensor(ref _v) => Some(1.0), // TODO: Why this value?
-            Vertex::Light(ref _v) => None, // Impossible to do BSDF sampling on a light source
+            Vertex::Light(ref _v) => None,       // Impossible to do BSDF sampling on a light source
         }
     }
 }
@@ -291,15 +289,16 @@ impl LightSamplingStrategy {
     fn pdf_emitter<'scene, 'emitter>(
         &self,
         path: &Path<'scene, 'emitter>,
-        emitters: &'emitter EmitterSampler, 
+        emitters: &'emitter EmitterSampler,
         ray: Ray,
-        next_vertex_id: VertexID) -> Option<f32> {    
+        next_vertex_id: VertexID,
+    ) -> Option<f32> {
         match path.vertex(next_vertex_id) {
             Vertex::Surface(ref v) => {
                 // We could create a emitter sampling
                 // if we have intersected the light source randomly
-                if let PDF::SolidAngle(light_pdf) = emitters
-                    .direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
+                if let PDF::SolidAngle(light_pdf) =
+                    emitters.direct_pdf(v.its.mesh, &LightSamplingPDF::new(&ray, &v.its))
                 {
                     Some(light_pdf)
                 } else {
@@ -416,12 +415,8 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Note that during this procedure, we did not evaluate the product of the path throughput
                 // and the incomming direct light. This evaluation will be done later when MIS
                 // will be computed.
-                let light_record = emitters.sample_light(
-                    &v.pos,
-                    sampler.next(),
-                    sampler.next(),
-                    sampler.next2d(),
-                );
+                let light_record =
+                    emitters.sample_light(&v.pos, sampler.next(), sampler.next(), sampler.next2d());
                 let visible = accel.visible(&v.pos, &light_record.p);
                 if light_record.is_valid() && visible {
                     let next_vertex = Vertex::Light(EmitterVertex {
@@ -441,9 +436,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                     weight.b /= emission.b;
 
                     // Need to evaluate the phase function
-                    weight *= &v.phase_function.eval(
-                        &v.d_in, 
-                        &light_record.d);
+                    weight *= &v.phase_function.eval(&v.d_in, &light_record.d);
 
                     if let Some(m) = medium {
                         // Evaluate the transmittance

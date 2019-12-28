@@ -163,31 +163,43 @@ impl TechniqueLightTracing {
                 }
             }
             Vertex::Light(ref v) => {
-                let pos_sensor = scene.camera.position();
-                let d = (pos_sensor - v.pos).normalize();
                 let flux = *self.flux.as_ref().unwrap();
+                if self.render_surface {
+                    let pos_sensor = scene.camera.position();
+                    let d = (pos_sensor - v.pos).normalize();
+                    if accel.visible(&v.pos, &pos_sensor) {
+                        if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
+                            let transmittance = if let Some(ref m) = scene.volume {
+                                let mut ray = Ray::new(v.pos, d);
+                                ray.tfar = (v.pos - pos_sensor).magnitude();
+                                m.transmittance(ray)
+                            } else {
+                                Color::one()
+                            };
 
-                if accel.visible(&v.pos, &pos_sensor) {
-                    if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
-                        let transmittance = if let Some(ref m) = scene.volume {
-                            let mut ray = Ray::new(v.pos, d);
-                            ray.tfar = (v.pos - pos_sensor).magnitude();
-                            m.transmittance(ray)
-                        } else {
-                            Color::one()
-                        };
-
-                        bitmap.accumulate_safe(
-                            Point2::new(uv.x as i32, uv.y as i32),
-                            transmittance * flux * importance * d.dot(v.n) * std::f32::consts::FRAC_1_PI,
-                            &"primal".to_owned(),
-                        );
+                            bitmap.accumulate_safe(
+                                Point2::new(uv.x as i32, uv.y as i32),
+                                transmittance
+                                    * flux
+                                    * importance
+                                    * d.dot(v.n)
+                                    * std::f32::consts::FRAC_1_PI,
+                                &"primal".to_owned(),
+                            );
+                        }
                     }
                 }
                 if let Some(edge_id) = v.edge_out {
                     let edge = path.edge(edge_id);
                     if let Some(next_vertex) = edge.vertices.1 {
-                        self.evaluate(path, accel, scene, next_vertex, bitmap, edge.weight * flux * edge.rr_weight);
+                        self.evaluate(
+                            path,
+                            accel,
+                            scene,
+                            next_vertex,
+                            bitmap,
+                            edge.weight * flux * edge.rr_weight,
+                        );
                     }
                 }
             }
@@ -213,7 +225,7 @@ impl Integrator for IntegratorLightTracing {
             * ((scene.camera.size().x * scene.camera.size().y) as usize))
             / nb_jobs as usize;
 
-        // Global information 
+        // Global information
         let progress_bar = Mutex::new(ProgressBar::new(samplers.len() as u64));
         let buffer_names = vec![String::from("primal")];
         let img = Mutex::new(BufferCollection::new(
@@ -225,14 +237,13 @@ impl Integrator for IntegratorLightTracing {
         let pool = generate_pool(scene);
         pool.install(|| {
             samplers.par_iter_mut().for_each(|s| {
-                let mut my_img = BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
+                let mut my_img =
+                    BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
                 let emitters = scene.emitters_sampler();
                 (0..nb_samples).for_each(|_| {
                     // The sampling strategies
                     let samplings: Vec<Box<dyn SamplingStrategy>> =
-                        vec![Box::new(DirectionalSamplingStrategy {
-                            from_sensor: false,
-                        })];
+                        vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
                     // Do the sampling here
                     let mut technique = TechniqueLightTracing {
                         max_depth: self.max_depth,
@@ -246,7 +257,7 @@ impl Integrator for IntegratorLightTracing {
                     // Evaluate the path generated using camera splatting operation
                     technique.evaluate(&path, accel, scene, root[0].0, &mut my_img, Color::one());
                 });
-                
+
                 // Scale and add the results
                 my_img.scale(1.0 / (nb_samples as f32));
                 {

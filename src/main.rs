@@ -4,8 +4,8 @@
 #![allow(clippy::float_cmp)]
 #![allow(clippy::cognitive_complexity)]
 
-extern crate num_cpus;
 extern crate cgmath;
+extern crate num_cpus;
 #[macro_use]
 extern crate clap;
 extern crate env_logger;
@@ -80,7 +80,11 @@ fn main() {
                     .short("o")
                     .help("output image file"),
             )
-            .arg(Arg::with_name("medium").short("m").help("add a test medium"))
+            .arg(
+                Arg::with_name("medium")
+                    .short("m")
+                    .help("add a test medium"),
+            )
             .arg(Arg::with_name("debug").short("d").help("debug output"))
             .arg(
                 Arg::with_name("nbsamples")
@@ -136,10 +140,12 @@ fn main() {
                 SubCommand::with_name("light")
                     .about("light tracing generating path from the lights")
                     .arg(&max_arg)
-                    .arg(Arg::with_name("lightpaths")
-                        .takes_value(true)
-                        .short("p")
-                        .default_value("all"),),
+                    .arg(
+                        Arg::with_name("lightpaths")
+                            .takes_value(true)
+                            .short("p")
+                            .default_value("all"),
+                    ),
             )
             .subcommand(
                 SubCommand::with_name("vpl")
@@ -153,6 +159,17 @@ fn main() {
                     )
                     .arg(
                         Arg::with_name("nb_vpl")
+                            .takes_value(true)
+                            .short("n")
+                            .default_value("128"),
+                    ),
+            )
+            .subcommand(
+                SubCommand::with_name("bre")
+                    .about("beam radiance estimate")
+                    .arg(&max_arg)
+                    .arg(
+                        Arg::with_name("nb_photon")
                             .takes_value(true)
                             .short("n")
                             .default_value("128"),
@@ -221,9 +238,7 @@ fn main() {
         x => {
             let v = x.parse::<i32>().expect("Wrong number of thread");
             match v {
-                v if v > 0 => {
-                    scene.nb_threads(v as usize)
-                }
+                v if v > 0 => scene.nb_threads(v as usize),
                 v if v < 0 => {
                     let nb_threads = num_cpus::get() as i32 + v;
                     if nb_threads < 0 {
@@ -251,14 +266,13 @@ fn main() {
             sigma_a,
             sigma_s,
             sigma_t,
-            density: 1.0
+            density: 1.0,
         });
 
         info!("Create volume with: ");
         info!(" - sigma_a: {:?}", sigma_a);
         info!(" - sigma_s: {:?}", sigma_s);
         info!(" - sigma_t: {:?}", sigma_t);
-        
     }
     ///////////////// Tweak the image size
     {
@@ -328,14 +342,14 @@ fn main() {
         ("light", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let strategy = value_t_or_exit!(m.value_of("lightpaths"), String);
-            let (render_surface, render_volume) =  match strategy.as_ref() {
+            let (render_surface, render_volume) = match strategy.as_ref() {
                 "all" => (true, true),
                 "surface" => (true, false),
                 "volume" => (false, true),
                 _ => panic!("invalid lightpaths type to render"),
             };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::light::IntegratorLightTracing { 
+                rustlight::integrators::explicit::light::IntegratorLightTracing {
                     max_depth,
                     render_surface,
                     render_volume,
@@ -381,6 +395,16 @@ fn main() {
                     } else {
                         Some(clamping)
                     },
+                },
+            ))
+        }
+        ("bre", Some(m)) => {
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let nb_photons = value_t_or_exit!(m.value_of("nb_photon"), usize);
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::bre::IntegratorBRE {
+                    nb_photons,
+                    max_depth,
                 },
             ))
         }

@@ -93,9 +93,7 @@ impl TechniquePathTracing {
                             .strategies(path.vertex(vertex_id))
                             .iter()
                             .map(|s| {
-                                if let Some(v) =
-                                    s.pdf(path, scene, emitters, vertex_id, edge_id)
-                                {
+                                if let Some(v) = s.pdf(path, scene, emitters, vertex_id, edge_id) {
                                     v
                                 } else {
                                     0.0
@@ -133,7 +131,7 @@ impl TechniquePathTracing {
                     // this only cover the fact that some next vertices are on some light sources
                     // TODO: Modify this scheme at some point
                     l_i += self.evalute_edge(path, scene, emitters, vertex_id, *edge_id, strategy);
-                    
+
                     // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {
@@ -149,7 +147,7 @@ impl TechniquePathTracing {
                     // this only cover the fact that some next vertices are on some light sources
                     // TODO: Modify this scheme at some point
                     l_i += self.evalute_edge(path, scene, emitters, vertex_id, *edge_id, strategy);
-                    
+
                     // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
 
@@ -199,11 +197,9 @@ impl IntegratorMC for IntegratorPathTracing {
     ) -> Color {
         // Initialize the technique
         let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
-        
+
         // Always need the directional strategy to expend the path
-        samplings.push(Box::new(DirectionalSamplingStrategy {
-            from_sensor: true,
-        }));
+        samplings.push(Box::new(DirectionalSamplingStrategy { from_sensor: true }));
         match self.strategy {
             IntegratorPathTracingStrategies::All | IntegratorPathTracingStrategies::Emitter => {
                 // This strategy only make sense in case of light sampling

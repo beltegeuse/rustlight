@@ -150,7 +150,7 @@ impl SceneLoader for JSONSceneLoader {
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment: None,
-            volume: None
+            volume: None,
         })
     }
 }
@@ -272,7 +272,7 @@ impl SceneLoader for PBRTSceneLoader {
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
-            volume: None
+            volume: None,
         })
     }
 }

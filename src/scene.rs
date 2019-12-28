@@ -1,10 +1,10 @@
 use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
-use crate::volume;
 use crate::math::Distribution1DConstruct;
 use crate::math::Frame;
 use crate::structure::*;
+use crate::volume;
 use cgmath::*;
 
 pub trait Acceleration: Sync + Send {

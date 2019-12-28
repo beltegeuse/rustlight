@@ -132,7 +132,12 @@ impl Integrator for IntegratorPSSMLT {
     }
 }
 impl IntegratorPSSMLT {
-    fn compute_normalization(&self, accel: &dyn Acceleration, scene: &Scene, nb_samples: usize) -> f32 {
+    fn compute_normalization(
+        &self,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+        nb_samples: usize,
+    ) -> f32 {
         assert_ne!(nb_samples, 0);
 
         let mut sampler = samplers::independent::IndependentSampler::default();

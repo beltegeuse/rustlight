@@ -47,6 +47,7 @@ pub trait Scale<T> {
 }
 
 // all the modules
+pub mod accel;
 pub mod bsdfs;
 pub mod camera;
 pub mod emitter;

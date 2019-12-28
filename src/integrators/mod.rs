@@ -270,10 +270,7 @@ impl IntegratorType {
         };
 
         let elapsed = start.elapsed();
-        info!(
-            "Elapsed Integrator: {} ms",
-            elapsed.as_millis()
-        );
+        info!("Elapsed Integrator: {} ms", elapsed.as_millis());
 
         img
     }

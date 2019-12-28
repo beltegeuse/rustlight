@@ -1,9 +1,9 @@
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::volume::*;
 use crate::samplers;
-use cgmath::{InnerSpace, Point2, Point3, Vector3, EuclideanSpace};
+use crate::volume::*;
+use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 
 pub struct IntegratorVPL {
     pub nb_vpl: usize,
@@ -136,7 +136,13 @@ impl TechniqueVPL {
                 if let Some(edge) = v.edge_out {
                     let edge = path.edge(edge);
                     if let Some(next_vertex_id) = edge.vertices.1 {
-                        self.convert_vpl(path, scene, next_vertex_id, vpls, edge.weight * flux * edge.rr_weight);
+                        self.convert_vpl(
+                            path,
+                            scene,
+                            next_vertex_id,
+                            vpls,
+                            edge.weight * flux * edge.rr_weight,
+                        );
                     }
                 }
             }
@@ -155,9 +161,7 @@ impl Integrator for IntegratorVPL {
         let emitters = scene.emitters_sampler();
         while vpls.len() < self.nb_vpl as usize {
             let samplings: Vec<Box<dyn SamplingStrategy>> =
-                vec![Box::new(DirectionalSamplingStrategy {
-                    from_sensor: false,
-                })];
+                vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
             let mut technique = TechniqueVPL {
                 max_depth: self.max_depth,
                 samplings,
@@ -221,7 +225,8 @@ impl Integrator for IntegratorVPL {
 }
 
 impl IntegratorVPL {
-    fn transmittance(&self,
+    fn transmittance(
+        &self,
         medium: Option<&HomogenousVolume>,
         p1: Point3<f32>,
         p2: Point3<f32>,
@@ -236,7 +241,6 @@ impl IntegratorVPL {
         } else {
             Color::one()
         }
-
     }
 
     fn gathering_surface<'a>(
@@ -245,9 +249,10 @@ impl IntegratorVPL {
         accel: &dyn Acceleration,
         vpls: &[VPL<'a>],
         norm_vpl: f32,
-        its: &Intersection) -> Color {
+        its: &Intersection,
+    ) -> Color {
         let mut l_i = Color::zero();
-        
+
         // Self emission
         if its.cos_theta() > 0.0 {
             l_i += &(its.mesh.emission);
@@ -292,7 +297,7 @@ impl IntegratorVPL {
                         let trans = self.transmittance(medium, its.p, vpl.pos);
                         l_i += trans * norm_vpl * emitted_radiance * bsdf_val * vpl.radiance
                             / (dist * dist);
-                    }   
+                    }
                 }
                 VPL::Surface(ref vpl) => {
                     if accel.visible(&vpl.its.p, &its.p) {
@@ -332,7 +337,8 @@ impl IntegratorVPL {
         norm_vpl: f32,
         d_cam: Vector3<f32>,
         pos: Point3<f32>,
-        phase: &PhaseFunction) -> Color {
+        phase: &PhaseFunction,
+    ) -> Color {
         let mut l_i = Color::zero();
         for vpl in vpls {
             match *vpl {
@@ -348,7 +354,6 @@ impl IntegratorVPL {
                         let phase_val = phase.eval(&d_cam, &d);
                         let trans = self.transmittance(medium, pos, vpl.pos);
                         l_i += trans * norm_vpl * emitted_radiance * phase_val / (dist * dist);
-                    
                     }
                 }
                 VPL::Volume(ref vpl) => {
@@ -361,7 +366,6 @@ impl IntegratorVPL {
                     let trans = self.transmittance(medium, pos, vpl.pos);
                     l_i += trans * norm_vpl * emitted_radiance * phase_val * vpl.radiance
                         / (dist * dist);
-                    
                 }
                 VPL::Surface(ref vpl) => {
                     if accel.visible(&vpl.its.p, &pos) {
@@ -379,7 +383,6 @@ impl IntegratorVPL {
                         let trans = self.transmittance(medium, pos, vpl.its.p);
                         l_i += trans * norm_vpl * emitted_radiance * phase_val * vpl.radiance
                             / (dist * dist);
-                        
                     }
                 }
             }
@@ -409,8 +412,16 @@ impl IntegratorVPL {
                     let mrec = m.sample(&ray, sampler.next2d());
                     assert!(!mrec.exited);
                     let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
-                    let phase_function = PhaseFunction::Isotropic(); // FIXME: 
-                    l_i *= self.gathering_volume(scene.volume.as_ref(), accel, vpls, norm_vpl, -ray.d, pos, &phase_function) * mrec.w;
+                    let phase_function = PhaseFunction::Isotropic(); // FIXME:
+                    l_i *= self.gathering_volume(
+                        scene.volume.as_ref(),
+                        accel,
+                        vpls,
+                        norm_vpl,
+                        -ray.d,
+                        pos,
+                        &phase_function,
+                    ) * mrec.w;
                     return l_i;
                 } else {
                     return l_i;
@@ -424,17 +435,25 @@ impl IntegratorVPL {
             let mrec = m.sample(&ray_med, sampler.next2d());
             if !mrec.exited {
                 let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
-                let phase_function = PhaseFunction::Isotropic(); // FIXME: 
-                l_i += self.gathering_volume(scene.volume.as_ref(), accel, vpls, norm_vpl, -ray.d, pos, &phase_function) * mrec.w;
+                let phase_function = PhaseFunction::Isotropic(); // FIXME:
+                l_i += self.gathering_volume(
+                    scene.volume.as_ref(),
+                    accel,
+                    vpls,
+                    norm_vpl,
+                    -ray.d,
+                    pos,
+                    &phase_function,
+                ) * mrec.w;
                 l_i
             } else {
-                l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its) * mrec.w;
+                l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
+                    * mrec.w;
                 l_i
             }
         } else {
             l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its);
             l_i
         }
-        
     }
 }
