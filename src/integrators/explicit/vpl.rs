@@ -136,7 +136,7 @@ impl TechniqueVPL {
                 if let Some(edge) = v.edge_out {
                     let edge = path.edge(edge);
                     if let Some(next_vertex_id) = edge.vertices.1 {
-                        self.convert_vpl(path, scene, next_vertex_id, vpls, edge.weight * flux);
+                        self.convert_vpl(path, scene, next_vertex_id, vpls, edge.weight * flux * edge.rr_weight);
                     }
                 }
             }
@@ -155,7 +155,9 @@ impl Integrator for IntegratorVPL {
         let emitters = scene.emitters_sampler();
         while vpls.len() < self.nb_vpl as usize {
             let samplings: Vec<Box<dyn SamplingStrategy>> =
-                vec![Box::new(DirectionalSamplingStrategy {})];
+                vec![Box::new(DirectionalSamplingStrategy {
+                    from_sensor: false,
+                })];
             let mut technique = TechniqueVPL {
                 max_depth: self.max_depth,
                 samplings,

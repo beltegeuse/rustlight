@@ -35,9 +35,12 @@ pub trait SamplingStrategy {
     ) -> Option<f32>;
 }
 
-pub struct DirectionalSamplingStrategy {}
+pub struct DirectionalSamplingStrategy {
+    pub from_sensor: bool,
+}
 impl DirectionalSamplingStrategy {
     pub fn bounce<'scene>(
+        &self, 
         path: &mut Path<'scene, '_>,
         vertex_id: VertexID,
         accel: &'scene dyn Acceleration,
@@ -72,8 +75,20 @@ impl DirectionalSamplingStrategy {
                         .bsdf
                         .sample(&v.its.uv, &v.its.wi, sampler.next2d())
                 {
+                    let d_out_global = v.its.frame.to_world(sampled_bsdf.d);
+
                     // Update the throughput
                     *throughput *= &sampled_bsdf.weight;
+                    
+                    // TODO: Need to further test this part
+                    // TODO: This might be problematic for BDPT implementation
+                    if !self.from_sensor {
+                        let wi_global = v.its.frame.to_world(v.its.wi);
+                        let correction = (v.its.wi.z * d_out_global.dot(v.its.n_g))
+                        / (sampled_bsdf.d.z * wi_global.dot(v.its.n_g));
+                        *throughput *= correction;
+                    }
+                    
                     if throughput.is_zero() {
                         return (None, None);
                     }
@@ -87,7 +102,6 @@ impl DirectionalSamplingStrategy {
                     throughput.scale(rr_weight);
 
                     // Generate the new ray and do the intersection
-                    let d_out_global = v.its.frame.to_world(sampled_bsdf.d);
                     let ray = Ray::new(v.its.p, d_out_global);
                     let (edge, new_vertex) = Edge::from_ray(
                         path,
@@ -188,7 +202,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         id_strategy: usize,
     ) -> Option<(VertexID, Color)> {
         // Generate the next edge and the next vertex
-        let (edge, new_vertex) = DirectionalSamplingStrategy::bounce(
+        let (edge, new_vertex) = self.bounce(
             path,
             vertex_id,
             accel,
