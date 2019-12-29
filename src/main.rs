@@ -412,6 +412,7 @@ fn main() {
                 "bre" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::BRE,
                 "beam" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Beams,
                 "plane" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Planes,
+                "vrl" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::VRL,
                 _ => panic!(
                     "{} is not a correct primitive (bre, beam, plane)",
                     primitives

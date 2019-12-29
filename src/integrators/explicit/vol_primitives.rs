@@ -11,6 +11,7 @@ pub enum VolPrimitivies {
     BRE,
     Beams,
     Planes,
+    VRL,
 }
 
 pub struct IntegratorVolPrimitives {
@@ -133,6 +134,7 @@ struct PhotonBeam {
     phase_function: PhaseFunction,
     radiance: Color,
     radius: f32,
+    from_surface: bool,
 }
 struct PhotonBeamIts {
     u: f32, // Kernel
@@ -219,6 +221,60 @@ impl PhotonBeam {
         let weight = (1.0 / beam_its.sin_theta) * (0.5 / self.radius);
         self.radiance * transmittance * phase_func * weight
     }
+
+    pub fn contribute_vrl(
+        &self,
+        ray: &Ray,
+        m: &HomogenousVolume,
+        accel: &dyn Acceleration,
+        sampler: &mut dyn Sampler,
+    ) -> Color {
+        // This code is for debugging
+        // It is the naive VRL sampling
+        let (t_cam, t_vrl, inv_pdf) = (
+            (ray.tfar - ray.tnear) * sampler.next() + ray.tnear,
+            self.length * sampler.next(),
+            self.length * (ray.tfar - ray.tnear),
+        );
+
+        // TODO: Implement more advanced sampling
+        // let (t_cam, t_vrl, inv_pdf) = {
+        //
+        // }
+
+        // Point on sensor and vrl
+        // check mutual visibility
+        let p_vrl = self.o + self.d * t_vrl;
+        let p_cam = ray.o + ray.d * t_cam;
+        if !accel.visible(&p_cam, &p_vrl) {
+            return Color::zero();
+        }
+
+        // Compute direction and distance
+        let d_cam_vrl = p_vrl - p_cam;
+        let dist = d_cam_vrl.magnitude();
+        let d_cam_vrl = d_cam_vrl / dist;
+
+        // Compute transmittances
+        let transmittance_cam = {
+            let mut ray_tr = Ray::new(ray.o, ray.d);
+            ray_tr.tfar = t_cam;
+            m.transmittance(ray_tr)
+        };
+        let transmittance_vrl = {
+            let mut ray_tr = Ray::new(p_vrl, -d_cam_vrl);
+            ray_tr.tfar = dist;
+            m.transmittance(ray_tr)
+        };
+
+        // Phase functions
+        let phase_func_vrl = m.sigma_s * self.phase_function.eval(&(-self.d), &(-d_cam_vrl));
+        let phase_func_cam = m.sigma_s * self.phase_function.eval(&(-ray.d), &d_cam_vrl);
+
+        let contrib =
+            self.radiance * phase_func_vrl * phase_func_cam * transmittance_cam * transmittance_vrl;
+        contrib * inv_pdf / (dist * dist)
+    }
 }
 
 // ------------ Plane representation
@@ -257,27 +313,19 @@ impl BVHElement<PhotonPlaneIts> for PhotonPlane {
         // Note that it might be not ideal....
         self.o + self.d0 * self.length0 * 0.5 + self.d1 * self.length1 * 0.5
     }
+    // This code is very similar to triangle intersection
+    // except that we loose one test to make posible to
+    // intersect planar primitives
     fn intersection(&self, r: &Ray) -> Option<PhotonPlaneIts> {
-        // Vector e0 = _w0 * _length0;
-        // Vector e1 = _w1 * _length1;
         let e0 = self.d0 * self.length0;
         let e1 = self.d1 * self.length1;
 
-        // Vector P = cross(ray_.d, e1);
-        // float det = dot(e0, P);
-        // if (std::abs(det) < 1e-5f)
-        // return false;
         let p = r.d.cross(e1);
         let det = e0.dot(p);
         if det.abs() < 1e-5 {
             return None;
         }
 
-        // invDet = 1.0f / det;
-        // Vector T = ray_.o - _ori;
-        // t0 = dot(T, P) * invDet;
-        // if (t0 < 0.0f || t0 > 1.0f)
-        // return false;
         let inv_det = 1.0 / det;
         let t = r.o - self.o;
         let t0 = t.dot(p) * inv_det;
@@ -285,19 +333,12 @@ impl BVHElement<PhotonPlaneIts> for PhotonPlane {
             return None;
         }
 
-        // Vector Q = cross(T, e0);
-        // t1 = dot(ray_.d, Q) * invDet;
-        // if (t1 < 0.0f || t1 > 1.0f)
-        // return false;
         let q = t.cross(e0);
         let t1 = r.d.dot(q) * inv_det;
         if t1 < 0.0 || t1 > 1.0 {
             return None;
         }
 
-        // tCam = dot(e1, Q) * invDet;
-        // if (tCam <= ray_.mint || tCam >= ray_.maxt)
-        // return false;
         let t_cam = e1.dot(q) * inv_det;
         if t_cam <= r.tnear || t_cam >= r.tfar {
             return None;
@@ -305,8 +346,6 @@ impl BVHElement<PhotonPlaneIts> for PhotonPlane {
 
         // Scale to the correct distance
         // In order to use correctly transmittance sampling
-        // t1 *= _length1;
-        // t0 *= _length0;
         let t1 = t1 * self.length1;
         let t0 = t0 * self.length0;
 
@@ -441,6 +480,7 @@ impl TechniqueVolPrimitives {
                             phase_function: PhaseFunction::Isotropic(),
                             radiance: flux,
                             radius,
+                            from_surface: true,
                         });
                     }
                 }
@@ -466,6 +506,7 @@ impl TechniqueVolPrimitives {
                                 phase_function: PhaseFunction::Isotropic(),
                                 radiance: flux,
                                 radius,
+                                from_surface: false,
                             });
                         }
                     }
@@ -483,6 +524,7 @@ impl TechniqueVolPrimitives {
                             phase_function: PhaseFunction::Isotropic(),
                             radiance: flux,
                             radius,
+                            from_surface: true,
                         });
                     }
                 }
@@ -546,10 +588,12 @@ impl TechniqueVolPrimitives {
 
 impl Integrator for IntegratorVolPrimitives {
     fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+        // FIXME: The max depth might be wrong in our integrator
         match self.primitives {
             VolPrimitivies::BRE => info!("Render with Beam radiance estimate"),
             VolPrimitivies::Beams => info!("Render with Photon beams"),
             VolPrimitivies::Planes => info!("Render with Photon planes"),
+            VolPrimitivies::VRL => info!("Render with VRL"),
         }
 
         info!("Generating the light paths...");
@@ -582,7 +626,7 @@ impl Integrator for IntegratorVolPrimitives {
                 &mut technique,
             );
             match self.primitives {
-                VolPrimitivies::Beams => {
+                VolPrimitivies::Beams | VolPrimitivies::VRL => {
                     technique.convert_beams(
                         false,
                         &path,
@@ -624,11 +668,26 @@ impl Integrator for IntegratorVolPrimitives {
             nb_path_shot += 1;
         }
 
+        // Special case with VRL:
+        // We will split the photon beams into two groups :
+        //  - One from the surface (single), which be render by photon beams
+        //  - One from the volume (multiple), which be render by VRL
+        let (mut beams, vrls, avg_radiance_vrl) = match self.primitives {
+            VolPrimitivies::VRL => {
+                let (beams, vrl): (Vec<PhotonBeam>, Vec<PhotonBeam>) =
+                    beams.into_iter().partition(|b| b.from_surface);
+                let avg_vrl_rad =
+                    vrl.iter().map(|v| v.radiance.channel_max()).sum::<f32>() / vrl.len() as f32;
+                (beams, Some(vrl), avg_vrl_rad)
+            }
+            _ => (beams, None, 0.0),
+        };
+
         // Here we will cut the number of beams into subbeams
         // this will improve the performance of the BVH gathering
         // Note that for the moment it works only for short query.
         match self.primitives {
-            VolPrimitivies::Beams | VolPrimitivies::Planes => {
+            VolPrimitivies::Beams | VolPrimitivies::Planes | VolPrimitivies::VRL => {
                 const SPLIT: usize = 5; // TODO: Make as parameter if sensitive
                 let avg_split =
                     beams.iter().map(|b| b.length).sum::<f32>() / (beams.len() * SPLIT) as f32;
@@ -654,6 +713,7 @@ impl Integrator for IntegratorVolPrimitives {
                             phase_function: b.phase_function.clone(), // FIXME: Might be wrong when deadling with spatially varying phase functions
                             radiance: b.radiance,
                             radius: b.radius,
+                            from_surface: b.from_surface,
                         })
                     }
                 }
@@ -666,7 +726,9 @@ impl Integrator for IntegratorVolPrimitives {
         // Note that the radius here is fixed
         info!("Construct BVH...");
         let (bvh_photon, bvh_beams, bvh_planes) = match self.primitives {
-            VolPrimitivies::Beams => (None, Some(BHVAccel::create(beams)), None),
+            VolPrimitivies::Beams | VolPrimitivies::VRL => {
+                (None, Some(BHVAccel::create(beams)), None)
+            }
             VolPrimitivies::BRE => (Some(BHVAccel::create(photons)), None, None),
             VolPrimitivies::Planes => (
                 None,
@@ -716,6 +778,26 @@ impl Integrator for IntegratorVolPrimitives {
                                             * norm_photon;
                                     }
                                 }
+                                VolPrimitivies::VRL => {
+                                    // Form surfaces only
+                                    let bvh = bvh_beams.as_ref().unwrap();
+                                    for (beam_its, b_id) in bvh.gather(ray) {
+                                        c += bvh.elements[b_id].contribute(&ray, m, beam_its)
+                                            * norm_photon;
+                                    }
+                                    // Multiple-scattering
+                                    for vrl in vrls.as_ref().unwrap() {
+                                        // TODO: Hard-coded RR (1 VRL for 100 beams)
+                                        let rr = ((vrl.radiance.channel_max() / avg_radiance_vrl)
+                                            * 0.01)
+                                            .min(1.0);
+                                        if rr >= sampler.next() {
+                                            c += (vrl.contribute_vrl(&ray, m, accel, &mut sampler)
+                                                / rr)
+                                                * norm_photon;
+                                        }
+                                    }
+                                }
                                 VolPrimitivies::BRE => {
                                     let bvh = bvh_photon.as_ref().unwrap();
                                     for (dist, p_id) in bvh.gather(ray) {
@@ -737,7 +819,6 @@ impl Integrator for IntegratorVolPrimitives {
                                     }
                                 }
                             }
-
                             im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_owned());
                         }
                     }
