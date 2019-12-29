@@ -20,6 +20,7 @@ USAGE:
 FLAGS:
     -d               debug output
     -h, --help       Prints help information
+    -m               add a test medium
     -V, --version    Prints version information
 
 OPTIONS:
@@ -30,23 +31,24 @@ OPTIONS:
     -o <output>             output image file
 
 ARGS:
-    <scene>    JSON file description
+    <scene>    JSON/PBRT file description
 
 SUBCOMMANDS:
-    ao                ambiant occlusion
-    direct            direct lighting
-    gradient-path     gradient path tracing
-    help              Prints this message or the help of the given subcommand(s)
-    light-explicit    light tracing with explict light path construction
-    path              path tracing
-    path-explicit     path tracing with explict light path construction
-    pssmlt            path tracing with MCMC sampling
-    vpl               brute force virtual point light integrator
+    ao                        ambiant occlusion
+    direct                    direct lighting
+    gradient-path             gradient path tracing
+    gradient-path-explicit    gradient path tracing
+    help                      Prints this message or the help of the given subcommand(s)
+    light                     light tracing generating path from the lights
+    path                      path tracing generating path from the sensor
+    pssmlt                    path tracing with MCMC sampling
+    vol_primitives            BRE/Beam/Planes estimators
+    vpl                       brute force virtual point light integrator
 ```
 
 For example, to use path tracing using 128 spp:
 ```
-$ cargo run --release -- -n 128 -o path.pfm ./data/cbox.json path
+$ cargo run --release --features="pbrt openexr" -- -a inf -n 128 -o path.pfm ./data/cbox.json path
 ```
 
 ## Dependencies
@@ -61,18 +63,21 @@ Optionals :
 ## Features
 
 For now, these are the following features implemented:
-- Integrators: 
+- Integrators (most of them using a common graph to represent the light transport): 
     * Ambiant occlusion
     * Direct with MIS
     * Path-tracing with NEE
     * Gradient-path tracing [1]
     * Primary-sample space MLT [2]
-- Explicit Integrators: Uses a graph to represent the light transport
-    * Path tracing with NEE (*2 slower~ than non-explicit one)
     * Light tracing
     * Virtual Point Light
+- Special volumetric integrators (via vol_primitives):
+    * Beam radiance estimate (2D kernel) [3]
+    * Photon beams (1D kernel) [4]
+    * [*] Photon planes (0D kernel) [5]
+    * [*] Naive Virtual ray light [6]
 - Filtering: 
-    * Image-space control variate with uniform and variance-based weights [3]
+    * Image-space control variate with uniform and variance-based weights [7]
 - Materials: 
     * Diffuse
     * Phong lobe
@@ -80,6 +85,8 @@ For now, these are the following features implemented:
     * A subset of PBRT materials (imported from [rs_pbrt](https://github.com/wahn/rs_pbrt))
 - Emitters: 
     * Multiple tri-mesh lights support
+
+Techniques with [*] might contains bug or are incomplete (only naive implementation)
 
 ## Rendering
 
@@ -109,6 +116,10 @@ This code has been inspired from several repositories:
 - mitsuba: https://github.com/mitsuba-renderer/mitsuba
 
 ## References
-[1] Kettunen, Markus, et al. "Gradient-domain path tracing." ACM Transactions on Graphics (TOG) (2015) \
-[2] Kelemen, Csaba, et al. "A simple and robust mutation strategy for the metropolis light transport algorithm." Computer Graphics Forum (2002) \
-[3] Rousselle, Fabrice, et al. "Image-space control variates for rendering." ACM Transactions on Graphics (TOG) (2016) 
+[1] Kettunen et al. "Gradient-domain path tracing." (SIGGRAPH 2015) \
+[2] Csaba et al. "A simple and robust mutation strategy for the metropolis light transport algorithm. (CGF 2002) \
+[3] Jarosz et al. "The beam radiance estimate for volumetric photon mapping" (EG 2008) \
+[4] Jarosz et al. "Progressive photon beams" (SIGGRAPH Asia 2011) \
+[5] Bitterli and Jarosz "Beyond points and beams: Higher-dimensional photon samples for volumetric light transport" (SIGGRAPH 2017) \
+[6] Novak et al. "Virtual ray lights for rendering scenes with participating media" (SIGGRAPH 2012) \
+[7] Rousselle et al. "Image-space control variates for rendering." ACM Transactions on Graphics (SIGGRAPH 2016)
