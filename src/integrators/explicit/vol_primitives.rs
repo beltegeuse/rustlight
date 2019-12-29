@@ -7,10 +7,16 @@ use crate::structure::AABB;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 
+pub enum VolPrimitivies {
+    BRE,
+    Beams,
+    Planes,
+}
+
 pub struct IntegratorVolPrimitives {
     pub nb_primitive: usize,
     pub max_depth: Option<u32>,
-    pub beams: bool,
+    pub primitives: VolPrimitivies,
 }
 
 pub struct TechniqueVolPrimitives {
@@ -94,11 +100,31 @@ impl BVHElement<f32> for Photon {
         }
     }
 }
+impl Photon {
+    pub fn contribute(&self, ray: &Ray, m: &HomogenousVolume, dist: f32) -> Color {
+        // Evaluate the transmittance
+        let transmittance = {
+            let mut ray_tr = Ray::new(ray.o, ray.d);
+            ray_tr.tfar = dist;
+            m.transmittance(ray_tr)
+        };
+
+        // Evaluate the phase function
+        // FIXME: Check the direction of d_in
+        let phase_func = self.phase_function.eval(&(-ray.d), &self.d_in);
+
+        // Kernel (2D in case of BRE)
+        let weight = 1.0 / (std::f32::consts::PI * self.radius.powi(2));
+
+        // Sum all values
+        self.radiance * transmittance * phase_func * weight
+    }
+}
 
 // ------------ Beam representation
 // TODO: Short beam representation
 // Note that this same structure will be used
-// to split the photon beams, to accelerate the 
+// to split the photon beams, to accelerate the
 // BVH intersection.
 struct PhotonBeam {
     o: Point3<f32>,
@@ -112,7 +138,7 @@ struct PhotonBeamIts {
     u: f32, // Kernel
     v: f32, // Beam
     w: f32, // Camera
-    sin_theta: f32
+    sin_theta: f32,
 }
 impl BVHElement<PhotonBeamIts> for PhotonBeam {
     // Used to build AABB hierachy
@@ -139,7 +165,7 @@ impl BVHElement<PhotonBeamIts> for PhotonBeam {
 
         // Square of the sine between the two lines (||cross(d1, d2)|| = sinTheta).
         let sin_theta_sqr = d1d2c.magnitude2();
-        
+
         // Lines too far apart.
         let ad = (self.o - r.o).dot(d1d2c);
         if ad * ad >= (self.radius * self.radius) * sin_theta_sqr {
@@ -152,19 +178,19 @@ impl BVHElement<PhotonBeamIts> for PhotonBeam {
         let d1d2_sqr_minus1 = d1d2_sqr - 1.0;
 
         // Parallel lines?
-        if  d1d2_sqr_minus1 < 1e-5 && d1d2_sqr_minus1 > -1e-5 {
+        if d1d2_sqr_minus1 < 1e-5 && d1d2_sqr_minus1 > -1e-5 {
             return None;
         }
         let d1o1 = r.d.dot(r.o.to_vec());
         let d1o2 = r.d.dot(self.o.to_vec());
-        
+
         // Out of range on ray 1.
-        let w = (d1o1 - d1o2 - d1d2 * (self.d.dot(r.o.to_vec()) - self.d.dot(self.o.to_vec()))) / d1d2_sqr_minus1;
+        let w = (d1o1 - d1o2 - d1d2 * (self.d.dot(r.o.to_vec()) - self.d.dot(self.o.to_vec())))
+            / d1d2_sqr_minus1;
         if w <= r.tnear || w >= r.tfar {
             return None;
         }
 
-    
         // Out of range on ray 2.
         let v = (w + d1o1 - d1o2) / d1d2;
         if v <= 0.0 || v >= self.length || !v.is_finite() {
@@ -173,102 +199,308 @@ impl BVHElement<PhotonBeamIts> for PhotonBeam {
 
         let sin_theta = sin_theta_sqr.sqrt();
         let u = ad.abs() / sin_theta;
-        Some(PhotonBeamIts {
-            u, v, w, sin_theta
-        })
+        Some(PhotonBeamIts { u, v, w, sin_theta })
+    }
+}
+impl PhotonBeam {
+    pub fn contribute(&self, ray: &Ray, m: &HomogenousVolume, beam_its: PhotonBeamIts) -> Color {
+        // Evaluate the transmittance
+        let transmittance = {
+            let mut ray_tr = Ray::new(ray.o, ray.d);
+            ray_tr.tfar = beam_its.w;
+            m.transmittance(ray_tr)
+        };
+
+        // Evaluate the phase function
+        // Note that we need to add sigma_s here, as we create a new vertex
+        let phase_func = m.sigma_s * self.phase_function.eval(&(-ray.d), &(-self.d));
+
+        // Jacobian * Kernel
+        let weight = (1.0 / beam_its.sin_theta) * (0.5 / self.radius);
+        self.radiance * transmittance * phase_func * weight
     }
 }
 
+// ------------ Plane representation
+#[derive(Debug)]
+struct PhotonPlane {
+    o: Point3<f32>,
+    d0: Vector3<f32>,
+    d1: Vector3<f32>,
+    length0: f32,
+    length1: f32,
+    phase_function: PhaseFunction,
+    radiance: Color,
+}
+#[derive(Debug)]
+struct PhotonPlaneIts {
+    t_cam: f32,
+    t0: f32,
+    t1: f32,
+    inv_det: f32,
+}
+impl BVHElement<PhotonPlaneIts> for PhotonPlane {
+    fn aabb(&self) -> AABB {
+        let p0 = self.o + self.d0 * self.length0;
+        let p1 = self.o + self.d1 * self.length1;
+        let p2 = p0 + self.d1 * self.length1;
+        let mut aabb = AABB::default();
+        aabb = aabb.union_vec(&self.o.to_vec());
+        aabb = aabb.union_vec(&p0.to_vec());
+        aabb = aabb.union_vec(&p1.to_vec());
+        aabb = aabb.union_vec(&p2.to_vec());
+        aabb
+    }
+    // Used to construct AABB (by sorting elements)
+    fn position(&self) -> Point3<f32> {
+        // Middle of the photon plane
+        // Note that it might be not ideal....
+        self.o + self.d0 * self.length0 * 0.5 + self.d1 * self.length1 * 0.5
+    }
+    fn intersection(&self, r: &Ray) -> Option<PhotonPlaneIts> {
+        // Vector e0 = _w0 * _length0;
+        // Vector e1 = _w1 * _length1;
+        let e0 = self.d0 * self.length0;
+        let e1 = self.d1 * self.length1;
 
+        // Vector P = cross(ray_.d, e1);
+        // float det = dot(e0, P);
+        // if (std::abs(det) < 1e-5f)
+        // return false;
+        let p = r.d.cross(e1);
+        let det = e0.dot(p);
+        if det.abs() < 1e-5 {
+            return None;
+        }
+
+        // invDet = 1.0f / det;
+        // Vector T = ray_.o - _ori;
+        // t0 = dot(T, P) * invDet;
+        // if (t0 < 0.0f || t0 > 1.0f)
+        // return false;
+        let inv_det = 1.0 / det;
+        let t = r.o - self.o;
+        let t0 = t.dot(p) * inv_det;
+        if t0 < 0.0 || t0 > 1.0 {
+            return None;
+        }
+
+        // Vector Q = cross(T, e0);
+        // t1 = dot(ray_.d, Q) * invDet;
+        // if (t1 < 0.0f || t1 > 1.0f)
+        // return false;
+        let q = t.cross(e0);
+        let t1 = r.d.dot(q) * inv_det;
+        if t1 < 0.0 || t1 > 1.0 {
+            return None;
+        }
+
+        // tCam = dot(e1, Q) * invDet;
+        // if (tCam <= ray_.mint || tCam >= ray_.maxt)
+        // return false;
+        let t_cam = e1.dot(q) * inv_det;
+        if t_cam <= r.tnear || t_cam >= r.tfar {
+            return None;
+        }
+
+        // Scale to the correct distance
+        // In order to use correctly transmittance sampling
+        // t1 *= _length1;
+        // t0 *= _length0;
+        let t1 = t1 * self.length1;
+        let t0 = t0 * self.length0;
+
+        Some(PhotonPlaneIts {
+            t_cam,
+            t0,
+            t1,
+            inv_det,
+        })
+    }
+}
+impl PhotonPlane {
+    pub fn contribute(
+        &self,
+        accel: &dyn Acceleration,
+        ray: &Ray,
+        m: &HomogenousVolume,
+        plane_its: PhotonPlaneIts,
+    ) -> Color {
+        let p_its = ray.o + ray.d * plane_its.t_cam;
+        let p0 = self.o + self.d0 * plane_its.t0;
+
+        // Check visibility
+        if !accel.visible(&p0, &p_its) {
+            return Color::zero();
+        }
+
+        // Evaluate transmittance from camera
+        // Note that the other transmittance on the photon plane
+        // Do not need to be evaluate as its is a short-short implementation
+        let transmittance = {
+            let mut ray_tr = Ray::new(ray.o, ray.d);
+            ray_tr.tfar = plane_its.t_cam;
+            m.transmittance(ray_tr)
+        };
+
+        // Phase functions
+        // Note that only the phase function need to be evaluated at the intersection point
+        // The rest of the intersections are importance sampled (so cancel out)
+        // Only the sigma_s remains, so we add them at the end...
+        let phase_func = self.phase_function.eval(&(-ray.d), &(-self.d1));
+
+        // Jacobian from the paper
+        // TODO: Normally it is contain inside the intersection
+        let inv_jacobian = 1.0 / self.d0.dot(self.d1.cross(-ray.d)).abs();
+
+        // Note that we do not have kernel terns as it is a zero kernel size...
+        self.radiance * phase_func * m.sigma_s * m.sigma_s * transmittance * inv_jacobian
+    }
+}
 
 impl TechniqueVolPrimitives {
+    fn convert_planes<'scene>(
+        &self,
+        path: &Path<'scene, '_>,
+        scene: &'scene Scene,
+        vertex_id: VertexID,
+        planes: &mut Vec<PhotonPlane>,
+        mut flux: Color,
+    ) {
+        match path.vertex(vertex_id) {
+            Vertex::Volume(ref v) => {
+                for edge in &v.edge_out {
+                    let edge = path.edge(*edge);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        // Need to check two things:
+                        //  1) There is one extra edge
+                        //  2) The next vertex is not on the surface
+                        if !path.vertex(vertex_next_id).on_surface()
+                            && path.have_next_vertices(vertex_next_id)
+                        {
+                            // TODO: Note that we have only one edge on the next path...
+                            assert_eq!(path.next_vertices(vertex_next_id).len(), 1);
+                            let (next_edge_id, _next_next_vertex_id) =
+                                path.next_vertices(vertex_next_id)[0];
+                            let next_edge = path.edge(next_edge_id);
+                            planes.push(PhotonPlane {
+                                o: v.pos,
+                                d0: edge.d,
+                                d1: next_edge.d,
+                                // We could used edge.dist as continued_t and the real distance is the same
+                                length0: edge.sampled_distance.as_ref().unwrap().continued_t,
+                                length1: next_edge.sampled_distance.as_ref().unwrap().continued_t,
+                                phase_function: PhaseFunction::Isotropic(),
+                                radiance: flux,
+                            });
+                        }
+                    }
+                }
+            }
+            Vertex::Light(ref _v) => {
+                // FIXME
+                flux *= *self.flux.as_ref().unwrap();
+            }
+            _ => {
+                // Do nothing except for the medium
+            }
+        }
+
+        for (edge_id, next_vertex_id) in path.next_vertices(vertex_id) {
+            let edge = path.edge(edge_id);
+            self.convert_planes(
+                path,
+                scene,
+                next_vertex_id,
+                planes,
+                flux * edge.weight * edge.rr_weight,
+            );
+        }
+    }
+
     fn convert_beams<'scene>(
         &self,
+        only_from_surface: bool,
         path: &Path<'scene, '_>,
         scene: &'scene Scene,
         vertex_id: VertexID,
         beams: &mut Vec<PhotonBeam>,
         radius: f32,
-        flux: Color,
+        mut flux: Color,
     ) {
-        let m = scene.volume.as_ref().unwrap();
         match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
-                // Continue to bounce...
                 for edge in &v.edge_out {
                     let edge = path.edge(*edge);
-                    if let Some(vertex_next_id) = edge.vertices.1 {
+                    if let Some(_vertex_next_id) = edge.vertices.1 {
+                        // Always push this as it come from surfaces
                         beams.push(PhotonBeam {
                             o: v.its.p,
                             d: edge.d,
                             length: edge.dist.unwrap(),
                             phase_function: PhaseFunction::Isotropic(),
-                            radiance: flux * edge.weight, 
+                            radiance: flux,
                             radius,
                         });
-
-                        self.convert_beams(
-                            path,
-                            scene,
-                            vertex_next_id,
-                            beams,
-                            radius,
-                            flux * edge.weight * edge.rr_weight,
-                        );
                     }
                 }
             }
             Vertex::Volume(ref v) => {
-                // Continue to bounce...
                 for edge in &v.edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
-                        beams.push(PhotonBeam {
-                            o: v.pos,
-                            d: edge.d,
-                            length: edge.dist.unwrap(),
-                            phase_function: PhaseFunction::Isotropic(),
-                            radiance: flux * edge.weight, 
-                            radius,
-                        });
-
-                        self.convert_beams(
-                            path,
-                            scene,
-                            vertex_next_id,
-                            beams,
-                            radius,
-                            flux * edge.weight * edge.rr_weight,
-                        );
+                        // Need to check two things (inverse)
+                        //  1) There is one extra edge
+                        //  2) The next vertex is not on the surface
+                        let push_beam = if only_from_surface {
+                            path.vertex(vertex_next_id).on_surface()
+                                || !path.have_next_vertices(vertex_next_id)
+                        } else {
+                            true // Push all the vertices
+                        };
+                        if push_beam {
+                            beams.push(PhotonBeam {
+                                o: v.pos,
+                                d: edge.d,
+                                length: edge.dist.unwrap(),
+                                phase_function: PhaseFunction::Isotropic(),
+                                radiance: flux,
+                                radius,
+                            });
+                        }
                     }
                 }
             }
             Vertex::Light(ref v) => {
-                let flux = *self.flux.as_ref().unwrap();
+                flux *= *self.flux.as_ref().unwrap();
                 if let Some(edge) = v.edge_out {
                     let edge = path.edge(edge);
-                    if let Some(next_vertex_id) = edge.vertices.1 {
+                    if let Some(_next_vertex_id) = edge.vertices.1 {
                         beams.push(PhotonBeam {
                             o: v.pos,
                             d: edge.d,
                             length: edge.dist.unwrap(),
                             phase_function: PhaseFunction::Isotropic(),
-                            radiance: flux * edge.weight, 
+                            radiance: flux,
                             radius,
                         });
-
-                        self.convert_beams(
-                            path,
-                            scene,
-                            next_vertex_id,
-                            beams,
-                            radius,
-                            edge.weight * flux * edge.rr_weight,
-                        );
                     }
                 }
             }
             Vertex::Sensor(ref _v) => {}
+        }
+
+        for (edge_id, next_vertex_id) in path.next_vertices(vertex_id) {
+            let edge = path.edge(edge_id);
+            self.convert_beams(
+                only_from_surface,
+                path,
+                scene,
+                next_vertex_id,
+                beams,
+                radius,
+                flux * edge.weight * edge.rr_weight,
+            );
         }
     }
 
@@ -279,25 +511,10 @@ impl TechniqueVolPrimitives {
         vertex_id: VertexID,
         photons: &mut Vec<Photon>,
         radius: f32,
-        flux: Color,
+        mut flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
-                // Continue to bounce...
-                for edge in &v.edge_out {
-                    let edge = path.edge(*edge);
-                    if let Some(vertex_next_id) = edge.vertices.1 {
-                        self.convert_photons(
-                            path,
-                            scene,
-                            vertex_next_id,
-                            photons,
-                            radius,
-                            flux * edge.weight * edge.rr_weight,
-                        );
-                    }
-                }
-            }
+            Vertex::Surface(ref _v) => {}
             Vertex::Volume(ref v) => {
                 photons.push(Photon {
                     pos: v.pos,
@@ -306,57 +523,48 @@ impl TechniqueVolPrimitives {
                     radiance: flux,
                     radius,
                 });
-
-                // Continue to bounce...
-                for edge in &v.edge_out {
-                    let edge = path.edge(*edge);
-                    if let Some(vertex_next_id) = edge.vertices.1 {
-                        self.convert_photons(
-                            path,
-                            scene,
-                            vertex_next_id,
-                            photons,
-                            radius,
-                            flux * edge.weight * edge.rr_weight,
-                        );
-                    }
-                }
             }
-            Vertex::Light(ref v) => {
-                let flux = *self.flux.as_ref().unwrap();
-                if let Some(edge) = v.edge_out {
-                    let edge = path.edge(edge);
-                    if let Some(next_vertex_id) = edge.vertices.1 {
-                        self.convert_photons(
-                            path,
-                            scene,
-                            next_vertex_id,
-                            photons,
-                            radius,
-                            edge.weight * flux * edge.rr_weight,
-                        );
-                    }
-                }
+            Vertex::Light(ref _v) => {
+                flux *= *self.flux.as_ref().unwrap();
             }
             Vertex::Sensor(ref _v) => {}
+        }
+
+        for (edge_id, next_vertex_id) in path.next_vertices(vertex_id) {
+            let edge = path.edge(edge_id);
+            self.convert_photons(
+                path,
+                scene,
+                next_vertex_id,
+                photons,
+                radius,
+                flux * edge.weight * edge.rr_weight,
+            );
         }
     }
 }
 
 impl Integrator for IntegratorVolPrimitives {
     fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
-        if self.beams {
-            info!("Using photon beams to render PM");
+        match self.primitives {
+            VolPrimitivies::BRE => info!("Render with Beam radiance estimate"),
+            VolPrimitivies::Beams => info!("Render with Photon beams"),
+            VolPrimitivies::Planes => info!("Render with Photon planes"),
         }
+
         info!("Generating the light paths...");
         let buffernames = vec![String::from("primal")];
         let mut sampler = samplers::independent::IndependentSampler::default();
         let mut nb_path_shot = 0;
+
+        // Primitives vectors
         let mut photons = vec![];
         let mut beams = vec![];
+        let mut planes = vec![];
 
         let emitters = scene.emitters_sampler();
-        while true {
+        let mut still_shoot = true;
+        while still_shoot {
             let samplings: Vec<Box<dyn SamplingStrategy>> =
                 vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
             let mut technique = TechniqueVolPrimitives {
@@ -373,16 +581,45 @@ impl Integrator for IntegratorVolPrimitives {
                 &mut sampler,
                 &mut technique,
             );
-            if self.beams {
-                technique.convert_beams(&path, scene, root[0].0, &mut beams, 0.001, Color::one());
-                if beams.len() >= self.nb_primitive as usize {
-                    break;
-                } 
-            } else {
-                technique.convert_photons(&path, scene, root[0].0, &mut photons, 0.001, Color::one());
-                if photons.len() >= self.nb_primitive as usize {
-                    break;
-                } 
+            match self.primitives {
+                VolPrimitivies::Beams => {
+                    technique.convert_beams(
+                        false,
+                        &path,
+                        scene,
+                        root[0].0,
+                        &mut beams,
+                        0.001,
+                        Color::one(),
+                    );
+                    still_shoot = beams.len() < self.nb_primitive as usize;
+                }
+                VolPrimitivies::BRE => {
+                    technique.convert_photons(
+                        &path,
+                        scene,
+                        root[0].0,
+                        &mut photons,
+                        0.001,
+                        Color::one(),
+                    );
+                    still_shoot = photons.len() >= self.nb_primitive as usize;
+                }
+                VolPrimitivies::Planes => {
+                    // Generate beams from surfaces
+                    technique.convert_beams(
+                        true,
+                        &path,
+                        scene,
+                        root[0].0,
+                        &mut beams,
+                        0.001,
+                        Color::one(),
+                    );
+                    // Generate planes
+                    technique.convert_planes(&path, scene, root[0].0, &mut planes, Color::one());
+                    still_shoot = planes.len() < self.nb_primitive as usize;
+                }
             }
             nb_path_shot += 1;
         }
@@ -390,38 +627,52 @@ impl Integrator for IntegratorVolPrimitives {
         // Here we will cut the number of beams into subbeams
         // this will improve the performance of the BVH gathering
         // Note that for the moment it works only for short query.
-        if self.beams {
-            const SPLIT: usize = 5; // TODO: Make as parameter if sensitive
-            let avg_split = beams.iter().map(|b| b.length).sum::<f32>() / (beams.len() * SPLIT) as f32;
-            let nb_new_beams = beams.iter().map(|b| (b.length / avg_split).ceil() as u32).sum::<u32>();
-            info!("Splitting beams: {} avg size | {} new beams", avg_split, nb_new_beams);
+        match self.primitives {
+            VolPrimitivies::Beams | VolPrimitivies::Planes => {
+                const SPLIT: usize = 5; // TODO: Make as parameter if sensitive
+                let avg_split =
+                    beams.iter().map(|b| b.length).sum::<f32>() / (beams.len() * SPLIT) as f32;
+                let nb_new_beams = beams
+                    .iter()
+                    .map(|b| (b.length / avg_split).ceil() as u32)
+                    .sum::<u32>();
+                info!(
+                    "Splitting beams: {} avg size | {} new beams",
+                    avg_split, nb_new_beams
+                );
 
-            let mut new_beams = vec![];
-            new_beams.reserve(nb_new_beams as usize);
-            for b in beams {
-                let number_split = (b.length / avg_split).ceil() as u32; 
-                let new_length = b.length / number_split as f32;
-                for i in 0..number_split {
-                    new_beams.push(PhotonBeam {
-                        o: b.o + b.d*(i as f32)*new_length,
-                        d: b.d,
-                        length: new_length,
-                        phase_function: b.phase_function.clone(), // FIXME: Might be wrong when deadling with spatially varying phase functions
-                        radiance: b.radiance.clone(),
-                        radius: b.radius,
-                    })
+                let mut new_beams = vec![];
+                new_beams.reserve(nb_new_beams as usize);
+                for b in beams {
+                    let number_split = (b.length / avg_split).ceil() as u32;
+                    let new_length = b.length / number_split as f32;
+                    for i in 0..number_split {
+                        new_beams.push(PhotonBeam {
+                            o: b.o + b.d * (i as f32) * new_length,
+                            d: b.d,
+                            length: new_length,
+                            phase_function: b.phase_function.clone(), // FIXME: Might be wrong when deadling with spatially varying phase functions
+                            radiance: b.radiance,
+                            radius: b.radius,
+                        })
+                    }
                 }
+                beams = new_beams;
             }
-            beams = new_beams;
+            _ => {}
         }
 
         // Build acceleration structure
         // Note that the radius here is fixed
         info!("Construct BVH...");
-        let (bvh_photon, bvh_beams) = if self.beams {
-            (None, Some(BHVAccel::create(beams)))
-        } else {
-            (Some(BHVAccel::create(photons)), None)
+        let (bvh_photon, bvh_beams, bvh_planes) = match self.primitives {
+            VolPrimitivies::Beams => (None, Some(BHVAccel::create(beams)), None),
+            VolPrimitivies::BRE => (Some(BHVAccel::create(photons)), None, None),
+            VolPrimitivies::Planes => (
+                None,
+                Some(BHVAccel::create(beams)),
+                Some(BHVAccel::create(planes)),
+            ),
         };
 
         // Generate the image block to get VPL efficiently
@@ -457,56 +708,33 @@ impl Integrator for IntegratorVolPrimitives {
                             let mut c = Color::value(0.0);
 
                             let m = scene.volume.as_ref().unwrap();
-                            if self.beams {
-                                let bvh = bvh_beams.as_ref().unwrap();
-                                for(beam_its, b_id) in bvh.gather(ray) {
-                                    let beam: &PhotonBeam = &bvh.elements[b_id];
-
-                                    // Evaluate the transmittance
-                                    let transmittance = {
-                                        let mut ray_tr = Ray::new(ray.o, ray.d);
-                                        ray_tr.tfar = beam_its.w;
-                                        m.transmittance(ray_tr)
-                                    };
-
-                                    // Evaluate the phase function
-                                    // Note that we need to add sigma_s here, as we create a new vertex
-                                    let phase_func = m.sigma_s * beam.phase_function.eval(&(-ray.d), &(-beam.d));
-
-                                    // Jacobian * Kernel
-                                    let weight = (1.0 / beam_its.sin_theta) * (0.5 / beam.radius);
-                                    c += beam.radiance
-                                     * transmittance
-                                     * phase_func
-                                     * weight
-                                     * norm_photon;
+                            match self.primitives {
+                                VolPrimitivies::Beams => {
+                                    let bvh = bvh_beams.as_ref().unwrap();
+                                    for (beam_its, b_id) in bvh.gather(ray) {
+                                        c += bvh.elements[b_id].contribute(&ray, m, beam_its)
+                                            * norm_photon;
+                                    }
                                 }
-                            } else {
-                                let bvh = bvh_photon.as_ref().unwrap();
-                                for (dist, p_id) in bvh.gather(ray) {
-                                    let photon: &Photon = &bvh.elements[p_id];
-    
-                                    // Evaluate the transmittance
-                                    let transmittance = {
-                                        let mut ray_tr = Ray::new(ray.o, ray.d);
-                                        ray_tr.tfar = dist;
-                                        m.transmittance(ray_tr)
-                                    };
-    
-                                    // Evaluate the phase function
-                                    // FIXME: Check the direction of d_in
-                                    let phase_func =
-                                        photon.phase_function.eval(&(-ray.d), &photon.d_in);
-    
-                                    // Kernel (2D in case of BRE)
-                                    let weight = 1.0 / (std::f32::consts::PI * photon.radius.powi(2));
-    
-                                    // Sum all values
-                                    c += photon.radiance
-                                        * transmittance
-                                        * phase_func
-                                        * weight
-                                        * norm_photon;
+                                VolPrimitivies::BRE => {
+                                    let bvh = bvh_photon.as_ref().unwrap();
+                                    for (dist, p_id) in bvh.gather(ray) {
+                                        c += bvh.elements[p_id].contribute(&ray, m, dist)
+                                            * norm_photon;
+                                    }
+                                }
+                                VolPrimitivies::Planes => {
+                                    let bvh = bvh_beams.as_ref().unwrap();
+                                    for (beam_its, b_id) in bvh.gather(ray) {
+                                        c += bvh.elements[b_id].contribute(&ray, m, beam_its)
+                                            * norm_photon;
+                                    }
+                                    let bvh = bvh_planes.as_ref().unwrap();
+                                    for (plane_its, b_id) in bvh.gather(ray) {
+                                        c += bvh.elements[b_id]
+                                            .contribute(accel, &ray, m, plane_its)
+                                            * norm_photon;
+                                    }
                                 }
                             }
 

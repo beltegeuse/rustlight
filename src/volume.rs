@@ -9,7 +9,7 @@ pub struct SampledPhase {
     pub pdf: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PhaseFunction {
     Isotropic(),
     HenyeyGreenstein(f32),

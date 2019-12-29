@@ -166,7 +166,7 @@ fn main() {
             )
             .subcommand(
                 SubCommand::with_name("vol_primitives")
-                    .about("BRE/Photon beam estimators")
+                    .about("BRE/Beam/Planes estimators")
                     .arg(&max_arg)
                     .arg(
                         Arg::with_name("nb_primitive")
@@ -175,8 +175,10 @@ fn main() {
                             .default_value("128"),
                     )
                     .arg(
-                        Arg::with_name("beam")
-                            .short("b"),
+                        Arg::with_name("primitives")
+                            .takes_value(true)
+                            .short("p")
+                            .default_value("bre"),
                     ),
             )
             .subcommand(
@@ -405,11 +407,21 @@ fn main() {
         ("vol_primitives", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
+            let primitives = value_t_or_exit!(m.value_of("primitives"), String);
+            let primitives = match primitives.as_ref() {
+                "bre" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::BRE,
+                "beam" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Beams,
+                "plane" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Planes,
+                _ => panic!(
+                    "{} is not a correct primitive (bre, beam, plane)",
+                    primitives
+                ),
+            };
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::vol_primitives::IntegratorVolPrimitives {
                     nb_primitive,
                     max_depth,
-                    beams: m.is_present("beam"),
+                    primitives,
                 },
             ))
         }

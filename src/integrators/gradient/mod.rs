@@ -57,7 +57,7 @@ pub struct BufferIDGradient {
 }
 pub fn generate_img_blocks_gradient(
     scene: &Scene,
-    recons: &Box<dyn PoissonReconstruction + Sync>,
+    recons: &(dyn PoissonReconstruction + Sync),
 ) -> (
     usize,
     Vec<String>,

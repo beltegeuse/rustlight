@@ -5,6 +5,7 @@
 #![allow(clippy::excessive_precision)]
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::many_single_char_names)]
+#![allow(clippy::too_many_arguments)]
 
 // For getting low machine information
 extern crate byteorder;

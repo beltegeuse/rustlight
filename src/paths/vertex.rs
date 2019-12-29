@@ -255,7 +255,14 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
             Vertex::Volume(ref v) => v.pos,
         }
     }
-
+    pub fn on_surface(&self) -> bool {
+        match *self {
+            Vertex::Surface(ref _v) => true,
+            Vertex::Sensor(ref _v) => false,
+            Vertex::Light(ref _v) => true,
+            Vertex::Volume(ref _v) => false,
+        }
+    }
     pub fn on_light_source(&self) -> bool {
         match *self {
             Vertex::Surface(ref v) => !v.its.mesh.emission.is_zero(),
@@ -320,19 +327,45 @@ impl<'scene, 'emitter> Path<'scene, 'emitter> {
     pub fn edge_mut(&mut self, id: EdgeID) -> &mut Edge {
         &mut self.edges[id.0]
     }
-
-    // pub fn next_vertex(&self) -> Vec<Rc<VertexPtr<'a>>> {
-    //     match *self {
-    //         Vertex::Sensor(ref v) => match v.edge_out.as_ref() {
-    //             None => vec![],
-    //             Some(ref e) => e
-    //                 .borrow()
-    //                 .vertices
-    //                 .1
-    //                 .as_ref()
-    //                 .map_or(vec![], |v| vec![v.clone()]),
-    //         },
-    //         _ => unimplemented!(),
-    //     }
-    // }
+    pub fn have_next_vertices(&self, vertex_id: VertexID) -> bool {
+        !self.next_vertices(vertex_id).is_empty()
+    }
+    pub fn next_vertices(&self, vertex_id: VertexID) -> Vec<(EdgeID, VertexID)> {
+        let mut next_vertices = vec![];
+        match self.vertex(vertex_id) {
+            Vertex::Surface(ref v) => {
+                for edge_id in &v.edge_out {
+                    let edge = self.edge(*edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((*edge_id, vertex_next_id));
+                    }
+                }
+            }
+            Vertex::Volume(ref v) => {
+                for edge_id in &v.edge_out {
+                    let edge = self.edge(*edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((*edge_id, vertex_next_id));
+                    }
+                }
+            }
+            Vertex::Light(ref v) => {
+                if let Some(edge_id) = v.edge_out {
+                    let edge = self.edge(edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((edge_id, vertex_next_id));
+                    }
+                }
+            }
+            Vertex::Sensor(ref v) => {
+                if let Some(edge_id) = v.edge_out {
+                    let edge = self.edge(edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((edge_id, vertex_next_id));
+                    }
+                }
+            }
+        }
+        next_vertices
+    }
 }

@@ -337,7 +337,7 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
         });
         // Export the reconstruction
         let mut image: BufferCollection =
-            BufferCollection::new(Point2::new(0, 0), img_size, &vec![String::from("primal")]);
+            BufferCollection::new(Point2::new(0, 0), img_size, &[String::from("primal")]);
         image.accumulate_bitmap_buffer(&current, &recons_name, &primal_name);
         image.accumulate_bitmap_buffer(&est, &very_direct_name, &primal_name);
         image

@@ -114,13 +114,13 @@ impl TechniqueGradientPathTracing {
 }
 impl Integrator for IntegratorGradientPathTracing {}
 impl IntegratorGradient for IntegratorGradientPathTracing {
-    fn reconstruct(&self) -> &Box<dyn PoissonReconstruction + Sync> {
-        &self.recons
+    fn reconstruct(&self) -> &(dyn PoissonReconstruction + Sync) {
+        self.recons.as_ref()
     }
 
     fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
-            generate_img_blocks_gradient(scene, &self.recons);
+            generate_img_blocks_gradient(scene, self.recons.as_ref());
 
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         let pool = generate_pool(scene);

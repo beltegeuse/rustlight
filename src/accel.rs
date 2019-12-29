@@ -19,8 +19,8 @@ impl BVHNode {
 pub struct BHVAccel<D, T: BVHElement<D>> {
     pub elements: Vec<T>,
     nodes: Vec<BVHNode>,
-	pub root: Option<usize>, // Root node
-	phantom: std::marker::PhantomData<D>,
+    pub root: Option<usize>, // Root node
+    phantom: std::marker::PhantomData<D>,
 }
 
 pub trait BVHElement<D> {
@@ -69,12 +69,10 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
                 } else {
                     2
                 }
+            } else if aabb_size.y > aabb_size.z {
+                1
             } else {
-                if aabb_size.y > aabb_size.z {
-                    1
-                } else {
-                    2
-                }
+                2
             };
 
             // Split based on largest axis (split inside the middle for now)
@@ -109,8 +107,8 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
         let mut accel = BHVAccel {
             elements,
             nodes: Vec::new(),
-			root: None,
-			phantom: std::marker::PhantomData,
+            root: None,
+            phantom: std::marker::PhantomData,
         };
         accel.root = accel.build(0, accel.elements.len(), 0);
         info!("BVH stats: ");

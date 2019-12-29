@@ -193,7 +193,7 @@ pub trait Integrator {
 }
 pub trait IntegratorGradient: Integrator {
     fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection;
-    fn reconstruct(&self) -> &Box<dyn PoissonReconstruction + Sync>;
+    fn reconstruct(&self) -> &(dyn PoissonReconstruction + Sync);
 
     fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         // Rendering the gradient informations
