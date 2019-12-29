@@ -7,7 +7,7 @@ use cgmath::*;
 pub struct IntegratorGradientPath {
     pub max_depth: Option<u32>,
     pub min_depth: Option<u32>,
-    pub recons: Box<PoissonReconstruction + Sync>,
+    pub recons: Box<dyn PoissonReconstruction + Sync>,
 }
 
 struct RayStateData<'a> {
@@ -67,7 +67,7 @@ impl<'a> RayState<'a> {
     pub fn new(
         (x, y): (f32, f32),
         off: Point2<i32>,
-        accel: &'a Acceleration,
+        accel: &'a dyn Acceleration,
         scene: &'a Scene,
     ) -> RayState<'a> {
         let pix = Point2::new(x + off.x as f32, y + off.y as f32);
@@ -96,13 +96,13 @@ impl<'a> RayState<'a> {
 
 impl Integrator for IntegratorGradientPath {}
 impl IntegratorGradient for IntegratorGradientPath {
-    fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync> {
-        &self.recons
+    fn reconstruct(&self) -> &(dyn PoissonReconstruction + Sync) {
+        self.recons.as_ref()
     }
 
-    fn compute_gradients(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
-            generate_img_blocks_gradient(scene, &self.recons);
+            generate_img_blocks_gradient(scene, self.recons.as_ref());
 
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         let pool = generate_pool(scene);
@@ -214,10 +214,10 @@ impl IntegratorGradientPath {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &Scene,
         emitters: &EmitterSampler,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
     ) -> ColorGradient {
         let mut l_i = ColorGradient::default();
         let pix = (ix as f32 + sampler.next(), iy as f32 + sampler.next());
@@ -773,12 +773,8 @@ impl IntegratorGradientPath {
                                     let shift_d_out_global = s.its.frame.to_world(wo);
                                     s.ray = Ray::new(s.its.p, shift_d_out_global);
                                     let new_its = accel.trace(&s.ray);
-                                    if new_its.is_none() {
-                                        let mut result = ShiftResult::default();
-                                        result.half_vector = true;
-                                        result
-                                    } else {
-                                        s.its = new_its.unwrap();
+                                    if let Some(new_its) = new_its {
+                                        s.its = new_its;
                                         let shift_emitter_rad = if s.its.mesh.is_light() {
                                             s.its.mesh.emission
                                         } else {
@@ -790,6 +786,10 @@ impl IntegratorGradientPath {
                                             state: RayState::NotConnected(s),
                                             half_vector: true,
                                         }
+                                    } else {
+                                        let mut result = ShiftResult::default();
+                                        result.half_vector = true;
+                                        result
                                     }
                                 }
                             }

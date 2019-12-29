@@ -9,7 +9,7 @@ use cgmath::Point2;
 // in order to replay the sequence of random number
 // if it is necessary
 pub struct ReplaySampler<'sampler, 'seq> {
-    pub sampler: &'sampler mut Sampler,
+    pub sampler: &'sampler mut dyn Sampler,
     pub random: &'seq mut Vec<f32>,
     pub indice: usize,
 }
@@ -56,10 +56,10 @@ impl ShiftMapping for RandomReplay {
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
     ) -> (Color, VertexID) {
         // Capture the random numbers
         let mut capture_sampler = ReplaySampler {
@@ -87,10 +87,10 @@ impl ShiftMapping for RandomReplay {
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         _base: VertexID,
     ) -> ShiftValue {
         technique.img_pos = pos;

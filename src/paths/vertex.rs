@@ -1,19 +1,21 @@
 use crate::emitter::Emitter;
+use crate::samplers::*;
 use crate::scene::*;
 use crate::structure::*;
+use crate::volume::*;
 use cgmath::*;
 
 #[derive(Clone)]
 pub struct Edge {
     /// Geometric informations
-    pub dist: Option<f32>,
-    pub d: Vector3<f32>,
+    pub dist: Option<f32>, // distance between points
+    pub d: Vector3<f32>, // edge direction
     /// Connecting two vertices
     pub vertices: (VertexID, Option<VertexID>),
-    /// Sampling information
-    pub pdf_distance: f32,
+    /// Sampling information (from the BSDF or Phase function)
+    pub sampled_distance: Option<SampledDistance>,
     pub pdf_direction: PDF,
-    pub weight: Color,
+    pub weight: Color, // BSDF * Transmittance
     pub rr_weight: f32,
     pub id_sampling: usize,
 }
@@ -32,11 +34,14 @@ impl Edge {
         let dist = d.magnitude();
         d /= dist;
 
+        // Sampled distance is None here
+        // as the distance inside the participating media
+        // have not been sampled
         let edge = Edge {
             dist: Some(dist),
             d,
             vertices: (org_vertex_id, Some(next_vertex_id)),
-            pdf_distance: 1.0,
+            sampled_distance: None,
             pdf_direction,
             weight,
             rr_weight,
@@ -44,6 +49,7 @@ impl Edge {
         };
         let edge = path.register_edge(edge);
 
+        // This constructor have been only design for light vertex creation
         match path.vertex_mut(next_vertex_id) {
             Vertex::Light(ref mut v) => v.edge_in = Some(edge),
             _ => unimplemented!(),
@@ -58,16 +64,16 @@ impl Edge {
         pdf_direction: PDF,
         weight: Color,
         rr_weight: f32,
-        accel: &'scene Acceleration,
-        _scene: &'scene Scene,
+        sampler: &mut dyn Sampler,
+        accel: &'scene dyn Acceleration,
+        medium: Option<&HomogenousVolume>,
         id_sampling: usize,
     ) -> (EdgeID, Option<VertexID>) {
-        // TODO: When there will be volume, we need to sample a distance inside the volume
         let edge = Edge {
             dist: None,
             d: ray.d,
             vertices: (org_vertex_id, None),
-            pdf_distance: 1.0,
+            sampled_distance: None,
             pdf_direction,
             weight,
             rr_weight,
@@ -77,19 +83,87 @@ impl Edge {
         let its = match accel.trace(&ray) {
             Some(its) => its,
             None => {
-                // Create an edge without distance
-                return (edge, None);
+                if let Some(ref m) = medium {
+                    // Sample the participating media
+                    let mrec = m.sample(ray, sampler.next2d());
+                    let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
+                    // We are sure to suceed as the distance is infine...
+                    // TODO: Note that this design decision makes the env map incompatible with participating media presence
+                    assert_eq!(mrec.exited, false);
+                    let new_vertex = Vertex::Volume(VolumeVertex {
+                        phase_function: PhaseFunction::Isotropic(),
+                        pos,
+                        d_in: -ray.d,
+                        rr_weight: 1.0,
+                        edge_in: edge,
+                        edge_out: vec![],
+                    });
+                    let new_vertex = path.register_vertex(new_vertex);
+
+                    // Update the edge
+                    {
+                        let edge = path.edge_mut(edge);
+                        edge.dist = Some(mrec.t);
+                        edge.vertices.1 = Some(new_vertex);
+                        edge.weight *= mrec.w;
+                        edge.sampled_distance = Some(mrec);
+                    }
+
+                    return (edge, Some(new_vertex));
+                } else {
+                    // Create an edge without distance
+                    return (edge, None);
+                }
             }
         };
 
         // Create the new vertex
-        let intersection_distance = its.dist;
-        let new_vertex = Vertex::Surface(SurfaceVertex {
-            its,
-            rr_weight: 1.0,
-            edge_in: edge,
-            edge_out: vec![],
-        });
+        // This depends if there is a participating media or not
+        let mut intersection_distance = its.dist;
+        let (mrec, new_vertex) = if let Some(ref m) = medium {
+            // Sample the participating media
+            // Need to create a new ray as tfar need to store
+            // the distance to the surface
+            let mut ray_med = *ray;
+            ray_med.tfar = intersection_distance;
+            let mrec = m.sample(&ray_med, sampler.next2d());
+            let new_vertex = if !mrec.exited {
+                // Hit the volume
+                // --- Update the distance
+                intersection_distance = mrec.t;
+                // --- Create the volume vertex
+                let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
+                Vertex::Volume(VolumeVertex {
+                    phase_function: PhaseFunction::Isotropic(),
+                    pos,
+                    d_in: -ray.d,
+                    rr_weight: 1.0,
+                    edge_in: edge,
+                    edge_out: vec![],
+                })
+            } else {
+                // Hit the surface
+                Vertex::Surface(SurfaceVertex {
+                    its,
+                    rr_weight: 1.0,
+                    edge_in: edge,
+                    edge_out: vec![],
+                })
+            };
+            (Some(mrec), new_vertex)
+        } else {
+            (
+                None,
+                Vertex::Surface(SurfaceVertex {
+                    its,
+                    rr_weight: 1.0,
+                    edge_in: edge,
+                    edge_out: vec![],
+                }),
+            )
+        };
+
+        // Register the new vertex
         let new_vertex = path.register_vertex(new_vertex);
 
         // Update the edge information
@@ -97,15 +171,19 @@ impl Edge {
             let edge = path.edge_mut(edge);
             edge.dist = Some(intersection_distance);
             edge.vertices.1 = Some(new_vertex);
+            if mrec.is_some() {
+                edge.weight *= mrec.as_ref().unwrap().w;
+            }
+            edge.sampled_distance = mrec;
         }
         (edge, Some(new_vertex))
     }
 
     pub fn next_on_light_source(&self, path: &Path) -> bool {
         if let Some(v) = &self.vertices.1 {
-            return path.vertex(*v).on_light_source();
+            path.vertex(*v).on_light_source()
         } else {
-            return false; //TODO: No env map
+            false //TODO: No env map
         }
     }
 
@@ -113,9 +191,9 @@ impl Edge {
     /// @deprecated: This might be not optimal as it is not a recursive call.
     pub fn contribution(&self, path: &Path) -> Color {
         if let Some(v) = &self.vertices.1 {
-            return self.weight * self.rr_weight * path.vertex(*v).contribution(self);
+            self.weight * self.rr_weight * path.vertex(*v).contribution(self)
         } else {
-            return Color::zero(); //TODO: No env map
+            Color::zero() //TODO: No env map
         }
     }
 }
@@ -146,10 +224,21 @@ pub struct EmitterVertex<'emitter> {
 }
 
 #[derive(Clone)]
+pub struct VolumeVertex {
+    pub phase_function: PhaseFunction,
+    pub pos: Point3<f32>,
+    pub d_in: Vector3<f32>,
+    pub rr_weight: f32,
+    pub edge_in: EdgeID,
+    pub edge_out: Vec<EdgeID>,
+}
+
+#[derive(Clone)]
 pub enum Vertex<'scene, 'emitter> {
     Sensor(SensorVertex),
     Surface(SurfaceVertex<'scene>),
     Light(EmitterVertex<'emitter>),
+    Volume(VolumeVertex),
 }
 impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
     pub fn pixel_pos(&self) -> Point2<f32> {
@@ -163,14 +252,23 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
             Vertex::Surface(ref v) => v.its.p,
             Vertex::Sensor(ref v) => v.pos,
             Vertex::Light(ref v) => v.pos,
+            Vertex::Volume(ref v) => v.pos,
         }
     }
-
+    pub fn on_surface(&self) -> bool {
+        match *self {
+            Vertex::Surface(ref _v) => true,
+            Vertex::Sensor(ref _v) => false,
+            Vertex::Light(ref _v) => true,
+            Vertex::Volume(ref _v) => false,
+        }
+    }
     pub fn on_light_source(&self) -> bool {
         match *self {
             Vertex::Surface(ref v) => !v.its.mesh.emission.is_zero(),
             Vertex::Sensor(ref _v) => false,
             Vertex::Light(ref _v) => true,
+            Vertex::Volume(ref _v) => false,
         }
     }
 
@@ -183,6 +281,7 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
                     Color::zero()
                 }
             }
+            Vertex::Volume(ref _v) => Color::zero(),
             Vertex::Sensor(ref _v) => Color::zero(),
             Vertex::Light(ref v) => v.emitter.emitted_luminance(-edge.d), // FIXME: Check the normal orientation
         }
@@ -228,19 +327,45 @@ impl<'scene, 'emitter> Path<'scene, 'emitter> {
     pub fn edge_mut(&mut self, id: EdgeID) -> &mut Edge {
         &mut self.edges[id.0]
     }
-
-    // pub fn next_vertex(&self) -> Vec<Rc<VertexPtr<'a>>> {
-    //     match *self {
-    //         Vertex::Sensor(ref v) => match v.edge_out.as_ref() {
-    //             None => vec![],
-    //             Some(ref e) => e
-    //                 .borrow()
-    //                 .vertices
-    //                 .1
-    //                 .as_ref()
-    //                 .map_or(vec![], |v| vec![v.clone()]),
-    //         },
-    //         _ => unimplemented!(),
-    //     }
-    // }
+    pub fn have_next_vertices(&self, vertex_id: VertexID) -> bool {
+        !self.next_vertices(vertex_id).is_empty()
+    }
+    pub fn next_vertices(&self, vertex_id: VertexID) -> Vec<(EdgeID, VertexID)> {
+        let mut next_vertices = vec![];
+        match self.vertex(vertex_id) {
+            Vertex::Surface(ref v) => {
+                for edge_id in &v.edge_out {
+                    let edge = self.edge(*edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((*edge_id, vertex_next_id));
+                    }
+                }
+            }
+            Vertex::Volume(ref v) => {
+                for edge_id in &v.edge_out {
+                    let edge = self.edge(*edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((*edge_id, vertex_next_id));
+                    }
+                }
+            }
+            Vertex::Light(ref v) => {
+                if let Some(edge_id) = v.edge_out {
+                    let edge = self.edge(edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((edge_id, vertex_next_id));
+                    }
+                }
+            }
+            Vertex::Sensor(ref v) => {
+                if let Some(edge_id) = v.edge_out {
+                    let edge = self.edge(edge_id);
+                    if let Some(vertex_next_id) = edge.vertices.1 {
+                        next_vertices.push((edge_id, vertex_next_id));
+                    }
+                }
+            }
+        }
+        next_vertices
+    }
 }

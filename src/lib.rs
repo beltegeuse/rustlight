@@ -5,6 +5,7 @@
 #![allow(clippy::excessive_precision)]
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::many_single_char_names)]
+#![allow(clippy::too_many_arguments)]
 
 // For getting low machine information
 extern crate byteorder;
@@ -47,6 +48,7 @@ pub trait Scale<T> {
 }
 
 // all the modules
+pub mod accel;
 pub mod bsdfs;
 pub mod camera;
 pub mod emitter;
@@ -59,3 +61,4 @@ pub mod scene;
 pub mod scene_loader;
 pub mod structure;
 pub mod tools;
+pub mod volume;

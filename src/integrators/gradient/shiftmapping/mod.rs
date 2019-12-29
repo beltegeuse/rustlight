@@ -34,20 +34,20 @@ pub trait ShiftMapping {
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
     ) -> (Color, VertexID);
     fn shift<'scene, 'emitter>(
         &mut self,
         path: &mut Path<'scene, 'emitter>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
-        accel: &'scene Acceleration,
+        accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         base: VertexID,
     ) -> ShiftValue;
     fn clear(&mut self);

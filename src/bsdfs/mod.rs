@@ -11,7 +11,7 @@ pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
     -(wo) + n * 2.0 * wo.dot(n)
 }
 pub fn check_reflection_condition(wi: &Vector3<f32>, wo: &Vector3<f32>) -> bool {
-    return (wi.z * wo.z - wi.x * wo.x - wi.y * wo.y - 1.0).abs() < 0.0001;
+    (wi.z * wo.z - wi.x * wo.x - wi.y * wo.y - 1.0).abs() < 0.0001
 }
 pub fn check_direlectric_condition(
     wi: &Vector3<f32>,
@@ -19,8 +19,8 @@ pub fn check_direlectric_condition(
     eta: f32,
     cos_theta: f32,
 ) -> bool {
-    let dotP = -wi.x * wo.x * eta - wi.y * wo.y * eta - cos_theta.copysign(wi.z) * wo.z;
-    return (dotP - 1.0).abs() < 0.0001;
+    let dot_p = -wi.x * wo.x * eta - wi.y * wo.y * eta - cos_theta.copysign(wi.z) * wo.z;
+    (dot_p - 1.0).abs() < 0.0001
 }
 // Texture or uniform color buffers
 #[derive(Deserialize)]
@@ -133,9 +133,9 @@ use crate::bsdfs::specular::BSDFSpecular;
 /// Dispatch coded BSDF
 pub fn parse_bsdf(
     b: &serde_json::Value,
-) -> Result<Box<BSDF + Send + Sync>, Box<std::error::Error>> {
+) -> Result<Box<dyn BSDF + Send + Sync>, Box<dyn std::error::Error>> {
     let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
-    let new_bsdf: Box<BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
+    let new_bsdf: Box<dyn BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
         "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
         "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
         "specular" => Box::<BSDFSpecular>::new(serde_json::from_value(b["data"].clone())?),
@@ -181,8 +181,8 @@ fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option
 // }
 
 #[cfg(feature = "pbrt")]
-pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<BSDF + Sync + Send> {
-    let bsdf: Option<Box<BSDF + Sync + Send>> = match bsdf {
+pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn BSDF + Sync + Send> {
+    let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
         pbrt_rs::BSDF::Matte(ref v) => {
             if let Some(diffuse) = bsdf_texture_match(&v.kd, scene_info) {
                 Some(Box::new(BSDFDiffuse { diffuse }))

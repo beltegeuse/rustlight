@@ -2,10 +2,11 @@ use crate::camera::Camera;
 use crate::emitter::*;
 use crate::geometry;
 use crate::math::Distribution1DConstruct;
-
 use crate::math::Frame;
 use crate::structure::*;
+use crate::volume;
 use cgmath::*;
+
 pub trait Acceleration: Sync + Send {
     fn trace(&self, ray: &Ray) -> Option<Intersection>;
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
@@ -134,6 +135,7 @@ pub struct Scene {
     // Geometry information
     pub meshes: Vec<geometry::Mesh>,
     pub emitter_environment: Option<EnvironmentLight>,
+    pub volume: Option<volume::HomogenousVolume>,
 }
 
 impl Scene {
@@ -150,7 +152,7 @@ impl Scene {
         self
     }
 
-    pub fn emitters_sampler<'scene>(&'scene self) -> EmitterSampler<'scene> {
+    pub fn emitters_sampler(&self) -> EmitterSampler {
         // Append emission mesh to the emitter list
         let mut emitters: Vec<&dyn Emitter> = vec![];
         for e in &self.meshes {

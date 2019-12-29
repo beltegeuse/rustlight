@@ -2,8 +2,10 @@
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 #![allow(dead_code)]
 #![allow(clippy::float_cmp)]
+#![allow(clippy::cognitive_complexity)]
 
 extern crate cgmath;
+extern crate num_cpus;
 #[macro_use]
 extern crate clap;
 extern crate env_logger;
@@ -60,6 +62,7 @@ fn main() {
             .arg(
                 Arg::with_name("nbthreads")
                     .takes_value(true)
+                    .allow_hyphen_values(true)
                     .short("t")
                     .default_value("auto")
                     .help("number of thread for the computation"),
@@ -77,23 +80,17 @@ fn main() {
                     .short("o")
                     .help("output image file"),
             )
+            .arg(
+                Arg::with_name("medium")
+                    .short("m")
+                    .help("add a test medium"),
+            )
             .arg(Arg::with_name("debug").short("d").help("debug output"))
             .arg(
                 Arg::with_name("nbsamples")
                     .short("n")
                     .takes_value(true)
                     .help("integration technique"),
-            )
-            .subcommand(
-                SubCommand::with_name("path")
-                    .about("path tracing")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(
-                        Arg::with_name("primitive")
-                            .short("p")
-                            .help("do not use next event estimation"),
-                    ),
             )
             .subcommand(
                 SubCommand::with_name("gradient-path")
@@ -121,7 +118,6 @@ fn main() {
                 SubCommand::with_name("pssmlt")
                     .about("path tracing with MCMC sampling")
                     .arg(&max_arg)
-                    .arg(&min_arg)
                     .arg(
                         Arg::with_name("large_prob")
                             .takes_value(true)
@@ -130,8 +126,8 @@ fn main() {
                     ),
             )
             .subcommand(
-                SubCommand::with_name("path-explicit")
-                    .about("path tracing with explict light path construction")
+                SubCommand::with_name("path")
+                    .about("path tracing generating path from the sensor")
                     .arg(&max_arg)
                     .arg(
                         Arg::with_name("strategy")
@@ -141,9 +137,15 @@ fn main() {
                     ),
             )
             .subcommand(
-                SubCommand::with_name("light-explicit")
-                    .about("light tracing with explict light path construction")
-                    .arg(&max_arg),
+                SubCommand::with_name("light")
+                    .about("light tracing generating path from the lights")
+                    .arg(&max_arg)
+                    .arg(
+                        Arg::with_name("lightpaths")
+                            .takes_value(true)
+                            .short("p")
+                            .default_value("all"),
+                    ),
             )
             .subcommand(
                 SubCommand::with_name("vpl")
@@ -160,6 +162,23 @@ fn main() {
                             .takes_value(true)
                             .short("n")
                             .default_value("128"),
+                    ),
+            )
+            .subcommand(
+                SubCommand::with_name("vol_primitives")
+                    .about("BRE/Beam/Planes estimators")
+                    .arg(&max_arg)
+                    .arg(
+                        Arg::with_name("nb_primitive")
+                            .takes_value(true)
+                            .short("n")
+                            .default_value("128"),
+                    )
+                    .arg(
+                        Arg::with_name("primitives")
+                            .takes_value(true)
+                            .short("p")
+                            .default_value("bre"),
                     ),
             )
             .subcommand(
@@ -223,15 +242,44 @@ fn main() {
     let scene = match matches.value_of("nbthreads").unwrap() {
         "auto" => scene,
         x => {
-            let v = x.parse::<usize>().expect("Wrong number of thread");
-            if v == 0 {
-                panic!("Impossible to use 0 thread for the computation");
+            let v = x.parse::<i32>().expect("Wrong number of thread");
+            match v {
+                v if v > 0 => scene.nb_threads(v as usize),
+                v if v < 0 => {
+                    let nb_threads = num_cpus::get() as i32 + v;
+                    if nb_threads < 0 {
+                        panic!("Not enough threads: {} removing {}", num_cpus::get(), v);
+                    }
+                    info!("Run with {} threads", nb_threads);
+                    scene.nb_threads(nb_threads as usize)
+                }
+                _ => {
+                    panic!("Impossible to use 0 thread for the computation");
+                }
             }
-            scene.nb_threads(v)
         }
     };
     let mut scene = scene.nb_samples(nb_samples).output_img(imgout_path_str);
 
+    ///////////////// Medium
+    // TODO: Read from PBRT file
+    if matches.is_present("medium") {
+        const FACTOR_DENSITY: f32 = 0.5;
+        let sigma_a = rustlight::structure::Color::value(0.05) * FACTOR_DENSITY;
+        let sigma_s = rustlight::structure::Color::value(0.9) * FACTOR_DENSITY;
+        let sigma_t = sigma_a + sigma_s;
+        scene.volume = Some(rustlight::volume::HomogenousVolume {
+            sigma_a,
+            sigma_s,
+            sigma_t,
+            density: 1.0,
+        });
+
+        info!("Create volume with: ");
+        info!(" - sigma_a: {:?}", sigma_a);
+        info!(" - sigma_s: {:?}", sigma_s);
+        info!(" - sigma_t: {:?}", sigma_t);
+    }
     ///////////////// Tweak the image size
     {
         let image_scale = value_t_or_exit!(matches.value_of("image_scale"), f32);
@@ -246,7 +294,7 @@ fn main() {
     let recons = match matches.subcommand() {
         ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {
             let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            let recons: Box<rustlight::integrators::PoissonReconstruction + Sync> = match m
+            let recons: Box<dyn rustlight::integrators::PoissonReconstruction + Sync> = match m
                 .value_of("reconstruction_type")
                 .unwrap()
             {
@@ -275,7 +323,7 @@ fn main() {
 
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
-        ("path-explicit", Some(m)) => {
+        ("path", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             let strategy = match strategy.as_ref() {
@@ -297,10 +345,21 @@ fn main() {
                 },
             ))
         }
-        ("light-explicit", Some(m)) => {
+        ("light", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let strategy = value_t_or_exit!(m.value_of("lightpaths"), String);
+            let (render_surface, render_volume) = match strategy.as_ref() {
+                "all" => (true, true),
+                "surface" => (true, false),
+                "volume" => (false, true),
+                _ => panic!("invalid lightpaths type to render"),
+            };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::light::IntegratorLightTracing { max_depth },
+                rustlight::integrators::explicit::light::IntegratorLightTracing {
+                    max_depth,
+                    render_surface,
+                    render_volume,
+                },
             ))
         }
         ("gradient-path", Some(m)) => {
@@ -345,28 +404,40 @@ fn main() {
                 },
             ))
         }
-        ("path", Some(m)) => {
-            let primitive = m.is_present("primitive");
+        ("vol_primitives", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            IntegratorType::Primal(Box::new(rustlight::integrators::path::IntegratorPath {
-                max_depth,
-                min_depth,
-                next_event_estimation: !primitive,
-            }))
+            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
+            let primitives = value_t_or_exit!(m.value_of("primitives"), String);
+            let primitives = match primitives.as_ref() {
+                "bre" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::BRE,
+                "beam" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Beams,
+                "plane" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Planes,
+                "vrl" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::VRL,
+                _ => panic!(
+                    "{} is not a correct primitive (bre, beam, plane)",
+                    primitives
+                ),
+            };
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::vol_primitives::IntegratorVolPrimitives {
+                    nb_primitive,
+                    max_depth,
+                    primitives,
+                },
+            ))
         }
         ("pssmlt", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
             let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
             assert!(large_prob > 0.0 && large_prob <= 1.0);
             IntegratorType::Primal(Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
                 large_prob,
-                integrator: Box::new(rustlight::integrators::path::IntegratorPath {
-                    max_depth,
-                    min_depth,
-                    next_event_estimation: true,
-                }),
+                integrator: Box::new(
+                    rustlight::integrators::explicit::path::IntegratorPathTracing {
+                        max_depth,
+                        strategy: rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All,
+                    },
+                ),
             }))
         }
         ("ao", Some(m)) => {

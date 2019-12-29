@@ -8,7 +8,7 @@ pub struct IntegratorAverage {
 }
 
 impl Integrator for IntegratorAverage {
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         // Get the output file type
         let output_ext = match std::path::Path::new(&scene.output_img_path).extension() {
             None => panic!("No file extension provided"),
@@ -63,7 +63,7 @@ impl Integrator for IntegratorAverage {
                 Some(t) => info!("Total time: {:?} / {:?} secs", elapsed.as_secs(), t),
             }
             // Write the rendering time
-            write!(csv, "{}.{},\n", elapsed.as_secs(), elapsed.subsec_millis()).unwrap();
+            writeln!(csv, "{}.{},", elapsed.as_secs(), elapsed.subsec_millis()).unwrap();
 
             if self
                 .time_out
@@ -75,17 +75,17 @@ impl Integrator for IntegratorAverage {
             iteration += 1;
         }
 
-        if bitmap.is_none() {
-            let buffernames = vec![String::from("primal")];
-            BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
-        } else {
+        if let Some(bitmap) = bitmap {
             match &self.integrator {
-                IntegratorType::Primal(_) => bitmap.unwrap(),
+                IntegratorType::Primal(_) => bitmap,
                 IntegratorType::Gradient(v) => {
                     info!("Do the final reconstruction");
-                    v.reconstruct().reconstruct(scene, bitmap.as_ref().unwrap())
+                    v.reconstruct().reconstruct(scene, &bitmap)
                 }
             }
+        } else {
+            let buffernames = vec![String::from("primal")];
+            BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
         }
     }
 }

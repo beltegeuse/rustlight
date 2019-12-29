@@ -110,11 +110,10 @@ impl WeightedPoissonReconstruction {
             String::from("gradient_y"),
         ];
         for buffer in buffernames {
-            let selected_names = match self.buffers_id.as_ref() {
+            let selected_names: Vec<String> = match self.buffers_id.as_ref() {
                 None => {
                     let nb_buffers = self.need_variance_estimates().unwrap();
                     (0..nb_buffers)
-                        .into_iter()
                         .map(|i| format!("{}_{}", buffer, i))
                         .collect()
                 }
@@ -251,7 +250,7 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
         // Export the reconstruction
         let real_primal_name = String::from("primal");
         let mut image: BufferCollection =
-            BufferCollection::new(Point2::new(0, 0), img_size, &vec![real_primal_name.clone()]);
+            BufferCollection::new(Point2::new(0, 0), img_size, &[real_primal_name.clone()]);
         image.accumulate_bitmap_buffer(&current, &recons_name, &real_primal_name);
         image.accumulate_bitmap_buffer(&est, &very_direct_name, &real_primal_name);
         image
@@ -338,7 +337,7 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
         });
         // Export the reconstruction
         let mut image: BufferCollection =
-            BufferCollection::new(Point2::new(0, 0), img_size, &vec![String::from("primal")]);
+            BufferCollection::new(Point2::new(0, 0), img_size, &[String::from("primal")]);
         image.accumulate_bitmap_buffer(&current, &recons_name, &primal_name);
         image.accumulate_bitmap_buffer(&est, &very_direct_name, &primal_name);
         image

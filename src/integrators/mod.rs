@@ -26,7 +26,7 @@ pub struct BufferCollection {
 
 impl BufferCollection {
     /// Create a new Bitmap
-    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &Vec<String>) -> BufferCollection {
+    pub fn new(pos: Point2<u32>, size: Vector2<u32>, names: &[String]) -> BufferCollection {
         let mut bitmap = BufferCollection {
             pos,
             size,
@@ -76,7 +76,7 @@ impl BufferCollection {
         &mut self,
         base_name: &str,
         o: &BufferCollection,
-        buffers: &Vec<String>,
+        buffers: &[String],
     ) {
         // Create buffers
         let mean_name = format!("{}_mean", base_name);
@@ -186,16 +186,16 @@ impl Scale<f32> for BufferCollection {
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, _accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, _accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
 pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection;
-    fn reconstruct(&self) -> &Box<PoissonReconstruction + Sync>;
+    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection;
+    fn reconstruct(&self) -> &(dyn PoissonReconstruction + Sync);
 
-    fn compute(&mut self, accel: &Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         // Rendering the gradient informations
         info!("Gradient Rendering...");
         let start = Instant::now();
@@ -218,8 +218,8 @@ pub trait PoissonReconstruction {
     fn need_variance_estimates(&self) -> Option<usize>;
 }
 pub enum IntegratorType {
-    Primal(Box<Integrator>),
-    Gradient(Box<IntegratorGradient>),
+    Primal(Box<dyn Integrator>),
+    Gradient(Box<dyn IntegratorGradient>),
 }
 impl IntegratorType {
     pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
@@ -270,10 +270,7 @@ impl IntegratorType {
         };
 
         let elapsed = start.elapsed();
-        info!(
-            "Elapsed Integrator: {} ms",
-            (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64
-        );
+        info!("Elapsed Integrator: {} ms", elapsed.as_millis());
 
         img
     }
@@ -284,14 +281,14 @@ pub trait IntegratorMC: Sync + Send {
     fn compute_pixel(
         &self,
         pix: (u32, u32),
-        accel: &Acceleration,
+        accel: &dyn Acceleration,
         scene: &Scene,
-        sampler: &mut Sampler,
+        sampler: &mut dyn Sampler,
         emitters: &EmitterSampler,
     ) -> Color;
 }
 
-pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<BufferCollection> {
+pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferCollection> {
     let mut image_blocks: Vec<BufferCollection> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
@@ -314,7 +311,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &Vec<String>) -> Vec<Buff
 
 pub fn compute_mc<T: IntegratorMC + Integrator>(
     int: &T,
-    accel: &Acceleration,
+    accel: &dyn Acceleration,
     scene: &Scene,
 ) -> BufferCollection {
     // Here we can to the classical parallelisation
@@ -393,5 +390,4 @@ pub mod avg;
 pub mod direct;
 pub mod explicit;
 pub mod gradient;
-pub mod path;
 pub mod pssmlt;

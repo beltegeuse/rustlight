@@ -28,6 +28,8 @@ clap = "*"
 pbr = "*"
 log = "*"
 env_logger = "*"
+# To know number of threads
+num_cpus = "*"
 # - openexr image format (output)
 openexr = { version = "*", optional = true }
 # - pbrt image format (input)

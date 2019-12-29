@@ -97,7 +97,7 @@ pub struct Mesh {
     pub normals: Option<Vec<Vector3<f32>>>,
     pub uv: Option<Vec<Vector2<f32>>>,
     // Other informations
-    pub bsdf: Box<bsdfs::BSDF>,
+    pub bsdf: Box<dyn bsdfs::BSDF>,
     pub emission: Color,
     pub cdf: Distribution1D,
 }
