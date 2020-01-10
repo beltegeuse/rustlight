@@ -427,14 +427,21 @@ fn main() {
                 "uv" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UV,
                 "ut" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UT,
                 "vt" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::VT,
-                "average" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::Average,
-                "discrete_mis" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS,
-                _ => panic!("{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis)", strategy),
+                "average" => {
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::Average
+                }
+                "discrete_mis" => {
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS
+                }
+                _ => panic!(
+                    "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis)",
+                    strategy
+                ),
             };
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::plane_single::IntegratorSinglePlane {
                     nb_primitive,
-                    strategy
+                    strategy,
                 },
             ))
         }
