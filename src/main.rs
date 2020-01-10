@@ -434,10 +434,12 @@ fn main() {
                     rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS
                 }
                 "valpha" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::VAlpha,
+                "cmis" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::ContinousMIS,
                 _ => panic!(
-                    "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha)",
+                    "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
                     strategy
                 ),
+            
             };
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::plane_single::IntegratorSinglePlane {

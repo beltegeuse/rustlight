@@ -248,6 +248,7 @@ impl SinglePhotonPlane {
     }
 }
 
+#[derive(PartialEq)]
 pub enum SinglePlaneStrategy {
     UV,
     VT,
@@ -255,6 +256,7 @@ pub enum SinglePlaneStrategy {
     Average,
 	DiscreteMIS,
 	VAlpha,
+	ContinousMIS,
 }
 
 pub struct IntegratorSinglePlane {
@@ -349,7 +351,7 @@ impl Integrator for IntegratorSinglePlane {
                     planes.push(generate_plane(PlaneType::VT, &rect_light, &mut sampler, m));
                     planes.push(generate_plane(PlaneType::UT, &rect_light, &mut sampler, m));
 				}
-				SinglePlaneStrategy::VAlpha => {
+				SinglePlaneStrategy::VAlpha | SinglePlaneStrategy::ContinousMIS => {
 					planes.push(generate_plane(PlaneType::UAlphaT, &rect_light, &mut sampler, m));
 				}
             }
@@ -415,7 +417,8 @@ impl Integrator for IntegratorSinglePlane {
                                         SinglePlaneStrategy::UT
                                         | SinglePlaneStrategy::UV
 										| SinglePlaneStrategy::VT
-									 	| SinglePlaneStrategy::VAlpha => 1.0,
+										| SinglePlaneStrategy::VAlpha
+										| SinglePlaneStrategy::ContinousMIS => 1.0,
                                         SinglePlaneStrategy::Average => 1.0 / 3.0,
                                         SinglePlaneStrategy::DiscreteMIS => {
                                             // Need to compute all possible shapes
@@ -470,8 +473,19 @@ impl Integrator for IntegratorSinglePlane {
 									assert!(w > 0.0 && w <= 1.0);
 
                                     // UV planes are not importance sampled (position/direction)
-                                    // For other primitive, there such importance sampled approach.
-                                    let flux = total_flux * plane.contrib(&ray.d);
+									// For other primitive, there such importance sampled approach.
+                                    let flux = {
+										if self.strategy == SinglePlaneStrategy::ContinousMIS {
+											// Here we use their integration from
+											// Normally, all the jacobian simplifies
+											// So it is why we need to have a special estimator
+											let w_cmis = 1.0 / ((2.0 / std::f32::consts::PI) * 
+												(rect_light.u.cross(plane.d1).dot(ray.d).powi(2) + rect_light.v.cross(plane.d1).dot(ray.d).powi(2)).sqrt());
+											total_flux * w_cmis * plane.inv_pdf
+										} else {
+											total_flux * plane.contrib(&ray.d)
+										}
+									};
                                     c += w
                                         * rho
                                         * transmittance
