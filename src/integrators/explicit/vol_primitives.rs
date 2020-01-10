@@ -588,6 +588,10 @@ impl TechniqueVolPrimitives {
 
 impl Integrator for IntegratorVolPrimitives {
     fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+        if scene.volume.is_none() {
+            panic!("Volume integrator need a volume (add -m )");
+        }
+
         // FIXME: The max depth might be wrong in our integrator
         match self.primitives {
             VolPrimitivies::BRE => info!("Render with Beam radiance estimate"),
@@ -647,7 +651,7 @@ impl Integrator for IntegratorVolPrimitives {
                         0.001,
                         Color::one(),
                     );
-                    still_shoot = photons.len() >= self.nb_primitive as usize;
+                    still_shoot = photons.len() < self.nb_primitive as usize;
                 }
                 VolPrimitivies::Planes => {
                     // Generate beams from surfaces
