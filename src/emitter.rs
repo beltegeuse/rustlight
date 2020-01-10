@@ -176,6 +176,7 @@ impl<'scene> EmitterSampler<'scene> {
         // Select the point on the light
         let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
         let mut res = emitter.sample_direct(p, r, uv);
+        res.weight /= pdf_sel; // FIXME
         res.pdf = res.pdf * pdf_sel;
         res
     }

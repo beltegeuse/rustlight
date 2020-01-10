@@ -422,7 +422,7 @@ impl TechniqueVolPrimitives {
                             let (next_edge_id, _next_next_vertex_id) =
                                 path.next_vertices(vertex_next_id)[0];
                             let next_edge = path.edge(next_edge_id);
-                            
+
                             let length0 = edge.sampled_distance.as_ref().unwrap().continued_t;
                             let length1 = next_edge.sampled_distance.as_ref().unwrap().continued_t;
                             planes.push(PhotonPlane {

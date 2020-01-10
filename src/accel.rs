@@ -117,10 +117,7 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
                 info!("BVH stats: ");
                 info!(" - Number of elements: {}", accel.elements.len());
                 info!(" - Number of nodes: {}", accel.nodes.len());
-                info!(
-                    " - AABB size root: {:?}",
-                    accel.nodes[*v].aabb.size()
-                );
+                info!(" - AABB size root: {:?}", accel.nodes[*v].aabb.size());
             }
         };
         accel
