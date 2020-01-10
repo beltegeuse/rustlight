@@ -182,6 +182,22 @@ fn main() {
                     ),
             )
             .subcommand(
+                SubCommand::with_name("plane_single")
+                    .about("Prototype implementation of 'Photon surfaces for robust, unbiased volumetric density estimation'")
+                    .arg(
+                        Arg::with_name("nb_primitive")
+                            .takes_value(true)
+                            .short("n")
+                            .default_value("128"),
+                    )
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .default_value("average"),
+                    ),
+            )
+            .subcommand(
                 SubCommand::with_name("ao")
                     .about("ambiant occlusion")
                     .arg(
@@ -401,6 +417,24 @@ fn main() {
                     } else {
                         Some(clamping)
                     },
+                },
+            ))
+        }
+        ("plane_single", Some(m)) => {
+            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "uv" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UV,
+                "ut" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UT,
+                "vt" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::VT,
+                "average" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::Average,
+                "discrete_mis" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS,
+                _ => panic!("{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis)", strategy),
+            };
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::plane_single::IntegratorSinglePlane {
+                    nb_primitive,
+                    strategy
                 },
             ))
         }
