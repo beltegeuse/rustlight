@@ -5,7 +5,7 @@ use crate::math::*;
 use crate::samplers;
 use crate::structure::AABB;
 use crate::volume::*;
-use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
+use cgmath::{EuclideanSpace, ElementWise, InnerSpace, Point2, Point3, Vector3};
 
 #[derive(PartialEq)]
 pub enum PlaneType {
@@ -149,11 +149,8 @@ impl SinglePhotonPlane {
             PlaneType::UV => {
                 light.o + light.u * light.u_l * plane_its.t0 + light.v * light.v_l * plane_its.t1
             }
-            PlaneType::VT => {
-                light.o + light.u * light.u_l * self.sample.x + light.v * light.v_l * plane_its.t0
-            }
-            PlaneType::UT => {
-                light.o + light.v * light.v_l * self.sample.y + light.u * light.u_l * plane_its.t0
+            PlaneType::VT | PlaneType::UT | PlaneType::UAlphaT => {
+                self.o + self.d0 * self.length0 * plane_its.t0
             }
             _ => unimplemented!(),
         }
@@ -166,7 +163,8 @@ impl SinglePhotonPlane {
         t: PlaneType,
         light: &RectangularLightSource,
         d: Vector3<f32>,
-        sample: Point2<f32>,
+		sample: Point2<f32>,
+		sample_alpha: f32,
         t_sampled: f32,
     ) -> Self {
         match t {
@@ -210,8 +208,42 @@ impl SinglePhotonPlane {
                     sample,
                     plane_type: PlaneType::UT,
                 }
-            }
-            _ => unimplemented!(),
+			}
+			PlaneType::UAlphaT => {
+				let alpha = std::f32::consts::PI * sample_alpha;
+				let o_plane = Point2::new(sample.x * light.u_l, sample.y * light.v_l);
+				let d_plane: Vector2<f32> = Vector2::new(alpha.cos(),alpha.sin());
+				
+				// 2D AABB
+				let plane2d_its = |d: Vector2<f32>, o: Point2<f32>| {
+					let t_0 = (-o.to_vec()).div_element_wise(d);
+					let t_1 = (Vector2::new(light.u_l, light.v_l) - o.to_vec()).div_element_wise(d);
+					let t_max_coord = Vector2::new(t_0.x.max(t_1.x), t_0.y.max(t_1.y));
+					o_plane + d * t_max_coord.x.min(t_max_coord.y)
+				};
+
+				// These are the intersection points in 2D (local coordinate) 
+				let p1_2d = plane2d_its(d_plane, o_plane);
+				let p2_2d = plane2d_its(-d_plane, o_plane);
+				//dbg!(sample_alpha, &o_plane,&d_plane,&p1_2d, &p2_2d);
+
+				// Convert them into light coordinates
+				let p1 = light.o + p1_2d.x * light.u + p1_2d.y * light.v;
+				let p2 = light.o + p2_2d.x * light.u + p2_2d.y * light.v;
+				let u_plane = p2 - p1;
+
+                SinglePhotonPlane {
+                    o: p1,
+                    d0: u_plane.normalize(),
+					d1: d,
+					// Avoid 0 div
+                    inv_pdf: 1.0 / u_plane.magnitude(),
+                    length0: u_plane.magnitude(),
+                    length1: t_sampled,
+                    sample,
+                    plane_type: PlaneType::UAlphaT,
+                }
+			}
         }
     }
 }
@@ -221,7 +253,8 @@ pub enum SinglePlaneStrategy {
     VT,
     UT,
     Average,
-    DiscreteMIS,
+	DiscreteMIS,
+	VAlpha,
 }
 
 pub struct IntegratorSinglePlane {
@@ -291,7 +324,7 @@ impl Integrator for IntegratorSinglePlane {
 
             // Sample planes
             let sample = sampler.next2d();
-            SinglePhotonPlane::new(t, light, d, sample, mrec.continued_t)
+            SinglePhotonPlane::new(t, light, d, sample, sampler.next(), mrec.continued_t)
         };
 
         // Create the planes
@@ -315,7 +348,10 @@ impl Integrator for IntegratorSinglePlane {
                     planes.push(generate_plane(PlaneType::UV, &rect_light, &mut sampler, m));
                     planes.push(generate_plane(PlaneType::VT, &rect_light, &mut sampler, m));
                     planes.push(generate_plane(PlaneType::UT, &rect_light, &mut sampler, m));
-                }
+				}
+				SinglePlaneStrategy::VAlpha => {
+					planes.push(generate_plane(PlaneType::UAlphaT, &rect_light, &mut sampler, m));
+				}
             }
 
             number_plane_gen += 1;
@@ -378,7 +414,8 @@ impl Integrator for IntegratorSinglePlane {
                                     let w = match self.strategy {
                                         SinglePlaneStrategy::UT
                                         | SinglePlaneStrategy::UV
-                                        | SinglePlaneStrategy::VT => 1.0,
+										| SinglePlaneStrategy::VT
+									 	| SinglePlaneStrategy::VAlpha => 1.0,
                                         SinglePlaneStrategy::Average => 1.0 / 3.0,
                                         SinglePlaneStrategy::DiscreteMIS => {
                                             // Need to compute all possible shapes
@@ -391,21 +428,24 @@ impl Integrator for IntegratorSinglePlane {
                                                     PlaneType::UV,
                                                     &rect_light,
                                                     d,
-                                                    plane.sample,
+													plane.sample,
+													0.0, // Not used
                                                     t_sampled,
                                                 ),
                                                 SinglePhotonPlane::new(
                                                     PlaneType::UT,
                                                     &rect_light,
                                                     d,
-                                                    plane.sample,
+													plane.sample,
+													0.0, // Not used
                                                     t_sampled,
                                                 ),
                                                 SinglePhotonPlane::new(
                                                     PlaneType::VT,
                                                     &rect_light,
                                                     d,
-                                                    plane.sample,
+													plane.sample,
+													0.0, // Not used
                                                     t_sampled,
                                                 ),
 											];
@@ -427,7 +467,7 @@ impl Integrator for IntegratorSinglePlane {
                                                     .sum::<f32>()
                                         }
 									};
-									assert!(w > 0.0 && w < 1.0);
+									assert!(w > 0.0 && w <= 1.0);
 
                                     // UV planes are not importance sampled (position/direction)
                                     // For other primitive, there such importance sampled approach.

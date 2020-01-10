@@ -433,8 +433,9 @@ fn main() {
                 "discrete_mis" => {
                     rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS
                 }
+                "valpha" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::VAlpha,
                 _ => panic!(
-                    "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis)",
+                    "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha)",
                     strategy
                 ),
             };
