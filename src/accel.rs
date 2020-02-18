@@ -111,13 +111,15 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
             phantom: std::marker::PhantomData,
         };
         accel.root = accel.build(0, accel.elements.len(), 0);
-        info!("BVH stats: ");
-        info!(" - Number of elements: {}", accel.elements.len());
-        info!(" - Number of nodes: {}", accel.nodes.len());
-        info!(
-            " - AABB size root: {:?}",
-            accel.nodes[accel.root.unwrap()].aabb.size()
-        );
+        match accel.root {
+            None => warn!("BVH is empty!"),
+            Some(ref v) => {
+                info!("BVH stats: ");
+                info!(" - Number of elements: {}", accel.elements.len());
+                info!(" - Number of nodes: {}", accel.nodes.len());
+                info!(" - AABB size root: {:?}", accel.nodes[*v].aabb.size());
+            }
+        };
         accel
     }
 

@@ -83,7 +83,9 @@ fn main() {
             .arg(
                 Arg::with_name("medium")
                     .short("m")
-                    .help("add a test medium"),
+                    .takes_value(true)
+                    .default_value("0.0")
+                    .help("add medium with defined density"),
             )
             .arg(Arg::with_name("debug").short("d").help("debug output"))
             .arg(
@@ -118,6 +120,7 @@ fn main() {
                 SubCommand::with_name("pssmlt")
                     .about("path tracing with MCMC sampling")
                     .arg(&max_arg)
+                    .arg(&min_arg)
                     .arg(
                         Arg::with_name("large_prob")
                             .takes_value(true)
@@ -126,14 +129,23 @@ fn main() {
                     ),
             )
             .subcommand(
+                SubCommand::with_name("path_kulla")
+                    .about("path tracing generating path from the sensor")
+            )
+            .subcommand(
                 SubCommand::with_name("path")
                     .about("path tracing generating path from the sensor")
                     .arg(&max_arg)
+                    .arg(&min_arg)
                     .arg(
                         Arg::with_name("strategy")
                             .takes_value(true)
                             .short("s")
                             .default_value("all"),
+                    ).arg(
+                        Arg::with_name("single")
+                            .help("only compute single scattering")
+                            .short("x"),
                     ),
             )
             .subcommand(
@@ -179,6 +191,38 @@ fn main() {
                             .takes_value(true)
                             .short("p")
                             .default_value("bre"),
+                    ),
+            )
+            .subcommand(
+                SubCommand::with_name("plane_single")
+                    .about("Prototype implementation of 'Photon surfaces for robust, unbiased volumetric density estimation'")
+                    .arg(
+                        Arg::with_name("nb_primitive")
+                            .takes_value(true)
+                            .short("n")
+                            .default_value("128"),
+                    )
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .default_value("average"),
+                    ),
+            )
+            .subcommand(
+                SubCommand::with_name("uncorrelated_plane_single")
+                    .about("Prototype implementation of 'Photon surfaces for robust, unbiased volumetric density estimation'")
+                    .arg(
+                        Arg::with_name("nb_primitive")
+                            .takes_value(true)
+                            .short("n")
+                            .default_value("128"),
+                    )
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .default_value("average"),
                     ),
             )
             .subcommand(
@@ -263,22 +307,24 @@ fn main() {
 
     ///////////////// Medium
     // TODO: Read from PBRT file
-    if matches.is_present("medium") {
-        const FACTOR_DENSITY: f32 = 0.5;
-        let sigma_a = rustlight::structure::Color::value(0.05) * FACTOR_DENSITY;
-        let sigma_s = rustlight::structure::Color::value(0.9) * FACTOR_DENSITY;
-        let sigma_t = sigma_a + sigma_s;
-        scene.volume = Some(rustlight::volume::HomogenousVolume {
-            sigma_a,
-            sigma_s,
-            sigma_t,
-            density: 1.0,
-        });
+    {
+        let medium_density = value_t_or_exit!(matches.value_of("medium"), f32);
+        if medium_density != 0.0 {
+            let sigma_a = rustlight::structure::Color::value(0.0) * medium_density;
+            let sigma_s = rustlight::structure::Color::value(1.0) * medium_density;
+            let sigma_t = sigma_a + sigma_s;
+            scene.volume = Some(rustlight::volume::HomogenousVolume {
+                sigma_a,
+                sigma_s,
+                sigma_t,
+                density: 1.0,
+            });
 
-        info!("Create volume with: ");
-        info!(" - sigma_a: {:?}", sigma_a);
-        info!(" - sigma_s: {:?}", sigma_s);
-        info!(" - sigma_t: {:?}", sigma_t);
+            info!("Create volume with: ");
+            info!(" - sigma_a: {:?}", sigma_a);
+            info!(" - sigma_s: {:?}", sigma_s);
+            info!(" - sigma_t: {:?}", sigma_t);
+        }
     }
     ///////////////// Tweak the image size
     {
@@ -323,8 +369,15 @@ fn main() {
 
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
+        ("path_kulla", Some(_m)) => {
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {},
+            ))
+        }
         ("path", Some(m)) => {
+            let single_scattering = m.is_present("single");
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_depth = match_infinity(m.value_of("min").unwrap());
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             let strategy = match strategy.as_ref() {
                 "all" => {
@@ -340,8 +393,10 @@ fn main() {
             };
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::path::IntegratorPathTracing {
+                    min_depth,
                     max_depth,
                     strategy,
+                    single_scattering,
                 },
             ))
         }
@@ -404,6 +459,62 @@ fn main() {
                 },
             ))
         }
+        ("uncorrelated_plane_single", Some(m)) => {
+            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "uv" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UV,
+                "ut" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UT,
+                "vt" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::VT,
+                "average" => {
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::Average
+                }
+                "discrete_mis" => {
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS
+                }
+                "ualpha" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UAlpha,
+                "cmis" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::ContinousMIS,
+                _ => panic!(
+                    "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
+                    strategy
+                ),
+            
+            };
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::uncorrelated_plane_single::IntegratorSinglePlaneUncorrelated {
+                    nb_primitive,
+                    strategy,
+                },
+            ))
+        }
+        ("plane_single", Some(m)) => {
+            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "uv" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UV,
+                "ut" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UT,
+                "vt" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::VT,
+                "average" => {
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::Average
+                }
+                "discrete_mis" => {
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS
+                }
+                "ualpha" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UAlpha,
+                "cmis" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::ContinousMIS,
+                _ => panic!(
+                    "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
+                    strategy
+                ),
+            
+            };
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::explicit::plane_single::IntegratorSinglePlane {
+                    nb_primitive,
+                    strategy,
+                },
+            ))
+        }
         ("vol_primitives", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
@@ -427,6 +538,7 @@ fn main() {
             ))
         }
         ("pssmlt", Some(m)) => {
+            let min_depth = match_infinity(m.value_of("min").unwrap());
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
             assert!(large_prob > 0.0 && large_prob <= 1.0);
@@ -434,8 +546,10 @@ fn main() {
                 large_prob,
                 integrator: Box::new(
                     rustlight::integrators::explicit::path::IntegratorPathTracing {
+                        min_depth,
                         max_depth,
                         strategy: rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All,
+                        single_scattering: false,
                     },
                 ),
             }))

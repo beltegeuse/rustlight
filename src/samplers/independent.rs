@@ -24,3 +24,10 @@ impl Default for IndependentSampler {
         }
     }
 }
+impl IndependentSampler {
+    pub fn from_seed(seed: u64) -> Self {
+        IndependentSampler {
+            rnd: rand::rngs::StdRng::seed_from_u64(seed),
+        }
+    }
+}

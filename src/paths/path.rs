@@ -165,6 +165,7 @@ impl DirectionalSamplingStrategy {
                 let frame = Frame::new(v.n);
                 let d_out_global = frame.to_world(d_out);
                 let ray = Ray::new(v.pos, d_out_global);
+                // FIXME: This might be wrong!
                 let weight = Color::one(); // Perfectly importance sampled
 
                 // This will generate the edge

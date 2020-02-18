@@ -422,13 +422,15 @@ impl TechniqueVolPrimitives {
                             let (next_edge_id, _next_next_vertex_id) =
                                 path.next_vertices(vertex_next_id)[0];
                             let next_edge = path.edge(next_edge_id);
+
+                            let length0 = edge.sampled_distance.as_ref().unwrap().continued_t;
+                            let length1 = next_edge.sampled_distance.as_ref().unwrap().continued_t;
                             planes.push(PhotonPlane {
                                 o: v.pos,
                                 d0: edge.d,
                                 d1: next_edge.d,
-                                // We could used edge.dist as continued_t and the real distance is the same
-                                length0: edge.sampled_distance.as_ref().unwrap().continued_t,
-                                length1: next_edge.sampled_distance.as_ref().unwrap().continued_t,
+                                length0,
+                                length1,
                                 phase_function: PhaseFunction::Isotropic(),
                                 radiance: flux,
                             });
@@ -588,6 +590,10 @@ impl TechniqueVolPrimitives {
 
 impl Integrator for IntegratorVolPrimitives {
     fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+        if scene.volume.is_none() {
+            panic!("Volume integrator need a volume (add -m )");
+        }
+
         // FIXME: The max depth might be wrong in our integrator
         match self.primitives {
             VolPrimitivies::BRE => info!("Render with Beam radiance estimate"),
@@ -647,7 +653,7 @@ impl Integrator for IntegratorVolPrimitives {
                         0.001,
                         Color::one(),
                     );
-                    still_shoot = photons.len() >= self.nb_primitive as usize;
+                    still_shoot = photons.len() < self.nb_primitive as usize;
                 }
                 VolPrimitivies::Planes => {
                     // Generate beams from surfaces

@@ -263,6 +263,7 @@ impl SceneLoader for PBRTSceneLoader {
                 panic!("The camera is not set!");
             }
         };
+        camera.print_info();
 
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
