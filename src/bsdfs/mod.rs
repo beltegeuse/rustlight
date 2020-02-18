@@ -184,6 +184,7 @@ fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option
 pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn BSDF + Sync + Send> {
     let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
         pbrt_rs::BSDF::Matte(ref v) => {
+            info!("Matte detected!");
             if let Some(diffuse) = bsdf_texture_match(&v.kd, scene_info) {
                 Some(Box::new(BSDFDiffuse { diffuse }))
             } else {

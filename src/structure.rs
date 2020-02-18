@@ -197,13 +197,19 @@ impl AddAssign<Color> for Color {
 impl Div<f32> for Color {
     type Output = Self;
     fn div(self, other: f32) -> Color {
-        assert!(other.is_finite());
-        assert_ne!(other, 0.0);
-        Color {
-            r: self.r / other,
-            g: self.g / other,
-            b: self.b / other,
+        //assert!();
+        if other == 0.0 || !other.is_finite() {
+            warn!("0 f32 division detected!");
+            Color::zero()
+        } else {
+            Color {
+                r: self.r / other,
+                g: self.g / other,
+                b: self.b / other,
+            }
         }
+        //assert_ne!(other, 0.0);
+        
     }
 }
 
