@@ -1,11 +1,6 @@
-use crate::accel::*;
-use crate::geometry::Mesh;
 use crate::integrators::*;
-use crate::math::*;
-use crate::samplers;
-use crate::structure::AABB;
 use crate::volume::*;
-use cgmath::{ElementWise, EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
+use cgmath::{InnerSpace, Point2, Point3};
 
 pub struct IntegratorPathKulla {
 }
@@ -63,7 +58,7 @@ impl IntegratorMC for IntegratorPathKulla {
                 t_kulla = 0.0;
             }
             if max_dist.is_some() {
-                if(t_kulla > max_dist.unwrap()) {
+                if t_kulla > max_dist.unwrap()  {
                     // dbg!(max_dist, t_kulla);
                     t_kulla = max_dist.unwrap();
                 }
@@ -71,7 +66,7 @@ impl IntegratorMC for IntegratorPathKulla {
             (t_kulla, pdf)
         };
         
-        let (mut t_kulla, pdf_kulla) = kulla_sampling(max_dist.clone(), &ray, sampled_pos.p, sampler.next());
+        let (t_kulla, pdf_kulla) = kulla_sampling(max_dist.clone(), &ray, sampled_pos.p, sampler.next());
         if pdf_kulla == 0.0 {
             return Color::zero();
         }

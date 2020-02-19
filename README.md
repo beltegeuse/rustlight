@@ -10,7 +10,7 @@ Physically-based rendering engine implemented with **Rust**.
 
 ```
 $ cargo run --release -- -h
-rustlight 0.1.0
+rustlight 0.2.0
 Adrien Gruson <adrien.gruson@gmail.com>
 A Rusty Light Transport simulation program
 
@@ -20,30 +20,35 @@ USAGE:
 FLAGS:
     -d               debug output
     -h, --help       Prints help information
-    -m               add a test medium
     -V, --version    Prints version information
 
 OPTIONS:
     -a <average>            average several pass of the integrator with a time limit ('inf' is possible)
     -s <image_scale>        image scaling factor [default: 1.0]
+    -m <medium>             add medium with defined density [default: 0.0]
     -n <nbsamples>          integration technique
     -t <nbthreads>          number of thread for the computation [default: auto]
     -o <output>             output image file
 
 ARGS:
-    <scene>    JSON/PBRT file description
+    <scene>    JSON file description
 
 SUBCOMMANDS:
-    ao                        ambiant occlusion
-    direct                    direct lighting
-    gradient-path             gradient path tracing
-    gradient-path-explicit    gradient path tracing
-    help                      Prints this message or the help of the given subcommand(s)
-    light                     light tracing generating path from the lights
-    path                      path tracing generating path from the sensor
-    pssmlt                    path tracing with MCMC sampling
-    vol_primitives            BRE/Beam/Planes estimators
-    vpl                       brute force virtual point light integrator
+    ao                           ambiant occlusion
+    direct                       direct lighting
+    gradient-path                gradient path tracing
+    gradient-path-explicit       gradient path tracing
+    help                         Prints this message or the help of the given subcommand(s)
+    light                        light tracing generating path from the lights
+    path                         path tracing generating path from the sensor
+    path_kulla                   path tracing generating path from the sensor
+    plane_single                 Prototype implementation of 'Photon surfaces for robust, unbiased volumetric
+                                 density estimation'
+    pssmlt                       path tracing with MCMC sampling
+    uncorrelated_plane_single    Prototype implementation of 'Photon surfaces for robust, unbiased volumetric
+                                 density estimation'
+    vol_primitives               BRE/Beam/Planes estimators
+    vpl                          brute force virtual point light integrator
 ```
 
 For example, to use path tracing using 128 spp:
@@ -67,7 +72,7 @@ For now, these are the following features implemented:
     * Ambiant occlusion
     * Direct with MIS
     * Path-tracing with NEE
-    * Gradient-path tracing [1]
+    * [*] Gradient-path tracing [1]
     * Primary-sample space MLT [2]
     * Light tracing
     * Virtual Point Light
@@ -76,6 +81,9 @@ For now, these are the following features implemented:
     * Photon beams (1D kernel) [4]
     * [*] Photon planes (0D kernel) [5]
     * [*] Naive Virtual ray light [6]
+- Special single scattering intergrators:
+    * (Un)correlated photon planes [7]
+    * [*] Kulla importance sampling [8]
 - Filtering: 
     * Image-space control variate with uniform and variance-based weights [7]
 - Materials: 
@@ -116,10 +124,12 @@ This code has been inspired from several repositories:
 - mitsuba: https://github.com/mitsuba-renderer/mitsuba
 
 ## References
-[1] Kettunen et al. "Gradient-domain path tracing." (SIGGRAPH 2015) \
+[1] Kettunen et al. "Gradient-domain path tracing" (SIGGRAPH 2015) \
 [2] Csaba et al. "A simple and robust mutation strategy for the metropolis light transport algorithm. (CGF 2002) \
 [3] Jarosz et al. "The beam radiance estimate for volumetric photon mapping" (EG 2008) \
 [4] Jarosz et al. "Progressive photon beams" (SIGGRAPH Asia 2011) \
 [5] Bitterli and Jarosz "Beyond points and beams: Higher-dimensional photon samples for volumetric light transport" (SIGGRAPH 2017) \
 [6] Novak et al. "Virtual ray lights for rendering scenes with participating media" (SIGGRAPH 2012) \
-[7] Rousselle et al. "Image-space control variates for rendering." ACM Transactions on Graphics (SIGGRAPH 2016)
+[7] Rousselle et al. "Image-space control variates for rendering" (SIGGRAPH 2016) \
+[8] Deng et al. "Photon surfaces for robust, unbiased volumetric density estimation" (SIGGRAPH 2019) \
+[9] Kulla et al. "Importance Sampling Techniques for Path Tracing in Participating Media" (EGSR 2012)
