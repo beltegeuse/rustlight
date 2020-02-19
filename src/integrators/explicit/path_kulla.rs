@@ -56,6 +56,34 @@ impl KullaConfig {
     }
 }
 
+struct DistanceSampling {
+    max_dist: Option<f32>,
+}
+
+impl DistanceSampling {
+    fn sample(&self, sample: f32) -> (f32, f32) {
+        match self.max_dist {
+            None => {
+                unimplemented!();
+            }
+            Some(v) => {
+                unimplemented!();
+            }
+        }
+    }
+
+    fn pdf(&self, distance: f32) -> f32 {
+        match self.max_dist {
+            None => {
+                unimplemented!();
+            }
+            Some(v) => {
+                unimplemented!();
+            }
+        }
+    }
+}
+
 pub struct IntegratorPathKulla {
 }
 
@@ -129,7 +157,6 @@ impl IntegratorMC for IntegratorPathKulla {
             // TODO: Check how to integrate this inside path layer
             let pdf_simple = pdf_transmittance(m, t_kulla, ray.clone()) * phase.pdf(&(-ray.d), &light_w);
             let pdf_kulla = pdf_kulla * light_dist.powi(2) / sampled_pos.n.dot(-light_w); // TODO: Why not multiplying with sample_pos.pdf?
-            // sampled_pos.dot() / light_dist.powi(2)
             // TODO: Check for Kulla, need to change the domain...
 
             // Compute contribution
