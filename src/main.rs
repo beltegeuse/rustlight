@@ -130,7 +130,14 @@ fn main() {
             )
             .subcommand(
                 SubCommand::with_name("path_kulla")
-                    .about("path tracing generating path from the sensor")
+                    .about("path tracing for single scattering")
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .help("[all, kulla_position, transmittance_phase]")
+                            .default_value("all"),
+                    )
             )
             .subcommand(
                 SubCommand::with_name("path")
@@ -369,9 +376,24 @@ fn main() {
 
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
-        ("path_kulla", Some(_m)) => {
+        ("path_kulla", Some(m)) => {
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "all" => {
+                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::All
+                }
+                "kulla_position" => {
+                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::KullaPosition
+                }
+                "transmittance_phase" => {
+                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::TransmittancePhase
+                }
+                _ => panic!("invalid strategy: {}", strategy),
+            };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {},
+                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
+                    strategy
+                },
             ))
         }
         ("path", Some(m)) => {

@@ -41,7 +41,7 @@ SUBCOMMANDS:
     help                         Prints this message or the help of the given subcommand(s)
     light                        light tracing generating path from the lights
     path                         path tracing generating path from the sensor
-    path_kulla                   path tracing generating path from the sensor
+    path_kulla                   path tracing for single scattering
     plane_single                 Prototype implementation of 'Photon surfaces for robust, unbiased volumetric
                                  density estimation'
     pssmlt                       path tracing with MCMC sampling
@@ -83,7 +83,7 @@ For now, these are the following features implemented:
     * [*] Naive Virtual ray light [6]
 - Special single scattering intergrators:
     * (Un)correlated photon planes [7]
-    * [*] Kulla importance sampling [8]
+    * Kulla importance sampling [8]
 - Filtering: 
     * Image-space control variate with uniform and variance-based weights [7]
 - Materials: 
@@ -93,6 +93,10 @@ For now, these are the following features implemented:
     * A subset of PBRT materials (imported from [rs_pbrt](https://github.com/wahn/rs_pbrt))
 - Emitters: 
     * Multiple tri-mesh lights support
+- Volumes:
+    * Infinite homogenous participating media
+- Phase functions:
+    * Isotropic
 
 Techniques with [*] might contains bug or are incomplete (only naive implementation)
 
