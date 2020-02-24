@@ -31,14 +31,17 @@ fn main() {
     let max_arg = Arg::with_name("max")
         .takes_value(true)
         .short("m")
+        .help("max path depth")
         .default_value("inf");
     let min_arg = Arg::with_name("min")
         .takes_value(true)
         .short("n")
+        .help("min path depth")
         .default_value("inf");
     let iterations_arg = Arg::with_name("iterations")
         .takes_value(true)
         .short("r")
+        .help("number of iteration used to reconstruct an image")
         .default_value("50");
     let recons_type_arg = Arg::with_name("reconstruction_type")
         .takes_value(true)
@@ -54,7 +57,7 @@ fn main() {
                     .required(true)
                     .takes_value(true)
                     .index(1)
-                    .help("JSON file description"),
+                    .help("JSON/PBRT file path (scene description)"),
             )
             .arg(Arg::with_name("average").short("a").takes_value(true).help(
                 "average several pass of the integrator with a time limit ('inf' is possible)",
@@ -65,7 +68,7 @@ fn main() {
                     .allow_hyphen_values(true)
                     .short("t")
                     .default_value("auto")
-                    .help("number of thread for the computation"),
+                    .help("number of thread for the computation (could be negative)"),
             )
             .arg(
                 Arg::with_name("image_scale")
@@ -92,7 +95,7 @@ fn main() {
                 Arg::with_name("nbsamples")
                     .short("n")
                     .takes_value(true)
-                    .help("integration technique"),
+                    .help("number of sample from the sensor (if applicable)"),
             )
             .subcommand(
                 SubCommand::with_name("gradient-path")
@@ -123,6 +126,7 @@ fn main() {
                     .arg(&min_arg)
                     .arg(
                         Arg::with_name("large_prob")
+                            .help("probability to perform a large step")
                             .takes_value(true)
                             .short("p")
                             .default_value("0.3"),
@@ -135,7 +139,7 @@ fn main() {
                         Arg::with_name("strategy")
                             .takes_value(true)
                             .short("s")
-                            .help("[all, kulla_position, transmittance_phase]")
+                            .help("different sampling strategy: [all, kulla_position, transmittance_phase]")
                             .default_value("all"),
                     )
             )
@@ -148,10 +152,11 @@ fn main() {
                         Arg::with_name("strategy")
                             .takes_value(true)
                             .short("s")
+                            .help("difefrent sampling strategy: [all, bsdf, emitter]")
                             .default_value("all"),
                     ).arg(
                         Arg::with_name("single")
-                            .help("only compute single scattering")
+                            .help("to only compute single scattering")
                             .short("x"),
                     ),
             )
@@ -162,6 +167,7 @@ fn main() {
                     .arg(
                         Arg::with_name("lightpaths")
                             .takes_value(true)
+                            .help("number of light path generated from the light sources")
                             .short("p")
                             .default_value("all"),
                     ),
@@ -174,13 +180,29 @@ fn main() {
                         Arg::with_name("clamping")
                             .takes_value(true)
                             .short("b")
+                            .help("clamping factor")
                             .default_value("0.0"),
                     )
                     .arg(
                         Arg::with_name("nb_vpl")
                             .takes_value(true)
+                            .help("number of VPL at least generated")
                             .short("n")
                             .default_value("128"),
+                    )
+                    .arg(
+                        Arg::with_name("option_lt")
+                        .takes_value(true)
+                        .help("option to select light transport: [all, surface, volume]")
+                        .short("l")
+                        .default_value("all")
+                    )
+                    .arg(
+                        Arg::with_name("option_vpl")
+                        .takes_value(true)
+                        .help("option to select generated VPL: [all, surface, volume]")
+                        .short("v")
+                        .default_value("all")
                     ),
             )
             .subcommand(
@@ -190,12 +212,14 @@ fn main() {
                     .arg(
                         Arg::with_name("nb_primitive")
                             .takes_value(true)
+                            .help("number of primitive generated")
                             .short("n")
                             .default_value("128"),
                     )
                     .arg(
                         Arg::with_name("primitives")
                             .takes_value(true)
+                            .help("type of primitives: [beam, bre, planes, vrl]")
                             .short("p")
                             .default_value("bre"),
                     ),
@@ -206,12 +230,14 @@ fn main() {
                     .arg(
                         Arg::with_name("nb_primitive")
                             .takes_value(true)
+                            .help("number of primitive generated")
                             .short("n")
                             .default_value("128"),
                     )
                     .arg(
                         Arg::with_name("strategy")
                             .takes_value(true)
+                            .help("sampling strategy: [uv, vt, st, cmis, dmis, average]")
                             .short("s")
                             .default_value("average"),
                     ),
@@ -222,6 +248,7 @@ fn main() {
                     .arg(
                         Arg::with_name("nb_primitive")
                             .takes_value(true)
+                            .help("number of primitive generated (per pixel)")
                             .short("n")
                             .default_value("128"),
                     )
@@ -229,6 +256,7 @@ fn main() {
                         Arg::with_name("strategy")
                             .takes_value(true)
                             .short("s")
+                            .help("sampling strategy: [uv, vt, st, cmis, dmis, average]")
                             .default_value("average"),
                     ),
             )
@@ -239,11 +267,13 @@ fn main() {
                         Arg::with_name("distance")
                             .takes_value(true)
                             .short("d")
+                            .help("distance threshold for AO")
                             .default_value("inf"),
                     )
                     .arg(
                         Arg::with_name("normal-correction")
                             .takes_value(false)
+                            .help("apply normal correction")
                             .short("n"),
                     ),
             )
@@ -253,12 +283,14 @@ fn main() {
                     .arg(
                         Arg::with_name("bsdf")
                             .takes_value(true)
+                            .help("number of samples from the BSDF")
                             .short("b")
                             .default_value("1"),
                     )
                     .arg(
                         Arg::with_name("light")
                             .takes_value(true)
+                            .help("number of samples from the emitter")
                             .short("l")
                             .default_value("1"),
                     ),
@@ -466,9 +498,22 @@ fn main() {
             ))
         }
         ("vpl", Some(m)) => {
+            let get_option = |name: &'static str| {
+                let options = value_t_or_exit!(m.value_of(name), String);
+                match options.as_ref() {
+                    "all" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::All,
+                    "surface" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface,
+                    "volume" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Volume,
+                    _ => panic!("Invalid options: [all, surface, volume]"),
+                }
+            };
+
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
             let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
+            let option_vpl = get_option("option_vpl");
+            let option_lt = get_option("option_lt");
+           
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::vpl::IntegratorVPL {
                     nb_vpl,
@@ -478,6 +523,8 @@ fn main() {
                     } else {
                         Some(clamping)
                     },
+                    option_vpl,
+                    option_lt,
                 },
             ))
         }
@@ -547,7 +594,7 @@ fn main() {
                 "plane" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Planes,
                 "vrl" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::VRL,
                 _ => panic!(
-                    "{} is not a correct primitive (bre, beam, plane)",
+                    "{} is not a correct primitive (bre, beam, plane, vrl)",
                     primitives
                 ),
             };

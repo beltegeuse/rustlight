@@ -5,10 +5,19 @@ use crate::samplers;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum IntegratorVPLOption {
+    Volume,
+    Surface,
+    All
+}
+
 pub struct IntegratorVPL {
     pub nb_vpl: usize,
     pub max_depth: Option<u32>,
     pub clamping_factor: Option<f32>,
+    pub option_vpl: IntegratorVPLOption,
+    pub option_lt: IntegratorVPLOption,
 }
 
 struct VPLSurface<'a> {
@@ -79,15 +88,18 @@ impl TechniqueVPL {
         path: &Path<'scene, '_>,
         scene: &'scene Scene,
         vertex_id: VertexID,
+        options: IntegratorVPLOption,
         vpls: &mut Vec<VPL<'scene>>,
         flux: Color,
     ) {
         match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
-                vpls.push(VPL::Surface(VPLSurface {
-                    its: v.its.clone(),
-                    radiance: flux,
-                }));
+                if options != IntegratorVPLOption::Volume {
+                    vpls.push(VPL::Surface(VPLSurface {
+                        its: v.its.clone(),
+                        radiance: flux,
+                    }));
+                }
 
                 // Continue to bounce...
                 for edge in &v.edge_out {
@@ -97,6 +109,7 @@ impl TechniqueVPL {
                             path,
                             scene,
                             vertex_next_id,
+                            options,
                             vpls,
                             flux * edge.weight * edge.rr_weight,
                         );
@@ -104,12 +117,14 @@ impl TechniqueVPL {
                 }
             }
             Vertex::Volume(ref v) => {
-                vpls.push(VPL::Volume(VPLVolume {
-                    pos: v.pos,
-                    d_in: v.d_in,
-                    phase_function: v.phase_function.clone(),
-                    radiance: flux,
-                }));
+                if options != IntegratorVPLOption::Surface {
+                    vpls.push(VPL::Volume(VPLVolume {
+                        pos: v.pos,
+                        d_in: v.d_in,
+                        phase_function: v.phase_function.clone(),
+                        radiance: flux,
+                    }));
+                }
 
                 // Continue to bounce...
                 for edge in &v.edge_out {
@@ -119,6 +134,7 @@ impl TechniqueVPL {
                             path,
                             scene,
                             vertex_next_id,
+                            options,
                             vpls,
                             flux * edge.weight * edge.rr_weight,
                         );
@@ -127,11 +143,13 @@ impl TechniqueVPL {
             }
             Vertex::Light(ref v) => {
                 let flux = *self.flux.as_ref().unwrap();
-                vpls.push(VPL::Emitter(VPLEmitter {
-                    pos: v.pos,
-                    n: v.n,
-                    emitted_radiance: flux,
-                }));
+                if options != IntegratorVPLOption::Volume {
+                    vpls.push(VPL::Emitter(VPLEmitter {
+                        pos: v.pos,
+                        n: v.n,
+                        emitted_radiance: flux,
+                    }));
+                }
 
                 if let Some(edge) = v.edge_out {
                     let edge = path.edge(edge);
@@ -140,6 +158,7 @@ impl TechniqueVPL {
                             path,
                             scene,
                             next_vertex_id,
+                            options,
                             vpls,
                             edge.weight * flux * edge.rr_weight,
                         );
@@ -176,7 +195,7 @@ impl Integrator for IntegratorVPL {
                 &mut sampler,
                 &mut technique,
             );
-            technique.convert_vpl(&path, scene, root[0].0, &mut vpls, Color::one());
+            technique.convert_vpl(&path, scene, root[0].0, self.option_vpl, &mut vpls, Color::one());
             nb_path_shot += 1;
         }
         let vpls = vpls;
@@ -447,12 +466,16 @@ impl IntegratorVPL {
                 ) * mrec.w;
                 l_i
             } else {
-                l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
-                    * mrec.w;
+                if self.option_lt != IntegratorVPLOption::Volume {
+                    l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
+                        * mrec.w;
+                }
                 l_i
             }
         } else {
-            l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its);
+            if self.option_lt != IntegratorVPLOption::Surface {
+                l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its);
+            }
             l_i
         }
     }
