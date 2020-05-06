@@ -31,14 +31,17 @@ fn main() {
     let max_arg = Arg::with_name("max")
         .takes_value(true)
         .short("m")
+        .help("max path depth")
         .default_value("inf");
     let min_arg = Arg::with_name("min")
         .takes_value(true)
         .short("n")
+        .help("min path depth")
         .default_value("inf");
     let iterations_arg = Arg::with_name("iterations")
         .takes_value(true)
         .short("r")
+        .help("number of iteration used to reconstruct an image")
         .default_value("50");
     let recons_type_arg = Arg::with_name("reconstruction_type")
         .takes_value(true)
@@ -46,7 +49,7 @@ fn main() {
         .default_value("uniform");
     let matches =
         App::new("rustlight")
-            .version("0.1.0")
+            .version("0.2.0")
             .author("Adrien Gruson <adrien.gruson@gmail.com>")
             .about("A Rusty Light Transport simulation program")
             .arg(
@@ -54,7 +57,7 @@ fn main() {
                     .required(true)
                     .takes_value(true)
                     .index(1)
-                    .help("JSON file description"),
+                    .help("JSON/PBRT file path (scene description)"),
             )
             .arg(Arg::with_name("average").short("a").takes_value(true).help(
                 "average several pass of the integrator with a time limit ('inf' is possible)",
@@ -65,7 +68,7 @@ fn main() {
                     .allow_hyphen_values(true)
                     .short("t")
                     .default_value("auto")
-                    .help("number of thread for the computation"),
+                    .help("number of thread for the computation (could be negative)"),
             )
             .arg(
                 Arg::with_name("image_scale")
@@ -92,7 +95,7 @@ fn main() {
                 Arg::with_name("nbsamples")
                     .short("n")
                     .takes_value(true)
-                    .help("integration technique"),
+                    .help("number of sample from the sensor (if applicable)"),
             )
             .subcommand(
                 SubCommand::with_name("gradient-path")
@@ -123,6 +126,7 @@ fn main() {
                     .arg(&min_arg)
                     .arg(
                         Arg::with_name("large_prob")
+                            .help("probability to perform a large step")
                             .takes_value(true)
                             .short("p")
                             .default_value("0.3"),
@@ -130,7 +134,14 @@ fn main() {
             )
             .subcommand(
                 SubCommand::with_name("path_kulla")
-                    .about("path tracing generating path from the sensor")
+                    .about("path tracing for single scattering")
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .help("different sampling strategy: [all, kulla_position, transmittance_phase]")
+                            .default_value("all"),
+                    )
             )
             .subcommand(
                 SubCommand::with_name("path")
@@ -141,10 +152,11 @@ fn main() {
                         Arg::with_name("strategy")
                             .takes_value(true)
                             .short("s")
+                            .help("difefrent sampling strategy: [all, bsdf, emitter]")
                             .default_value("all"),
                     ).arg(
                         Arg::with_name("single")
-                            .help("only compute single scattering")
+                            .help("to only compute single scattering")
                             .short("x"),
                     ),
             )
@@ -155,6 +167,7 @@ fn main() {
                     .arg(
                         Arg::with_name("lightpaths")
                             .takes_value(true)
+                            .help("number of light path generated from the light sources")
                             .short("p")
                             .default_value("all"),
                     ),
@@ -167,13 +180,29 @@ fn main() {
                         Arg::with_name("clamping")
                             .takes_value(true)
                             .short("b")
+                            .help("clamping factor")
                             .default_value("0.0"),
                     )
                     .arg(
                         Arg::with_name("nb_vpl")
                             .takes_value(true)
+                            .help("number of VPL at least generated")
                             .short("n")
                             .default_value("128"),
+                    )
+                    .arg(
+                        Arg::with_name("option_lt")
+                        .takes_value(true)
+                        .help("option to select light transport: [all, surface, volume]")
+                        .short("l")
+                        .default_value("all")
+                    )
+                    .arg(
+                        Arg::with_name("option_vpl")
+                        .takes_value(true)
+                        .help("option to select generated VPL: [all, surface, volume]")
+                        .short("v")
+                        .default_value("all")
                     ),
             )
             .subcommand(
@@ -183,12 +212,14 @@ fn main() {
                     .arg(
                         Arg::with_name("nb_primitive")
                             .takes_value(true)
+                            .help("number of primitive generated")
                             .short("n")
                             .default_value("128"),
                     )
                     .arg(
                         Arg::with_name("primitives")
                             .takes_value(true)
+                            .help("type of primitives: [beam, bre, planes, vrl]")
                             .short("p")
                             .default_value("bre"),
                     ),
@@ -199,22 +230,24 @@ fn main() {
                     .arg(
                         Arg::with_name("nb_primitive")
                             .takes_value(true)
+                            .help("number of primitive generated")
                             .short("n")
                             .default_value("128"),
                     )
                     .arg(
                         Arg::with_name("strategy")
                             .takes_value(true)
+                            .help("sampling strategy: [uv, vt, st, cmis, dmis, average, smis_jacobian, smis_all]")
                             .short("s")
                             .default_value("average"),
                     ).arg(
-                        Arg::with_name("samples_ecmis")
+                        Arg::with_name("samples_smis")
                             .takes_value(true)
                             .short("k")
                             .default_value("4"),
                     ).arg(
                         Arg::with_name("stratified")
-                            .help("use stratified samples ECMIS")
+                            .help("use stratified samples SMIS")
                             .short("x"),
                     ),
             )
@@ -224,22 +257,24 @@ fn main() {
                     .arg(
                         Arg::with_name("nb_primitive")
                             .takes_value(true)
+                            .help("number of primitive generated")
                             .short("n")
                             .default_value("128"),
                     )
                     .arg(
                         Arg::with_name("strategy")
                             .takes_value(true)
+                            .help("sampling strategy: [uv, vt, st, cmis, dmis, average, smis_jacobian, smis_all]")
                             .short("s")
                             .default_value("average"),
                     ).arg(
-                        Arg::with_name("samples_ecmis")
+                        Arg::with_name("samples_smis")
                             .takes_value(true)
                             .short("k")
                             .default_value("4"),
                     ).arg(
                         Arg::with_name("stratified")
-                            .help("use stratified samples ECMIS")
+                            .help("use stratified samples SMIS")
                             .short("x"),
                     ),
             )
@@ -250,11 +285,13 @@ fn main() {
                         Arg::with_name("distance")
                             .takes_value(true)
                             .short("d")
+                            .help("distance threshold for AO")
                             .default_value("inf"),
                     )
                     .arg(
                         Arg::with_name("normal-correction")
                             .takes_value(false)
+                            .help("apply normal correction")
                             .short("n"),
                     ),
             )
@@ -264,12 +301,14 @@ fn main() {
                     .arg(
                         Arg::with_name("bsdf")
                             .takes_value(true)
+                            .help("number of samples from the BSDF")
                             .short("b")
                             .default_value("1"),
                     )
                     .arg(
                         Arg::with_name("light")
                             .takes_value(true)
+                            .help("number of samples from the emitter")
                             .short("l")
                             .default_value("1"),
                     ),
@@ -388,8 +427,23 @@ fn main() {
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
         ("path_kulla", Some(m)) => {
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "all" => {
+                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::All
+                }
+                "kulla_position" => {
+                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::KullaPosition
+                }
+                "transmittance_phase" => {
+                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::TransmittancePhase
+                }
+                _ => panic!("invalid strategy: {}", strategy),
+            };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {},
+                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
+                    strategy
+                },
             ))
         }
         ("path", Some(m)) => {
@@ -462,9 +516,22 @@ fn main() {
             ))
         }
         ("vpl", Some(m)) => {
+            let get_option = |name: &'static str| {
+                let options = value_t_or_exit!(m.value_of(name), String);
+                match options.as_ref() {
+                    "all" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::All,
+                    "surface" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface,
+                    "volume" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Volume,
+                    _ => panic!("Invalid options: [all, surface, volume]"),
+                }
+            };
+
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
             let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
+            let option_vpl = get_option("option_vpl");
+            let option_lt = get_option("option_lt");
+           
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::vpl::IntegratorVPL {
                     nb_vpl,
@@ -474,6 +541,8 @@ fn main() {
                     } else {
                         Some(clamping)
                     },
+                    option_vpl,
+                    option_lt,
                 },
             ))
         }
@@ -481,25 +550,24 @@ fn main() {
             let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             let strategy = match strategy.as_ref() {
-                "uv" => rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::UV,
-                "ut" => rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::UT,
-                "vt" => rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::VT,
+                "uv" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UV,
+                "ut" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UT,
+                "vt" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::VT,
                 "average" => {
-                    rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::Average
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::Average
                 }
                 "discrete_mis" => {
-                    rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::DiscreteMIS
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS
                 }
-                "ualpha" => rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::UAlpha,
-                "ualpha_center" => rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::UAlphaCenter,
-                "cmis" => rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::ContinousMIS,
-                "ecmis_all" => {
-                    let samples_ecmis = value_t_or_exit!(m.value_of("samples_ecmis"), usize);
-                    rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::ECMISAll(samples_ecmis)
+                "ualpha" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UAlpha,
+                "cmis" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::ContinousMIS,
+                "smis_all" => {
+                    let samples_smis = value_t_or_exit!(m.value_of("samples_smis"), usize);
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::SMISAll(samples_smis)
                 }
-                "ecmis_jacobian" => {
-                    let samples_ecmis = value_t_or_exit!(m.value_of("samples_ecmis"), usize);
-                    rustlight::integrators::explicit::uncorrelated_plane_single::SinglePlaneStrategyUncorrelated::ECMISJacobian(samples_ecmis)
+                "smis_jacobian" => {
+                    let samples_smis = value_t_or_exit!(m.value_of("samples_smis"), usize);
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::SMISJacobian(samples_smis)
                 }
                 _ => panic!(
                     "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
@@ -529,19 +597,15 @@ fn main() {
                 "discrete_mis" => {
                     rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMIS
                 }
-                "discrete_mis_uv" => {
-                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::DiscreteMISUV
-                }
                 "ualpha" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UAlpha,
-                "ualpha_center" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UAlphaCenter,
                 "cmis" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::ContinousMIS,
-                "ecmis_all" => {
-                    let samples_ecmis = value_t_or_exit!(m.value_of("samples_ecmis"), usize);
-                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::ECMISAll(samples_ecmis)
+                "smis_all" => {
+                    let samples_smis = value_t_or_exit!(m.value_of("samples_smis"), usize);
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::SMISAll(samples_smis)
                 }
-                "ecmis_jacobian" => {
-                    let samples_ecmis = value_t_or_exit!(m.value_of("samples_ecmis"), usize);
-                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::ECMISJacobian(samples_ecmis)
+                "smis_jacobian" => {
+                    let samples_smis = value_t_or_exit!(m.value_of("samples_smis"), usize);
+                    rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::SMISJacobian(samples_smis)
                 }
                 _ => panic!(
                     "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
@@ -568,7 +632,7 @@ fn main() {
                 "plane" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Planes,
                 "vrl" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::VRL,
                 _ => panic!(
-                    "{} is not a correct primitive (bre, beam, plane)",
+                    "{} is not a correct primitive (bre, beam, plane, vrl)",
                     primitives
                 ),
             };

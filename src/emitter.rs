@@ -141,7 +141,7 @@ pub struct EmitterSampler<'scene> {
 }
 
 impl<'scene> EmitterSampler<'scene> {
-    fn pdf(&self, emitter: &dyn Emitter) -> f32 {
+    pub fn pdf(&self, emitter: &dyn Emitter) -> f32 {
         let emitter_addr: [usize; 2] = unsafe { std::mem::transmute(emitter) };
         for (i, e) in self.emitters.iter().enumerate() {
             let other_addr: [usize; 2] = unsafe { std::mem::transmute(*e) };
