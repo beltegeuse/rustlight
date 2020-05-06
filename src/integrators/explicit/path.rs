@@ -11,14 +11,17 @@ pub enum IntegratorPathTracingStrategies {
     Emitter,
 }
 pub struct IntegratorPathTracing {
+    pub min_depth: Option<u32>,
     pub max_depth: Option<u32>,
     pub strategy: IntegratorPathTracingStrategies,
+    pub single_scattering: bool,
 }
 /// This structure is responsible to the graph generation
 pub struct TechniquePathTracing {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<dyn SamplingStrategy>>,
     pub img_pos: Point2<u32>,
+    pub single_scattering: bool,
 }
 impl Technique for TechniquePathTracing {
     fn init<'scene, 'emitter>(
@@ -32,8 +35,8 @@ impl Technique for TechniquePathTracing {
         // Only generate a path from the sensor
         let root = Vertex::Sensor(SensorVertex {
             uv: Point2::new(
-                self.img_pos.x as f32 + sampler.next(),
-                self.img_pos.y as f32 + sampler.next(),
+                self.img_pos.x as f32 + 0.5,//sampler.next(),
+                self.img_pos.y as f32 + 0.5,//sampler.next(),
             ),
             pos: scene.camera.position(),
             edge_in: None,
@@ -54,6 +57,8 @@ impl Technique for TechniquePathTracing {
 impl TechniquePathTracing {
     fn evalute_edge<'scene, 'emitter>(
         &self,
+        curr_depth: u32,
+        min_depth: Option<u32>,
         path: &Path<'scene, 'emitter>,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
@@ -83,8 +88,14 @@ impl TechniquePathTracing {
             }
         };
 
+        // Check the path depth, if not reach min depth, ignore contribution...
+        let add_contrib = match min_depth {
+            None => true,
+            Some(v) => curr_depth >= v, 
+        };
+
         // If needed, we compute the MIS weight
-        if !contrib.is_zero() {
+        if !contrib.is_zero() && add_contrib {
             let weight = match strategy {
                 IntegratorPathTracingStrategies::All => {
                     // Balance heuristic
@@ -117,6 +128,8 @@ impl TechniquePathTracing {
 
     fn evaluate<'scene, 'emitter>(
         &self,
+        curr_depth: u32,
+        min_depth: Option<u32>,
         path: &Path<'scene, 'emitter>,
         scene: &'scene Scene,
         emitters: &'emitter EmitterSampler,
@@ -126,18 +139,21 @@ impl TechniquePathTracing {
         let mut l_i = Color::zero();
         match path.vertex(vertex_id) {
             Vertex::Surface(ref v) => {
+                if self.single_scattering {
+                    return Color::zero();
+                }
                 for edge_id in &v.edge_out {
                     // Compute the contribution along this edge
                     // this only cover the fact that some next vertices are on some light sources
                     // TODO: Modify this scheme at some point
-                    l_i += self.evalute_edge(path, scene, emitters, vertex_id, *edge_id, strategy);
+                    l_i += self.evalute_edge(curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy);
 
                     // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         l_i += edge.weight
                             * edge.rr_weight
-                            * self.evaluate(path, scene, emitters, vertex_next_id, strategy);
+                            * self.evaluate(curr_depth + 1, min_depth,path, scene, emitters, vertex_next_id, strategy);
                     }
                 }
             }
@@ -146,7 +162,7 @@ impl TechniquePathTracing {
                     // Compute the contribution along this edge
                     // this only cover the fact that some next vertices are on some light sources
                     // TODO: Modify this scheme at some point
-                    l_i += self.evalute_edge(path, scene, emitters, vertex_id, *edge_id, strategy);
+                    l_i += self.evalute_edge(curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy);
 
                     // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
@@ -154,7 +170,7 @@ impl TechniquePathTracing {
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         l_i += edge.weight
                             * edge.rr_weight
-                            * self.evaluate(path, scene, emitters, vertex_next_id, strategy);
+                            * self.evaluate(curr_depth + 1, min_depth, path, scene, emitters, vertex_next_id, strategy);
                     }
                 }
             }
@@ -162,9 +178,14 @@ impl TechniquePathTracing {
                 // Only one strategy where...
                 let edge = path.edge(v.edge_out.unwrap());
 
+                let add_contrib = match min_depth {
+                    None => true,
+                    Some(v) => curr_depth >= v, 
+                };
+
                 // Get the potential contribution
                 let contrib = edge.contribution(path);
-                if !contrib.is_zero() {
+                if !contrib.is_zero() && add_contrib {
                     l_i += contrib;
                 }
 
@@ -172,7 +193,7 @@ impl TechniquePathTracing {
                 if let Some(vertex_next_id) = edge.vertices.1 {
                     l_i += edge.weight
                         * edge.rr_weight
-                        * self.evaluate(path, scene, emitters, vertex_next_id, strategy);
+                        * self.evaluate(curr_depth + 1, min_depth, path, scene, emitters, vertex_next_id, strategy);
                 }
             }
             _ => {}
@@ -213,12 +234,13 @@ impl IntegratorMC for IntegratorPathTracing {
             max_depth: self.max_depth,
             samplings,
             img_pos: Point2::new(ix, iy),
+            single_scattering: self.single_scattering,
         };
         // Call the generator on this technique
         // the generator give back the root nodes
         let mut path = Path::default();
         let root = generate(&mut path, accel, scene, emitters, sampler, &mut technique);
         // Evaluate the sampling graph
-        technique.evaluate(&path, scene, emitters, root[0].0, &self.strategy)
+        technique.evaluate(0, self.min_depth, &path, scene, emitters, root[0].0, &self.strategy)
     }
 }
