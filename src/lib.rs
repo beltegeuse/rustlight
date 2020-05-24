@@ -12,6 +12,7 @@ extern crate byteorder;
 // For the vector op
 extern crate cgmath;
 // For fast intersection
+#[cfg(feature = "embree")]
 extern crate embree_rs;
 // For the image (LDR) export and loading
 #[cfg(feature = "image")]

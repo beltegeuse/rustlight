@@ -4,10 +4,6 @@ version = "0.2.0"
 authors = ["Adrien Gruson <adrien.gruson@gmail.com>"]
 edition = "2018"
 
-[[bin]]
-name = "rustlight"
-doc = false
-
 [features]
 # No default features are enable by default
 default = ["image", "embree-rs", "pbrt"]
@@ -16,26 +12,25 @@ embree = ["embree-rs"]
 progress-bar = ["pbr"]
 
 [dependencies]
-image = { version =  "*", optional = true }
-rayon = "*"
-rand = "*"
-tobj = "*"
+byteorder = "*"
 embree-rs = { version = "*" , optional = true }
+image = { version =  "*", optional = true }
+openexr = { version = "*", optional = true }
+log = "*"
+rand = "*"
+rayon = "*"
 serde = "1.0"
 serde_derive = "1.0" 
 serde_json = "1.0"
-byteorder = "*"
-clap = "*"
+tobj = "*"
 pbr = { version = "*", optional = true }
-log = "*"
-env_logger = "*"
-# To know number of threads
-num_cpus = "*"
-# - openexr image format (output)
-openexr = { version = "*", optional = true }
-# - pbrt image format (input)
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs", optional = true }
 
 [dependencies.cgmath]
 version = "*"
 features = ["serde"]
+
+[dev-dependencies]
+clap = "*"
+env_logger = "*"
+num_cpus = "*"

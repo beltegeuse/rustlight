@@ -8,8 +8,10 @@ Physically-based rendering engine implemented with **Rust**.
 
 ## How to use it
 
+You can easily uses Rustlight via the provided command line tool (via examples/cli.rs):
+
 ```
-$ cargo run --release -- -h
+$ cargo run --examples=cli --release -- -h
 rustlight 0.2.0
 Adrien Gruson <adrien.gruson@gmail.com>
 A Rusty Light Transport simulation program
@@ -53,8 +55,10 @@ SUBCOMMANDS:
 
 For example, to use path tracing using 128 spp:
 ```
-$ cargo run --release --features="pbrt openexr" -- -a inf -n 128 -o path.pfm ./data/cbox.json path
+$ cargo run --examples=cli --release --features="pbrt openexr" -- -a inf -n 128 -o path.pfm ./data/cbox.json path
 ```
+
+Other examples (wasm, viewer) are planned.
 
 ## Optional Features
 
