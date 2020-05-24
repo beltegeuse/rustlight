@@ -56,14 +56,16 @@ For example, to use path tracing using 128 spp:
 $ cargo run --release --features="pbrt openexr" -- -a inf -n 128 -o path.pfm ./data/cbox.json path
 ```
 
-## Dependencies
+## Optional Features
 
-Optionals : 
+It is possible to activate/desactivate some features of rustlight depending of your needs:
 
-- [image](https://github.com/image-rs/image) : load and save LDR images
-- [openexr](https://github.com/cessen/openexr-rs) : load and save EXR images
-- [embree-rs](https://github.com/Twinklebear/embree-rs) : fast primitive/ray intersection (* not yet optional)
-- [pbrt_rs](https://github.com/beltegeuse/pbrt_rs) : read PBRT files 
+- **image**(*): load and save LDR images (via [image]((https://github.com/image-rs/image)))
+- **openexr**: load and save EXR images (via [openexr-rs](https://github.com/cessen/openexr-rs))
+- **pbrt**(*): read PBRT files (via [pbrt_rs]((https://github.com/beltegeuse/pbrt_rs))) [Not that only support a subset PBRT primitives]
+- **progress-bar**: show progress bar (via [pbr]((https://crates.io/crates/pbr))) 
+
+(*) These features are activated by default.
 
 ## Features
 
@@ -72,15 +74,15 @@ For now, these are the following features implemented:
     * Ambiant occlusion
     * Direct with MIS
     * Path-tracing with NEE
-    * [*] Gradient-path tracing [1]
+    * **[*]** Gradient-path tracing [1]
     * Primary-sample space MLT [2]
     * Light tracing
     * Virtual Point Light
 - Special volumetric integrators (via vol_primitives):
     * Beam radiance estimate (2D kernel) [3]
     * Photon beams (1D kernel) [4]
-    * [*] Photon planes (0D kernel) [5]
-    * [*] Naive Virtual ray light [6]
+    * **[*]** Photon planes (0D kernel) [5]
+    * **[*]** Naive Virtual ray light [6]
 - Special single scattering intergrators:
     * (Un)correlated photon planes [7]
     * Kulla importance sampling [8]
@@ -90,7 +92,6 @@ For now, these are the following features implemented:
     * Diffuse
     * Phong lobe
     * Specular
-    * A subset of PBRT materials (imported from [rs_pbrt](https://github.com/wahn/rs_pbrt))
 - Emitters: 
     * Multiple tri-mesh lights support
 - Volumes:
@@ -98,7 +99,7 @@ For now, these are the following features implemented:
 - Phase functions:
     * Isotropic
 
-Techniques with [*] might contains bug or are incomplete (only naive implementation)
+**[*]** Techniques that could contains bugs or are incomplete (only naive implementation)
 
 ## Rendering
 

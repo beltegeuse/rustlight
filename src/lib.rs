@@ -34,6 +34,7 @@ extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
 // For print a progress bar
+#[cfg(feature = "progress-bar")]
 extern crate pbr;
 // For loading other type of scene format
 #[cfg(feature = "pbrt")]

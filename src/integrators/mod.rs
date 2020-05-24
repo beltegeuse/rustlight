@@ -6,7 +6,6 @@ use crate::tools::StepRangeInt;
 use crate::Scale;
 
 use cgmath::{Point2, Vector2};
-use pbr::ProgressBar;
 use rayon;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std;
@@ -14,6 +13,32 @@ use std::cmp;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
+
+//////////////// Progress bar
+/// PBR Wrapper for conditional compilation
+struct ProgressBar {
+    #[cfg(feature = "progress-bar")]
+    progress: pbr::ProgressBar
+}
+impl ProgressBar {
+    #[cfg(feature = "progress-bar")]
+    fn new(n: u64) -> ProgressBar {
+        ProgressBar {
+            progress: pbr::ProgressBar::new(n)
+        }
+    }
+    #[cfg(not(feature = "progress-bar"))]
+    fn new(_: u64) -> ProgressBar {
+        ProgressBar {}
+    }
+
+    #[cfg(feature = "progress-bar")]
+    fn inc(&mut self) {
+        self.progress.inc()
+    }
+    #[cfg(not(feature = "progress-bar"))]
+    fn inc(&mut self) {}
+}
 
 //////////////// Helpers
 /// Image block
