@@ -3,7 +3,7 @@ use cgmath::Point2;
 use rand::prelude::*;
 
 pub struct IndependentSampler {
-    rnd: StdRng,
+    rnd: rand::rngs::SmallRng,
 }
 
 impl Sampler for IndependentSampler {
@@ -15,19 +15,25 @@ impl Sampler for IndependentSampler {
         let y = self.rnd.gen();
         Point2::new(x, y)
     }
+    fn next_u64(&mut self) -> u64 {
+        self.rnd.next_u64()
+    }
 }
 
 impl Default for IndependentSampler {
-    fn default() -> IndependentSampler {
-        IndependentSampler {
-            rnd: rand::rngs::StdRng::from_rng(thread_rng()).unwrap(),
-        }
+    fn default() -> Self {
+        IndependentSampler::from_seed(random())
     }
 }
+
 impl IndependentSampler {
     pub fn from_seed(seed: u64) -> Self {
         IndependentSampler {
-            rnd: rand::rngs::StdRng::seed_from_u64(seed),
+            rnd: rand::rngs::SmallRng::seed_from_u64(seed),
         }
+    }
+
+    pub fn from_sampler(s: &mut dyn Sampler) -> Self {
+        IndependentSampler::from_seed(s.next_u64())
     }
 }

@@ -25,20 +25,34 @@ pub fn check_direlectric_condition(
 // Texture or uniform color buffers
 #[derive(Deserialize)]
 pub struct Texture {
+    #[cfg(feature = "image")]
     #[serde(deserialize_with = "deserialize_from_str")]
     pub img: Bitmap,
 }
 
 impl Texture {
+    // With features
+    #[cfg(feature = "image")]
     pub fn load(path: &str) -> Texture {
         Texture {
             img: Bitmap::read(path),
         }
     }
-    // Access to the texture
+    #[cfg(feature = "image")]
     pub fn pixel(&self, uv: Vector2<f32>) -> Color {
         self.img.pixel_uv(uv)
     }
+
+    // Without
+    #[cfg(not(feature = "image"))]
+    pub fn load(_path: &str) -> Texture {
+        unimplemented!("No support of textures");
+    }
+    #[cfg(not(feature = "image"))]
+    pub fn pixel(&self, _uv: Vector2<f32>) -> Color {
+        unimplemented!("No support of images");
+    }
+
 }
 
 #[cfg(feature = "image")]

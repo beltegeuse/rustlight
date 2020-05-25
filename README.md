@@ -11,7 +11,7 @@ Physically-based rendering engine implemented with **Rust**.
 You can easily uses Rustlight via the provided command line tool (via examples/cli.rs):
 
 ```
-$ cargo run --examples=cli --release -- -h
+$ cargo run --example=cli --release -- -h
 rustlight 0.2.0
 Adrien Gruson <adrien.gruson@gmail.com>
 A Rusty Light Transport simulation program
@@ -55,7 +55,7 @@ SUBCOMMANDS:
 
 For example, to use path tracing using 128 spp:
 ```
-$ cargo run --examples=cli --release --features="pbrt openexr" -- -a inf -n 128 -o path.pfm ./data/cbox.json path
+$ cargo run --example=cli --release --features="pbrt openexr" -- -a inf -n 128 -o path.pfm ./data/cbox.json path
 ```
 
 Other examples (wasm, viewer) are planned.
@@ -67,7 +67,8 @@ It is possible to activate/desactivate some features of rustlight depending of y
 - **image**(*): load and save LDR images (via [image]((https://github.com/image-rs/image)))
 - **openexr**: load and save EXR images (via [openexr-rs](https://github.com/cessen/openexr-rs))
 - **pbrt**(*): read PBRT files (via [pbrt_rs]((https://github.com/beltegeuse/pbrt_rs))) [Not that only support a subset PBRT primitives]
-- **progress-bar**: show progress bar (via [pbr]((https://crates.io/crates/pbr))) 
+- **progress-bar**(*): show progress bar (via [pbr]((https://crates.io/crates/pbr))) 
+- **embree**: fast intersection (via [embree-rs](https://github.com/Twinklebear/embree-rs))
 
 (*) These features are activated by default.
 

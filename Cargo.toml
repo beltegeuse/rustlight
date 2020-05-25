@@ -5,19 +5,19 @@ authors = ["Adrien Gruson <adrien.gruson@gmail.com>"]
 edition = "2018"
 
 [features]
-# No default features are enable by default
-default = ["image", "embree-rs", "pbrt"]
+default = ["image", "pbrt", "progress-bar"]
 pbrt = ["pbrt_rs"]
 embree = ["embree-rs"]
 progress-bar = ["pbr"]
 
 [dependencies]
 byteorder = "*"
+cgmath = { version = "*", features = ["serde"] }
 embree-rs = { version = "*" , optional = true }
 image = { version =  "*", optional = true }
 openexr = { version = "*", optional = true }
 log = "*"
-rand = "*"
+rand = { version = "*", features = ["small_rng"] }
 rayon = "*"
 serde = "1.0"
 serde_derive = "1.0" 
@@ -26,9 +26,6 @@ tobj = "*"
 pbr = { version = "*", optional = true }
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs", optional = true }
 
-[dependencies.cgmath]
-version = "*"
-features = ["serde"]
 
 [dev-dependencies]
 clap = "*"

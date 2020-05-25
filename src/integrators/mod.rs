@@ -16,9 +16,12 @@ use std::time::Instant;
 
 //////////////// Progress bar
 /// PBR Wrapper for conditional compilation
+#[cfg(feature = "progress-bar")]
 struct ProgressBar {
-    #[cfg(feature = "progress-bar")]
-    progress: pbr::ProgressBar
+    progress: pbr::ProgressBar<std::io::Stdout>
+}
+#[cfg(not(feature = "progress-bar"))]
+struct ProgressBar {
 }
 impl ProgressBar {
     #[cfg(feature = "progress-bar")]
@@ -34,7 +37,7 @@ impl ProgressBar {
 
     #[cfg(feature = "progress-bar")]
     fn inc(&mut self) {
-        self.progress.inc()
+        self.progress.inc();
     }
     #[cfg(not(feature = "progress-bar"))]
     fn inc(&mut self) {}
@@ -249,39 +252,50 @@ pub enum IntegratorType {
 impl IntegratorType {
     pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
         info!("Build acceleration data structure...");
-        let embree_device = embree_rs::Device::new();
-        let mut embree_scene = embree_rs::Scene::new(&embree_device);
-        // Add all meshes
-        for m in &scene.meshes {
-            let mut tris = embree_rs::TriangleMesh::unanimated(
-                &embree_device,
-                m.indices.len(),
-                m.vertices.len(),
-            );
-            {
-                let mut verts = tris.vertex_buffer.map();
-                let mut tris = tris.index_buffer.map();
-                for i in 0..m.vertices.len() {
-                    verts[i] = cgmath::Vector4::new(
-                        m.vertices[i].x,
-                        m.vertices[i].y,
-                        m.vertices[i].z,
-                        0.0,
-                    );
-                }
 
-                for i in 0..m.indices.len() {
-                    tris[i] = cgmath::Vector3::new(
-                        m.indices[i].x as u32,
-                        m.indices[i].y as u32,
-                        m.indices[i].z as u32,
-                    );
+        // Naive Acceleration ...
+        #[cfg(not(feature = "embree"))]
+        let accel = NaiveAcceleration::new(scene);
+        // or Embree ...
+        // TODO: Need to found a work around due to the lifetime issue
+        #[cfg(feature = "embree")]
+        let embree_device = embree_rs::Device::new();
+        #[cfg(feature = "embree")]
+        let mut embree_scene = embree_rs::Scene::new(&embree_device);
+        #[cfg(feature = "embree")]
+        {
+            for m in &scene.meshes {
+                let mut tris = embree_rs::TriangleMesh::unanimated(
+                    &embree_device,
+                    m.indices.len(),
+                    m.vertices.len(),
+                );
+                {
+                    let mut verts = tris.vertex_buffer.map();
+                    let mut tris = tris.index_buffer.map();
+                    for i in 0..m.vertices.len() {
+                        verts[i] = cgmath::Vector4::new(
+                            m.vertices[i].x,
+                            m.vertices[i].y,
+                            m.vertices[i].z,
+                            0.0,
+                        );
+                    }
+    
+                    for i in 0..m.indices.len() {
+                        tris[i] = cgmath::Vector3::new(
+                            m.indices[i].x as u32,
+                            m.indices[i].y as u32,
+                            m.indices[i].z as u32,
+                        );
+                    }
                 }
+                let mut tri_geom = embree_rs::Geometry::Triangle(tris);
+                tri_geom.commit();
+                embree_scene.attach_geometry(tri_geom);
             }
-            let mut tri_geom = embree_rs::Geometry::Triangle(tris);
-            tri_geom.commit();
-            embree_scene.attach_geometry(tri_geom);
         }
+        #[cfg(feature = "embree")]
         let accel = EmbreeAcceleration::new(scene, &embree_scene);
 
         info!("Run Integrator...");

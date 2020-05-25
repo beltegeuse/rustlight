@@ -45,7 +45,8 @@ impl Default for SceneLoaderManager {
             loader: HashMap::default(),
         };
         loaders.register("json", Rc::new(JSONSceneLoader {}));
-        if cfg!(feature = "pbrt") {
+        #[cfg(feature = "pbrt")]
+        {
             loaders.register("pbrt", Rc::new(PBRTSceneLoader {}));
         }
         loaders

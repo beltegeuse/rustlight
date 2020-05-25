@@ -12,24 +12,45 @@ pub trait Acceleration: Sync + Send {
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
 }
 
-pub struct EmbreeAcceleration<'a, 'scene> {
-    pub scene: &'a Scene,
-    pub rtscene: embree_rs::CommittedScene<'scene>,
+pub struct NaiveAcceleration<'a> {
+    pub scene: &'a Scene
+}
+impl<'scene> NaiveAcceleration<'scene> {
+    pub fn new(scene: &'scene Scene) -> NaiveAcceleration<'scene> {
+        NaiveAcceleration {
+            scene
+        }
+    }
+}
+impl<'a> Acceleration for NaiveAcceleration<'a> {
+    fn trace(&self, _ray: &Ray) -> Option<Intersection> {
+        None
+    }
+    fn visible(&self, _p0: &Point3<f32>, _p1: &Point3<f32>) -> bool {
+        true
+    }
 }
 
-impl<'a, 'scene> EmbreeAcceleration<'a, 'scene> {
+#[cfg(feature = "embree")]
+pub struct EmbreeAcceleration<'scene, 'embree> {
+    pub scene: &'scene Scene,
+    pub embree_scene_commited: embree_rs::CommittedScene<'embree>,
+}
+#[cfg(feature = "embree")]
+impl<'scene, 'embree> EmbreeAcceleration<'scene, 'embree> {
     pub fn new(
-        scene: &'a Scene,
-        embree_scene: &'scene embree_rs::Scene,
-    ) -> EmbreeAcceleration<'a, 'scene> {
+        scene: &'scene Scene,
+        embree_scene: &'embree embree_rs::Scene,
+    ) -> EmbreeAcceleration<'scene, 'embree> {
         EmbreeAcceleration {
             scene,
-            rtscene: embree_scene.commit(),
+            embree_scene_commited: embree_scene.commit(),
         }
     }
 }
 
-impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
+#[cfg(feature = "embree")]
+impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
     fn trace(&self, ray: &Ray) -> Option<Intersection> {
         let mut intersection_ctx = embree_rs::IntersectContext::coherent();
         let embree_ray = embree_rs::Ray::segment(
@@ -39,7 +60,7 @@ impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
             ray.tfar,
         );
         let mut ray_hit = embree_rs::RayHit::new(embree_ray);
-        self.rtscene.intersect(&mut intersection_ctx, &mut ray_hit);
+        self.embree_scene_commited.intersect(&mut intersection_ctx, &mut ray_hit);
         if ray_hit.hit.hit() {
             let mesh = &self.scene.meshes[ray_hit.hit.geomID as usize];
             let index = mesh.indices[ray_hit.hit.primID as usize];
@@ -119,7 +140,7 @@ impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
         d /= length;
         let mut embree_ray =
             embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
-        self.rtscene
+        self.embree_scene_commited
             .occluded(&mut intersection_ctx, &mut embree_ray);
         embree_ray.tfar != std::f32::NEG_INFINITY
     }
