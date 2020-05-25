@@ -4,6 +4,7 @@ use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers::Sampler;
 use crate::scene::*;
+use crate::accel::*;
 use crate::structure::Color;
 use cgmath::Point2;
 

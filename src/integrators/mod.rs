@@ -1,6 +1,7 @@
 use crate::emitter::*;
 use crate::samplers::*;
 use crate::scene::*;
+use crate::accel::*;
 use crate::structure::*;
 use crate::tools::StepRangeInt;
 use crate::Scale;

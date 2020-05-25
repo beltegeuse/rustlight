@@ -4,6 +4,7 @@ use crate::math::*;
 use crate::paths::vertex::*;
 use crate::samplers::*;
 use crate::scene::*;
+use crate::accel::*;
 use crate::structure::*;
 use crate::volume::*;
 use crate::Scale;

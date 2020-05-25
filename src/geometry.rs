@@ -168,6 +168,60 @@ impl Mesh {
         }
     }
 
+    // Triangle methods
+    pub fn middle_tri(&self, i: usize) -> Vector3<f32> {
+        let id = self.indices[i];
+        let v0 = self.vertices[id.x];
+        let v1 = self.vertices[id.y];
+        let v2 = self.vertices[id.z];
+        (v0 + v1 + v2) / 3.0
+    }
+    pub fn intersection_tri(&self, i: usize, p_c: &Point3<f32>, d_c: &Vector3<f32>, its: &mut IntersectionUV) -> bool {
+        let id = self.indices[i];
+        let v0 = self.vertices[id.x];
+        let v1 = self.vertices[id.y];
+        let v2 = self.vertices[id.z];
+
+        let e1 = v1 - v0;
+        let e2 = v2 - v0;
+        let n_geo = e1.cross(e2).normalize();
+        let denom = d_c.dot(n_geo);
+        if denom == 0.0 {
+            return false;
+        }
+        // Distance for intersection
+        let t = -(p_c - v0).dot(n_geo) / denom;
+        if t < 0.0 {
+            return false;
+        }
+        let p = p_c + t * d_c;
+        let det = e1.cross(e2).magnitude();
+        let u0 = e1.cross(p.to_vec() - v0);
+        let v0 = (p.to_vec() - v0).cross(e2);
+        if u0.dot(n_geo) < 0.0 || v0.dot(n_geo) < 0.0 {
+            return false;
+        }
+        let v = u0.magnitude() / det;
+        let u = v0.magnitude() / det;
+        if u < 0.0 || v < 0.0 || u > 1.0 || v > 1.0 {
+            return false;
+        }
+        if u + v <= 1.0 {
+            // TODO: Review the condition because
+            //      for now it only return true
+            //      if the itersection is updated
+            if t < its.t {
+                its.t = t;
+                its.u = u;
+                its.v = v;
+                its.p = p;
+                its.n = n_geo;
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn is_light(&self) -> bool {
         !self.emission.is_zero()
     }

@@ -2,9 +2,10 @@ use crate::constants;
 use crate::geometry::Mesh;
 use crate::math::Frame;
 use crate::tools::*;
+use crate::scene::Scene;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Vector3};
+use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Vector3, InnerSpace};
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, Pixel};
 #[cfg(feature = "openexr")]
@@ -717,6 +718,15 @@ impl AABB {
     }
 }
 
+// Simple intersection primitive
+pub struct IntersectionUV {
+    pub t: f32,
+    pub p: Point3<f32>,
+    pub n: Vector3<f32>,
+    pub u: f32,
+    pub v: f32,
+}
+
 #[derive(Clone)]
 pub struct Intersection<'a> {
     /// Intersection distance
@@ -746,6 +756,64 @@ impl<'a> Intersection<'a> {
     }
     pub fn to_world(&self, d: &Vector3<f32>) -> Vector3<f32> {
         self.frame.to_world(*d)
+    }
+    pub fn fill_intersection(mesh_id: usize, tri_id: usize, scene: &'a Scene, 
+        hit_u: f32, hit_v: f32, ray: &Ray, n_g: Vector3<f32>, dist: f32, p: Point3<f32>) -> Intersection<'a> {
+        let mesh = &scene.meshes[mesh_id];
+        let index = mesh.indices[tri_id];
+
+        let n_s = if let Some(ref normals) = mesh.normals {
+            let d0 = &normals[index.x];
+            let d1 = &normals[index.y];
+            let d2 = &normals[index.z];
+            let mut n_s = d0 * (1.0 - hit_u - hit_v)
+                + d1 * hit_u
+                + d2 * hit_v;
+            if n_g.dot(n_s) < 0.0 {
+                n_s = -n_s;
+            }
+            n_s
+        } else {
+            n_g.clone()
+        };
+
+        // TODO: Hack for now for make automatic twosided.
+        let (n_s, n_g) =
+            if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && ray.d.dot(n_s) > 0.0 {
+                (
+                    Vector3::new(-n_s.x, -n_s.y, -n_s.z),
+                    Vector3::new(-n_g.x, -n_g.y, -n_g.z),
+                )
+            } else {
+                (n_s, n_g)
+            };
+
+        // UV interpolation
+        let uv = if let Some(ref uv_data) = mesh.uv {
+            let d0 = &uv_data[index.x];
+            let d1 = &uv_data[index.y];
+            let d2 = &uv_data[index.z];
+            Some(
+                d0 * (1.0 - hit_u - hit_v)
+                    + d1 * hit_u
+                    + d2 * hit_v,
+            )
+        } else {
+            None
+        };
+
+        let frame = Frame::new(n_s);
+        let wi = frame.to_local(-ray.d);
+        Intersection {
+            dist,
+            n_g,
+            n_s,
+            p,
+            uv,
+            mesh,
+            frame,
+            wi,
+        }
     }
 }
 

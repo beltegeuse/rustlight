@@ -1,6 +1,6 @@
 use crate::emitter::Emitter;
 use crate::samplers::*;
-use crate::scene::*;
+use crate::accel::*;
 use crate::structure::*;
 use crate::volume::*;
 use cgmath::*;

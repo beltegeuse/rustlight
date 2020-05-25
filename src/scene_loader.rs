@@ -46,9 +46,7 @@ impl Default for SceneLoaderManager {
         };
         loaders.register("json", Rc::new(JSONSceneLoader {}));
         #[cfg(feature = "pbrt")]
-        {
-            loaders.register("pbrt", Rc::new(PBRTSceneLoader {}));
-        }
+        loaders.register("pbrt", Rc::new(PBRTSceneLoader {}));
         loaders
     }
 }
