@@ -2,7 +2,6 @@ use crate::accel::*;
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::samplers;
 use crate::structure::AABB;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
@@ -589,7 +588,7 @@ impl TechniqueVolPrimitives {
 }
 
 impl Integrator for IntegratorVolPrimitives {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         if scene.volume.is_none() {
             panic!("Volume integrator need a volume (add -m )");
         }
@@ -604,7 +603,6 @@ impl Integrator for IntegratorVolPrimitives {
 
         info!("Generating the light paths...");
         let buffernames = vec![String::from("primal")];
-        let mut sampler = samplers::independent::IndependentSampler::default();
         let mut nb_path_shot = 0;
 
         // Primitives vectors
@@ -628,7 +626,7 @@ impl Integrator for IntegratorVolPrimitives {
                 accel,
                 scene,
                 &emitters,
-                &mut sampler,
+                sampler,
                 &mut technique,
             );
             match self.primitives {
@@ -744,7 +742,7 @@ impl Integrator for IntegratorVolPrimitives {
         };
 
         // Generate the image block to get VPL efficiently
-        let mut image_blocks = generate_img_blocks(scene, &buffernames);
+        let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
 
         // Render the image blocks VPL integration
         info!("Gathering Photons (BRE/Beams)...");
@@ -753,8 +751,7 @@ impl Integrator for IntegratorVolPrimitives {
         info!(" - Number of path generated: {}", nb_path_shot);
         let pool = generate_pool(scene);
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|im_block| {
-                let mut sampler = independent::IndependentSampler::default();
+            image_blocks.par_iter_mut().for_each(|(im_block, sampler)| {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..scene.nb_samples {
@@ -798,7 +795,7 @@ impl Integrator for IntegratorVolPrimitives {
                                             * 0.01)
                                             .min(1.0);
                                         if rr >= sampler.next() {
-                                            c += (vrl.contribute_vrl(&ray, m, accel, &mut sampler)
+                                            c += (vrl.contribute_vrl(&ray, m, accel, sampler.as_mut())
                                                 / rr)
                                                 * norm_photon;
                                         }
@@ -839,7 +836,7 @@ impl Integrator for IntegratorVolPrimitives {
         // Fill the image
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for im_block in &image_blocks {
+        for (im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image

@@ -29,7 +29,7 @@ pub struct IntegratorPSSMLT {
     pub integrator: Box<dyn IntegratorMC>,
 }
 impl Integrator for IntegratorPSSMLT {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, _: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         ///////////// Define the closure
         let sample = |s: &mut dyn Sampler, emitters: &EmitterSampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;

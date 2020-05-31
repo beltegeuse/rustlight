@@ -11,7 +11,7 @@ pub struct IntegratorSinglePlaneUncorrelated {
 }
 
 impl Integrator for IntegratorSinglePlaneUncorrelated {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         if scene.volume.is_none() {
             panic!("Volume integrator need a volume (add -m )");
         }
@@ -65,7 +65,7 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
         
         // Generate the image block to get VPL efficiently
         let buffernames = vec![String::from("primal")];
-        let mut image_blocks = generate_img_blocks(scene, &buffernames);
+        let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
         let m = scene.volume.as_ref().unwrap();
 
         // Gathering all planes
@@ -74,8 +74,7 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
         let pool = generate_pool(scene);
         let phase_function = PhaseFunction::Isotropic();
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|im_block| {
-                let mut sampler_ray = independent::IndependentSampler::from_seed((im_block.pos.x + im_block.pos.y) as u64);
+            image_blocks.par_iter_mut().for_each(|(im_block, sampler_ray)| {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..scene.nb_samples {
@@ -99,23 +98,23 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
                                 let id_emitter = (sampler_ray.next() * rect_lights.len() as f32) as usize;
                                 let plane =  match self.strategy {
                                     SinglePlaneStrategy::UT => {
-                                        generate_plane(PlaneType::UT, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                        generate_plane(PlaneType::UT, &rect_lights, id_emitter, sampler_ray.as_mut(), m)
                                     }
                                     SinglePlaneStrategy::VT => {
-                                       generate_plane(PlaneType::VT, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                       generate_plane(PlaneType::VT, &rect_lights, id_emitter, sampler_ray.as_mut(), m)
                                     }
                                     SinglePlaneStrategy::UV => {
-                                       generate_plane(PlaneType::UV, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                       generate_plane(PlaneType::UV, &rect_lights, id_emitter, sampler_ray.as_mut(), m)
                                     }
                                     SinglePlaneStrategy::DiscreteMIS | SinglePlaneStrategy::Average => {
                                         // Generate 3 planes
                                         let plane_type = sampler_ray.next();
                                         if plane_type < (1.0 / 3.0) {
-                                            generate_plane(PlaneType::UV, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                            generate_plane(PlaneType::UV, &rect_lights, id_emitter, sampler_ray.as_mut(), m)
                                         } else if plane_type < (2.0 / 3.0) {
-                                            generate_plane(PlaneType::VT, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                            generate_plane(PlaneType::VT, &rect_lights, id_emitter, sampler_ray.as_mut(), m)
                                         } else {
-                                            generate_plane(PlaneType::UT, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                            generate_plane(PlaneType::UT, &rect_lights, id_emitter, sampler_ray.as_mut(), m)
                                         }
                                     }
                                     SinglePlaneStrategy::UAlpha
@@ -124,7 +123,7 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
                                             PlaneType::UAlphaT,
                                             &rect_lights,
                                             id_emitter,
-                                            &mut sampler_ray,
+                                            sampler_ray.as_mut(),
                                             m,
                                         )
                                     }
@@ -259,7 +258,7 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
 
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for im_block in &image_blocks {
+        for (im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image

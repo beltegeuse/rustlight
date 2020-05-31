@@ -2,7 +2,6 @@ use crate::accel::*;
 use crate::geometry::Mesh;
 use crate::integrators::*;
 use crate::math::*;
-use crate::samplers;
 use crate::structure::AABB;
 use crate::volume::*;
 use cgmath::{ElementWise, EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
@@ -290,7 +289,7 @@ pub struct IntegratorSinglePlane {
 }
 
 impl Integrator for IntegratorSinglePlane {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         if scene.volume.is_none() {
             panic!("Volume integrator need a volume (add -m )");
         }
@@ -341,28 +340,25 @@ impl Integrator for IntegratorSinglePlane {
 
         // Create the planes
         let m = scene.volume.as_ref().unwrap();
-        //let mut sampler = samplers::independent::IndependentSampler::default();
-        let mut sampler = samplers::independent::IndependentSampler::from_seed(0);
-
         let mut planes = vec![];
         let mut number_plane_gen = 0;
         while planes.len() < self.nb_primitive {
             let id_emitter = (sampler.next() * rect_lights.len() as f32) as usize;
             match self.strategy {
                 SinglePlaneStrategy::UT => {
-                    planes.push(generate_plane(PlaneType::UT, &rect_lights, id_emitter, &mut sampler, m))
+                    planes.push(generate_plane(PlaneType::UT, &rect_lights, id_emitter, sampler, m))
                 }
                 SinglePlaneStrategy::VT => {
-                    planes.push(generate_plane(PlaneType::VT, &rect_lights, id_emitter, &mut sampler, m))
+                    planes.push(generate_plane(PlaneType::VT, &rect_lights, id_emitter, sampler, m))
                 }
                 SinglePlaneStrategy::UV => {
-                    planes.push(generate_plane(PlaneType::UV, &rect_lights, id_emitter, &mut sampler, m))
+                    planes.push(generate_plane(PlaneType::UV, &rect_lights, id_emitter, sampler, m))
                 }
                 SinglePlaneStrategy::DiscreteMIS | SinglePlaneStrategy::Average => {
                     // Generate 3 planes
-                    planes.push(generate_plane(PlaneType::UV, &rect_lights, id_emitter, &mut sampler, m));
-                    planes.push(generate_plane(PlaneType::VT, &rect_lights, id_emitter, &mut sampler, m));
-                    planes.push(generate_plane(PlaneType::UT, &rect_lights, id_emitter, &mut sampler, m));
+                    planes.push(generate_plane(PlaneType::UV, &rect_lights, id_emitter, sampler, m));
+                    planes.push(generate_plane(PlaneType::VT, &rect_lights, id_emitter, sampler, m));
+                    planes.push(generate_plane(PlaneType::UT, &rect_lights, id_emitter, sampler, m));
                 }
                 SinglePlaneStrategy::UAlpha
                 | SinglePlaneStrategy::ContinousMIS => {
@@ -370,7 +366,7 @@ impl Integrator for IntegratorSinglePlane {
                         PlaneType::UAlphaT,
                         &rect_lights,
                         id_emitter,
-                        &mut sampler,
+                        sampler,
                         m,
                     ));
                 }
@@ -384,7 +380,7 @@ impl Integrator for IntegratorSinglePlane {
 
         // Generate the image block to get VPL efficiently
         let buffernames = vec![String::from("primal")];
-        let mut image_blocks = generate_img_blocks(scene, &buffernames);
+        let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
 
         // Gathering all planes
         info!("Gathering Single planes...");
@@ -392,8 +388,7 @@ impl Integrator for IntegratorSinglePlane {
         let pool = generate_pool(scene);
         let phase_function = PhaseFunction::Isotropic();
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|im_block| {
-                let mut sampler_ray =  samplers::independent::IndependentSampler::from_seed((im_block.pos.x + im_block.pos.y) as u64);
+            image_blocks.par_iter_mut().for_each(|(im_block, sampler_ray)| {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..scene.nb_samples {
@@ -554,7 +549,7 @@ impl Integrator for IntegratorSinglePlane {
 
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for im_block in &image_blocks {
+        for (im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image

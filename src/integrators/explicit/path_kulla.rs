@@ -128,8 +128,8 @@ pub struct IntegratorPathKulla {
 }
 
 impl Integrator for IntegratorPathKulla {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
-        compute_mc(self, accel, scene)
+    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+        compute_mc(self, sampler, accel, scene)
     }
 }
 impl IntegratorMC for IntegratorPathKulla {

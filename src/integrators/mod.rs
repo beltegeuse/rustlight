@@ -215,20 +215,20 @@ impl Scale<f32> for BufferCollection {
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, _accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, _sampler: &mut dyn Sampler, _accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
 pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection;
+    fn compute_gradients(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection;
     fn reconstruct(&self) -> &(dyn PoissonReconstruction + Sync);
 
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         // Rendering the gradient informations
         info!("Gradient Rendering...");
         let start = Instant::now();
-        let image = self.compute_gradients(accel, scene);
+        let image = self.compute_gradients(sampler, accel, scene);
         let elapsed = start.elapsed();
         info!("Gradient Rendering Elapsed: {:?}", elapsed,);
 
@@ -251,7 +251,7 @@ pub enum IntegratorType {
     Gradient(Box<dyn IntegratorGradient>),
 }
 impl IntegratorType {
-    pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    pub fn compute(&mut self, sampler: &mut dyn Sampler, scene: &Scene) -> BufferCollection {
         info!("Build acceleration data structure...");
 
         // Naive Acceleration ...
@@ -303,9 +303,9 @@ impl IntegratorType {
         let start = Instant::now();
 
         let img = match self {
-            IntegratorType::Primal(ref mut v) => v.compute(&accel, scene),
+            IntegratorType::Primal(ref mut v) => v.compute(sampler, &accel, scene),
             IntegratorType::Gradient(ref mut v) => {
-                IntegratorGradient::compute(v.as_mut(), &accel, scene)
+                IntegratorGradient::compute(v.as_mut(), sampler, &accel, scene)
             }
         };
 
@@ -328,8 +328,8 @@ pub trait IntegratorMC: Sync + Send {
     ) -> Color;
 }
 
-pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferCollection> {
-    let mut image_blocks: Vec<BufferCollection> = Vec::new();
+pub fn generate_img_blocks(scene: &Scene, sampler: &mut dyn Sampler, buffernames: &[String]) -> Vec<(BufferCollection, Box<dyn Sampler>)> {
+    let mut image_blocks: Vec<(BufferCollection, Box<dyn Sampler>)> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
             let block = BufferCollection::new(
@@ -343,7 +343,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferC
                 },
                 buffernames,
             );
-            image_blocks.push(block);
+            image_blocks.push((block, sampler.clone()));
         }
     }
     image_blocks
@@ -351,6 +351,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferC
 
 pub fn compute_mc<T: IntegratorMC + Integrator>(
     int: &T,
+    sampler: &mut dyn Sampler,
     accel: &dyn Acceleration,
     scene: &Scene,
 ) -> BufferCollection {
@@ -359,15 +360,13 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
     let buffernames = vec!["primal".to_string()];
 
     // Create rendering blocks
-    let mut image_blocks = generate_img_blocks(scene, &buffernames);
+    let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
 
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
     let pool = generate_pool(scene);
     pool.install(|| {
-        image_blocks.par_iter_mut().for_each(|im_block| {
-            // image_blocks.iter_mut().for_each(|im_block| {
-            let mut sampler = independent::IndependentSampler::default();
+        image_blocks.par_iter_mut().for_each(|(im_block, sampler)| {
             let light_sampling = scene.emitters_sampler();
             for iy in 0..im_block.size.y {
                 for ix in 0..im_block.size.x {
@@ -376,7 +375,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
                             (ix + im_block.pos.x, iy + im_block.pos.y),
                             accel,
                             scene,
-                            &mut sampler,
+                            sampler.as_mut(),
                             &light_sampling,
                         );
                         im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
@@ -393,7 +392,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
 
     // Fill the image
     let mut image = BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-    for im_block in &image_blocks {
+    for (im_block, _) in &image_blocks {
         image.accumulate_bitmap(im_block);
     }
     image

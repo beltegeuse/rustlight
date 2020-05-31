@@ -1,7 +1,6 @@
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::samplers;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 
@@ -171,10 +170,9 @@ impl TechniqueVPL {
 }
 
 impl Integrator for IntegratorVPL {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         info!("Generating the VPL...");
         let buffernames = vec![String::from("primal")];
-        let mut sampler = samplers::independent::IndependentSampler::default();
         let mut nb_path_shot = 0;
         let mut vpls = vec![];
         let emitters = scene.emitters_sampler();
@@ -192,7 +190,7 @@ impl Integrator for IntegratorVPL {
                 accel,
                 scene,
                 &emitters,
-                &mut sampler,
+                sampler,
                 &mut technique,
             );
             technique.convert_vpl(&path, scene, root[0].0, self.option_vpl, &mut vpls, Color::one());
@@ -201,7 +199,7 @@ impl Integrator for IntegratorVPL {
         let vpls = vpls;
 
         // Generate the image block to get VPL efficiently
-        let mut image_blocks = generate_img_blocks(scene, &buffernames);
+        let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
 
         // Render the image blocks VPL integration
         info!("Gathering VPL...");
@@ -209,8 +207,7 @@ impl Integrator for IntegratorVPL {
         let norm_vpl = 1.0 / nb_path_shot as f32;
         let pool = generate_pool(scene);
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|im_block| {
-                let mut sampler = independent::IndependentSampler::default();
+            image_blocks.par_iter_mut().for_each(|(im_block, sampler)| {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..scene.nb_samples {
@@ -218,7 +215,7 @@ impl Integrator for IntegratorVPL {
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
                                 accel,
                                 scene,
-                                &mut sampler,
+                                sampler.as_mut(),
                                 &vpls,
                                 norm_vpl,
                             );
@@ -236,7 +233,7 @@ impl Integrator for IntegratorVPL {
         // Fill the image
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for im_block in &image_blocks {
+        for (im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image

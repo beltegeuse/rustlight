@@ -1,7 +1,6 @@
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::samplers;
 use cgmath::InnerSpace;
 use cgmath::Point2;
 
@@ -209,16 +208,13 @@ impl TechniqueLightTracing {
 }
 
 impl Integrator for IntegratorLightTracing {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(&mut self, sampler: &mut dyn Sampler,  accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         // Number of samples that the system will trace
         // The strategy for multithread is to have 4 job per threads
         // All job will have the same number of samples to deal with
         let nb_threads = rayon::current_num_threads();
         let nb_jobs = nb_threads * 4;
-        let mut samplers = Vec::new();
-        for _ in 0..nb_jobs {
-            samplers.push(samplers::independent::IndependentSampler::default());
-        }
+        let mut samplers = (0..nb_jobs).map(|_| sampler.clone()).collect::<Vec<_>>();
 
         // Ajust the number of light path that we need to generate
         let nb_samples = (scene.nb_samples
@@ -253,7 +249,7 @@ impl Integrator for IntegratorLightTracing {
                         render_volume: self.render_volume,
                     };
                     let mut path = Path::default();
-                    let root = generate(&mut path, accel, scene, &emitters, s, &mut technique);
+                    let root = generate(&mut path, accel, scene, &emitters, s.as_mut(), &mut technique);
                     // Evaluate the path generated using camera splatting operation
                     technique.evaluate(&path, accel, scene, root[0].0, &mut my_img, Color::one());
                 });

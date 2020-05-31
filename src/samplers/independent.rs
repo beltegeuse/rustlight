@@ -18,6 +18,9 @@ impl Sampler for IndependentSampler {
     fn next_u64(&mut self) -> u64 {
         self.rnd.next_u64()
     }
+    fn clone(&mut self) -> Box<dyn Sampler> {
+        Box::new(IndependentSampler::from_seed(self.next_u64()))
+    }
 }
 
 impl Default for IndependentSampler {
@@ -31,9 +34,5 @@ impl IndependentSampler {
         IndependentSampler {
             rnd: rand::rngs::SmallRng::seed_from_u64(seed),
         }
-    }
-
-    pub fn from_sampler(s: &mut dyn Sampler) -> Self {
-        IndependentSampler::from_seed(s.next_u64())
     }
 }

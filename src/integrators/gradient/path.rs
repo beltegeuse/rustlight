@@ -100,16 +100,15 @@ impl IntegratorGradient for IntegratorGradientPath {
         self.recons.as_ref()
     }
 
-    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute_gradients(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
-            generate_img_blocks_gradient(scene, self.recons.as_ref());
+            generate_img_blocks_gradient(sampler, scene, self.recons.as_ref());
 
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         let pool = generate_pool(scene);
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|(info, im_block)| {
+            image_blocks.par_iter_mut().for_each(|(info, im_block, sampler)| {
                 let emitters = scene.emitters_sampler();
-                let mut sampler = independent::IndependentSampler::default();
                 for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
                     for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
                         for n in 0..scene.nb_samples {
@@ -118,7 +117,7 @@ impl IntegratorGradient for IntegratorGradientPath {
                                 accel,
                                 scene,
                                 &emitters,
-                                &mut sampler,
+                                sampler.as_mut(),
                             );
                             // Accumulate the values inside the buffer
                             let pos = Point2::new(ix, iy);
@@ -203,7 +202,7 @@ impl IntegratorGradient for IntegratorGradientPath {
         // Fill the image & do the reconstruct
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for (_, im_block) in &image_blocks {
+        for (_, im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image

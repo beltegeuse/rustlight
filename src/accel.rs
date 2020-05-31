@@ -208,25 +208,26 @@ impl<'a> Acceleration for NaiveAcceleration<'a> {
         }
     }
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
-        let mut its = IntersectionUV {
-            t: std::f32::MAX,
-            p: Point3::new(0.0, 0.0, 0.0),
-            n: Vector3::new(0.0, 0.0, 0.0),
-            u: 0.0,
-            v: 0.0
-        };
-
+        const SHADOW_EPS: f32 = 0.00001;
         // Compute ray dir
         let mut d = p1 - p0;
         let length = d.magnitude();
         d /= length;
 
+        let mut its = IntersectionUV {
+            t: length - 2.0 * SHADOW_EPS,
+            p: Point3::new(0.0, 0.0, 0.0),
+            n: Vector3::new(0.0, 0.0, 0.0),
+            u: 0.0,
+            v: 0.0
+        };
+        let p = p0 + d * SHADOW_EPS;
+        
+        
         for m in 0..self.scene.meshes.len() {
             let mesh = &self.scene.meshes[m];
             for i in 0..mesh.indices.len() {
-                let t = its.t;
-                mesh.intersection_tri(i, p0, &d, &mut its);
-                if t > its.t {
+                if mesh.intersection_tri(i, &p, &d, &mut its) {
                     return false;
                 }
             }
