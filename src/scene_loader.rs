@@ -162,7 +162,7 @@ impl SceneLoader for PBRTSceneLoader {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
         let working_dir = std::path::Path::new(filename).parent().unwrap();
-        pbrt_rs::read_pbrt_file(filename, &working_dir, &mut scene_info, &mut state);
+        pbrt_rs::read_pbrt_file(filename, Some(&working_dir), &mut scene_info, &mut state);
 
         // Load the data
         let mut meshes: Vec<geometry::Mesh> = scene_info

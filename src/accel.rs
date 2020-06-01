@@ -169,8 +169,8 @@ pub trait Acceleration: Sync + Send {
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
 }
 
-pub struct NaiveAcceleration<'a> {
-    pub scene: &'a Scene
+pub struct NaiveAcceleration<'scene> {
+    pub scene: &'scene Scene
 }
 impl<'scene> NaiveAcceleration<'scene> {
     pub fn new(scene: &'scene Scene) -> NaiveAcceleration<'scene> {
@@ -215,19 +215,17 @@ impl<'a> Acceleration for NaiveAcceleration<'a> {
         d /= length;
 
         let mut its = IntersectionUV {
-            t: length - 2.0 * SHADOW_EPS,
+            t: length * (1.0 - SHADOW_EPS),
             p: Point3::new(0.0, 0.0, 0.0),
             n: Vector3::new(0.0, 0.0, 0.0),
             u: 0.0,
             v: 0.0
         };
-        let p = p0 + d * SHADOW_EPS;
-        
         
         for m in 0..self.scene.meshes.len() {
             let mesh = &self.scene.meshes[m];
             for i in 0..mesh.indices.len() {
-                if mesh.intersection_tri(i, &p, &d, &mut its) {
+                if mesh.intersection_tri(i, &p0, &d, &mut its) {
                     return false;
                 }
             }

@@ -210,7 +210,8 @@ impl Mesh {
             // TODO: Review the condition because
             //      for now it only return true
             //      if the itersection is updated
-            if t < its.t {
+            if t < its.t && t > 0.00001 { // Avoid self intersection
+                // FIXME: Make this code cleaner
                 its.t = t;
                 its.u = u;
                 its.v = v;
