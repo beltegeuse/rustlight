@@ -51,7 +51,7 @@ impl Edge {
 
         // This constructor have been only design for light vertex creation
         match path.vertex_mut(next_vertex_id) {
-            Vertex::Light(ref mut v) => v.edge_in = Some(edge),
+            Vertex::Light { edge_in, .. } => (*edge_in) = Some(edge),
             _ => unimplemented!(),
         };
         edge
@@ -90,14 +90,14 @@ impl Edge {
                     // We are sure to suceed as the distance is infine...
                     // TODO: Note that this design decision makes the env map incompatible with participating media presence
                     assert_eq!(mrec.exited, false);
-                    let new_vertex = Vertex::Volume(VolumeVertex {
+                    let new_vertex = Vertex::Volume {
                         phase_function: PhaseFunction::Isotropic(),
                         pos,
                         d_in: -ray.d,
                         rr_weight: 1.0,
                         edge_in: edge,
                         edge_out: vec![],
-                    });
+                    };
                     let new_vertex = path.register_vertex(new_vertex);
 
                     // Update the edge
@@ -133,33 +133,33 @@ impl Edge {
                 intersection_distance = mrec.t;
                 // --- Create the volume vertex
                 let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
-                Vertex::Volume(VolumeVertex {
+                Vertex::Volume {
                     phase_function: PhaseFunction::Isotropic(),
                     pos,
                     d_in: -ray.d,
                     rr_weight: 1.0,
                     edge_in: edge,
                     edge_out: vec![],
-                })
+                }
             } else {
                 // Hit the surface
-                Vertex::Surface(SurfaceVertex {
+                Vertex::Surface {
                     its,
                     rr_weight: 1.0,
                     edge_in: edge,
                     edge_out: vec![],
-                })
+                }
             };
             (Some(mrec), new_vertex)
         } else {
             (
                 None,
-                Vertex::Surface(SurfaceVertex {
+                Vertex::Surface {
                     its,
                     rr_weight: 1.0,
                     edge_in: edge,
                     edge_out: vec![],
-                }),
+                },
             )
         };
 
@@ -199,91 +199,73 @@ impl Edge {
 }
 
 #[derive(Clone)]
-pub struct SensorVertex {
-    pub uv: Point2<f32>,
-    pub pos: Point3<f32>,
-    pub edge_in: Option<EdgeID>,
-    pub edge_out: Option<EdgeID>,
-}
-
-#[derive(Clone)]
-pub struct SurfaceVertex<'scene> {
-    pub its: Intersection<'scene>,
-    pub rr_weight: f32,
-    pub edge_in: EdgeID,
-    pub edge_out: Vec<EdgeID>,
-}
-
-#[derive(Clone)]
-pub struct EmitterVertex<'emitter> {
-    pub pos: Point3<f32>,
-    pub n: Vector3<f32>,
-    pub emitter: &'emitter dyn Emitter,
-    pub edge_in: Option<EdgeID>,
-    pub edge_out: Option<EdgeID>,
-}
-
-#[derive(Clone)]
-pub struct VolumeVertex {
-    pub phase_function: PhaseFunction,
-    pub pos: Point3<f32>,
-    pub d_in: Vector3<f32>,
-    pub rr_weight: f32,
-    pub edge_in: EdgeID,
-    pub edge_out: Vec<EdgeID>,
-}
-
-#[derive(Clone)]
 pub enum Vertex<'scene, 'emitter> {
-    Sensor(SensorVertex),
-    Surface(SurfaceVertex<'scene>),
-    Light(EmitterVertex<'emitter>),
-    Volume(VolumeVertex),
+    Sensor {
+        uv: Point2<f32>,
+        pos: Point3<f32>,
+        edge_in: Option<EdgeID>,
+        edge_out: Option<EdgeID>,
+    },
+    Surface {
+        its: Intersection<'scene>,
+        rr_weight: f32,
+        edge_in: EdgeID,
+        edge_out: Vec<EdgeID>,
+    },
+    Light {
+        pos: Point3<f32>,
+        n: Vector3<f32>,
+        emitter: &'emitter dyn Emitter,
+        edge_in: Option<EdgeID>,
+        edge_out: Option<EdgeID>,
+    },
+    Volume {
+        phase_function: PhaseFunction,
+        pos: Point3<f32>,
+        d_in: Vector3<f32>,
+        rr_weight: f32,
+        edge_in: EdgeID,
+        edge_out: Vec<EdgeID>,
+    }
 }
 impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
     pub fn pixel_pos(&self) -> Point2<f32> {
         match *self {
-            Vertex::Sensor(ref v) => v.uv,
+            Vertex::Sensor { uv, .. } => uv,
             _ => unreachable!(),
         }
     }
     pub fn position(&self) -> Point3<f32> {
-        match *self {
-            Vertex::Surface(ref v) => v.its.p,
-            Vertex::Sensor(ref v) => v.pos,
-            Vertex::Light(ref v) => v.pos,
-            Vertex::Volume(ref v) => v.pos,
+        match self {
+            Vertex::Surface { its, .. } => its.p,
+            Vertex::Sensor { pos, .. } | Vertex::Light { pos, .. } | Vertex::Volume { pos, .. } => *pos
         }
     }
     pub fn on_surface(&self) -> bool {
         match *self {
-            Vertex::Surface(ref _v) => true,
-            Vertex::Sensor(ref _v) => false,
-            Vertex::Light(ref _v) => true,
-            Vertex::Volume(ref _v) => false,
+            Vertex::Surface { .. } | Vertex::Light { .. } => true,
+            Vertex::Sensor { .. } | Vertex::Volume { .. }  => false,
         }
     }
     pub fn on_light_source(&self) -> bool {
-        match *self {
-            Vertex::Surface(ref v) => !v.its.mesh.emission.is_zero(),
-            Vertex::Sensor(ref _v) => false,
-            Vertex::Light(ref _v) => true,
-            Vertex::Volume(ref _v) => false,
+        match self {
+            Vertex::Surface { its, .. } => !its.mesh.emission.is_zero(),
+            Vertex::Sensor { .. } | Vertex::Volume { .. } => false,
+            Vertex::Light { .. } => true,
         }
     }
 
     pub fn contribution(&self, edge: &Edge) -> Color {
-        match *self {
-            Vertex::Surface(ref v) => {
-                if v.its.n_s.dot(-edge.d) >= 0.0 {
-                    v.its.mesh.emission
+        match self {
+            Vertex::Surface { its, ..} => {
+                if its.n_s.dot(-edge.d) >= 0.0 {
+                    its.mesh.emission
                 } else {
                     Color::zero()
                 }
             }
-            Vertex::Volume(ref _v) => Color::zero(),
-            Vertex::Sensor(ref _v) => Color::zero(),
-            Vertex::Light(ref v) => v.emitter.emitted_luminance(-edge.d), // FIXME: Check the normal orientation
+            Vertex::Sensor { .. } | Vertex::Volume { .. } => Color::zero(),
+            Vertex::Light { emitter, .. } => emitter.emitted_luminance(-edge.d), // FIXME: Check the normal orientation
         }
     }
 }
@@ -333,35 +315,21 @@ impl<'scene, 'emitter> Path<'scene, 'emitter> {
     pub fn next_vertices(&self, vertex_id: VertexID) -> Vec<(EdgeID, VertexID)> {
         let mut next_vertices = vec![];
         match self.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
-                for edge_id in &v.edge_out {
+            Vertex::Surface { edge_out, .. } 
+            | Vertex::Volume { edge_out, .. } => {
+                for edge_id in edge_out {
                     let edge = self.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         next_vertices.push((*edge_id, vertex_next_id));
                     }
                 }
             }
-            Vertex::Volume(ref v) => {
-                for edge_id in &v.edge_out {
+            Vertex::Sensor { edge_out, .. } 
+            | Vertex::Light { edge_out, .. } => {
+                if let Some(edge_id) = edge_out {
                     let edge = self.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         next_vertices.push((*edge_id, vertex_next_id));
-                    }
-                }
-            }
-            Vertex::Light(ref v) => {
-                if let Some(edge_id) = v.edge_out {
-                    let edge = self.edge(edge_id);
-                    if let Some(vertex_next_id) = edge.vertices.1 {
-                        next_vertices.push((edge_id, vertex_next_id));
-                    }
-                }
-            }
-            Vertex::Sensor(ref v) => {
-                if let Some(edge_id) = v.edge_out {
-                    let edge = self.edge(edge_id);
-                    if let Some(vertex_next_id) = edge.vertices.1 {
-                        next_vertices.push((edge_id, vertex_next_id));
                     }
                 }
             }

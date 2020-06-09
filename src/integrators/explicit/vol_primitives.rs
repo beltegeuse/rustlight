@@ -40,13 +40,13 @@ impl Technique for TechniqueVolPrimitives {
             sampler.next(),
             sampler.next2d(),
         );
-        let emitter_vertex = Vertex::Light(EmitterVertex {
+        let emitter_vertex = Vertex::Light {
             pos: sampled_point.p,
             n: sampled_point.n,
             emitter,
             edge_in: None,
             edge_out: None,
-        });
+        };
         self.flux = Some(flux); // Capture the scaled flux
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
@@ -406,8 +406,8 @@ impl TechniqueVolPrimitives {
         mut flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Volume(ref v) => {
-                for edge in &v.edge_out {
+            Vertex::Volume { edge_out, pos, .. } => {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         // Need to check two things:
@@ -425,7 +425,7 @@ impl TechniqueVolPrimitives {
                             let length0 = edge.sampled_distance.as_ref().unwrap().continued_t;
                             let length1 = next_edge.sampled_distance.as_ref().unwrap().continued_t;
                             planes.push(PhotonPlane {
-                                o: v.pos,
+                                o: *pos,
                                 d0: edge.d,
                                 d1: next_edge.d,
                                 length0,
@@ -437,7 +437,7 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Light(ref _v) => {
+            Vertex::Light { .. } => {
                 // FIXME
                 flux *= *self.flux.as_ref().unwrap();
             }
@@ -469,13 +469,13 @@ impl TechniqueVolPrimitives {
         mut flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
-                for edge in &v.edge_out {
+            Vertex::Surface { edge_out, its, .. } => {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(_vertex_next_id) = edge.vertices.1 {
                         // Always push this as it come from surfaces
                         beams.push(PhotonBeam {
-                            o: v.its.p,
+                            o: its.p,
                             d: edge.d,
                             length: edge.dist.unwrap(),
                             phase_function: PhaseFunction::Isotropic(),
@@ -486,8 +486,8 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Volume(ref v) => {
-                for edge in &v.edge_out {
+            Vertex::Volume { edge_out, pos, .. } => {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         // Need to check two things (inverse)
@@ -501,7 +501,7 @@ impl TechniqueVolPrimitives {
                         };
                         if push_beam {
                             beams.push(PhotonBeam {
-                                o: v.pos,
+                                o: *pos,
                                 d: edge.d,
                                 length: edge.dist.unwrap(),
                                 phase_function: PhaseFunction::Isotropic(),
@@ -513,13 +513,13 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Light(ref v) => {
+            Vertex::Light { edge_out, pos, .. } => {
                 flux *= *self.flux.as_ref().unwrap();
-                if let Some(edge) = v.edge_out {
-                    let edge = path.edge(edge);
+                if let Some(edge) = edge_out {
+                    let edge = path.edge(*edge);
                     if let Some(_next_vertex_id) = edge.vertices.1 {
                         beams.push(PhotonBeam {
-                            o: v.pos,
+                            o: *pos,
                             d: edge.d,
                             length: edge.dist.unwrap(),
                             phase_function: PhaseFunction::Isotropic(),
@@ -530,7 +530,7 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Sensor(ref _v) => {}
+            Vertex::Sensor { .. } => {}
         }
 
         for (edge_id, next_vertex_id) in path.next_vertices(vertex_id) {
@@ -557,20 +557,20 @@ impl TechniqueVolPrimitives {
         mut flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref _v) => {}
-            Vertex::Volume(ref v) => {
+            Vertex::Surface { .. } => {}
+            Vertex::Volume { pos, d_in, phase_function, .. } => {
                 photons.push(Photon {
-                    pos: v.pos,
-                    d_in: v.d_in,
-                    phase_function: v.phase_function.clone(),
+                    pos: *pos,
+                    d_in: *d_in,
+                    phase_function: phase_function.clone(),
                     radiance: flux,
                     radius,
                 });
             }
-            Vertex::Light(ref _v) => {
+            Vertex::Light { .. } => {
                 flux *= *self.flux.as_ref().unwrap();
             }
-            Vertex::Sensor(ref _v) => {}
+            Vertex::Sensor { .. } => {}
         }
 
         for (edge_id, next_vertex_id) in path.next_vertices(vertex_id) {

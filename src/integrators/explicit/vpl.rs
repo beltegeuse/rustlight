@@ -61,13 +61,13 @@ impl Technique for TechniqueVPL {
             sampler.next(),
             sampler.next2d(),
         );
-        let emitter_vertex = Vertex::Light(EmitterVertex {
+        let emitter_vertex = Vertex::Light {
             pos: sampled_point.p,
             n: sampled_point.n,
             emitter,
             edge_in: None,
             edge_out: None,
-        });
+        };
         self.flux = Some(flux); // Capture the scaled flux
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
@@ -92,16 +92,16 @@ impl TechniqueVPL {
         flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
+            Vertex::Surface { its, edge_out, .. }=> {
                 if options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Surface(VPLSurface {
-                        its: v.its.clone(),
+                        its: its.clone(),
                         radiance: flux,
                     }));
                 }
 
                 // Continue to bounce...
-                for edge in &v.edge_out {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         self.convert_vpl(
@@ -115,18 +115,18 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Volume(ref v) => {
+            Vertex::Volume { pos, d_in, phase_function, edge_out, .. } => {
                 if options != IntegratorVPLOption::Surface {
                     vpls.push(VPL::Volume(VPLVolume {
-                        pos: v.pos,
-                        d_in: v.d_in,
-                        phase_function: v.phase_function.clone(),
+                        pos: *pos,
+                        d_in: *d_in,
+                        phase_function: phase_function.clone(),
                         radiance: flux,
                     }));
                 }
 
                 // Continue to bounce...
-                for edge in &v.edge_out {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         self.convert_vpl(
@@ -140,18 +140,18 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Light(ref v) => {
+            Vertex::Light { edge_out, pos, n, .. } => {
                 let flux = *self.flux.as_ref().unwrap();
                 if options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Emitter(VPLEmitter {
-                        pos: v.pos,
-                        n: v.n,
+                        pos: *pos,
+                        n: *n,
                         emitted_radiance: flux,
                     }));
                 }
 
-                if let Some(edge) = v.edge_out {
-                    let edge = path.edge(edge);
+                if let Some(edge) = edge_out {
+                    let edge = path.edge(*edge);
                     if let Some(next_vertex_id) = edge.vertices.1 {
                         self.convert_vpl(
                             path,
@@ -164,7 +164,7 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Sensor(ref _v) => {}
+            Vertex::Sensor { .. } => {}
         }
     }
 }

@@ -34,13 +34,13 @@ impl Technique for TechniqueLightTracing {
             sampler.next(),
             sampler.next2d(),
         );
-        let emitter_vertex = Vertex::Light(EmitterVertex {
+        let emitter_vertex = Vertex::Light {
             pos: sampled_point.p,
             n: sampled_point.n,
             emitter,
             edge_in: None,
             edge_out: None,
-        });
+        };
         self.flux = Some(flux); // Capture the scaled flux for later evaluation
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
@@ -63,23 +63,24 @@ impl TechniqueLightTracing {
         bitmap: &mut BufferCollection,
         flux: Color,
     ) {
+        // Splat current vertex
         match path.vertex(vertex_id) {
-            Vertex::Volume(ref v) => {
+            Vertex::Volume { pos, phase_function, d_in, ..} => {
                 if self.render_volume {
                     let pos_sensor = scene.camera.position();
-                    let d = (pos_sensor - v.pos).normalize();
-                    if accel.visible(&v.pos, &pos_sensor) {
+                    let d = (pos_sensor - pos).normalize();
+                    if accel.visible(pos, &pos_sensor) {
                         // Splat the contribution
-                        if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
+                        if let Some((importance, uv)) = scene.camera.sample_direct(pos) {
                             let m = scene.volume.as_ref().unwrap();
 
                             // Compute BSDF for the splatting
-                            let bsdf_value = v.phase_function.eval(&v.d_in, &d);
+                            let bsdf_value = phase_function.eval(d_in, &d);
 
                             // If medium, need to take into account the transmittance
                             let transmittance = {
-                                let mut ray = Ray::new(v.pos, d);
-                                ray.tfar = (v.pos - pos_sensor).magnitude();
+                                let mut ray = Ray::new(*pos, d);
+                                ray.tfar = (pos - pos_sensor).magnitude();
                                 m.transmittance(ray)
                             };
 
@@ -92,46 +93,31 @@ impl TechniqueLightTracing {
                         }
                     }
                 }
-
-                // TODO: Refactor this part
-                for edge_id in &v.edge_out {
-                    let edge = path.edge(*edge_id);
-                    if let Some(vertex_next) = edge.vertices.1 {
-                        self.evaluate(
-                            path,
-                            accel,
-                            scene,
-                            vertex_next,
-                            bitmap,
-                            flux * edge.weight * edge.rr_weight,
-                        );
-                    }
-                }
             }
-            Vertex::Surface(ref v) => {
+            Vertex::Surface { its, .. } => {
                 if self.render_surface {
                     // Chech the visibility from the point to the sensor
                     let pos_sensor = scene.camera.position();
-                    let d = (pos_sensor - v.its.p).normalize();
-                    if !v.its.mesh.bsdf.is_smooth() && accel.visible(&v.its.p, &pos_sensor) {
+                    let d = (pos_sensor - its.p).normalize();
+                    if !its.mesh.bsdf.is_smooth() && accel.visible(&its.p, &pos_sensor) {
                         // Splat the contribution
-                        if let Some((importance, uv)) = scene.camera.sample_direct(&v.its.p) {
+                        if let Some((importance, uv)) = scene.camera.sample_direct(&its.p) {
                             // Compute BSDF for the splatting
-                            let wo_local = v.its.frame.to_local(d);
-                            let wi_global = v.its.frame.to_world(v.its.wi);
-                            let bsdf_value = v.its.mesh.bsdf.eval(
-                                &v.its.uv,
-                                &v.its.wi,
+                            let wo_local = its.frame.to_local(d);
+                            let wi_global = its.frame.to_world(its.wi);
+                            let bsdf_value = its.mesh.bsdf.eval(
+                                &its.uv,
+                                &its.wi,
                                 &wo_local,
                                 Domain::SolidAngle,
                             );
-                            let correction = (v.its.wi.z * d.dot(v.its.n_g))
-                                / (wo_local.z * wi_global.dot(v.its.n_g));
+                            let correction = (its.wi.z * d.dot(its.n_g))
+                                / (wo_local.z * wi_global.dot(its.n_g));
 
                             // If medium, need to take into account the transmittance
                             let transmittance = if let Some(ref m) = scene.volume {
-                                let mut ray = Ray::new(v.its.p, d);
-                                ray.tfar = (v.its.p - pos_sensor).magnitude();
+                                let mut ray = Ray::new(its.p, d);
+                                ray.tfar = (its.p - pos_sensor).magnitude();
                                 m.transmittance(ray)
                             } else {
                                 Color::one()
@@ -146,8 +132,42 @@ impl TechniqueLightTracing {
                         }
                     }
                 }
+            }
+            Vertex::Light { pos, n, .. } => {
+                let flux = *self.flux.as_ref().unwrap();
+                if self.render_surface {
+                    let pos_sensor = scene.camera.position();
+                    let d = (pos_sensor - pos).normalize();
+                    if accel.visible(pos, &pos_sensor) {
+                        if let Some((importance, uv)) = scene.camera.sample_direct(pos) {
+                            let transmittance = if let Some(ref m) = scene.volume {
+                                let mut ray = Ray::new(*pos, d);
+                                ray.tfar = (pos - pos_sensor).magnitude();
+                                m.transmittance(ray)
+                            } else {
+                                Color::one()
+                            };
 
-                for edge_id in &v.edge_out {
+                            bitmap.accumulate_safe(
+                                Point2::new(uv.x as i32, uv.y as i32),
+                                transmittance
+                                    * flux
+                                    * importance
+                                    * d.dot(*n)
+                                    * std::f32::consts::FRAC_1_PI,
+                                &"primal".to_owned(),
+                            );
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        // Go to the next vertex
+        match path.vertex(vertex_id) {
+            Vertex::Volume { edge_out, .. } | Vertex::Surface { edge_out, .. } => {
+                for edge_id in edge_out {
                     let edge = path.edge(*edge_id);
                     if let Some(vertex_next) = edge.vertices.1 {
                         self.evaluate(
@@ -161,35 +181,9 @@ impl TechniqueLightTracing {
                     }
                 }
             }
-            Vertex::Light(ref v) => {
-                let flux = *self.flux.as_ref().unwrap();
-                if self.render_surface {
-                    let pos_sensor = scene.camera.position();
-                    let d = (pos_sensor - v.pos).normalize();
-                    if accel.visible(&v.pos, &pos_sensor) {
-                        if let Some((importance, uv)) = scene.camera.sample_direct(&v.pos) {
-                            let transmittance = if let Some(ref m) = scene.volume {
-                                let mut ray = Ray::new(v.pos, d);
-                                ray.tfar = (v.pos - pos_sensor).magnitude();
-                                m.transmittance(ray)
-                            } else {
-                                Color::one()
-                            };
-
-                            bitmap.accumulate_safe(
-                                Point2::new(uv.x as i32, uv.y as i32),
-                                transmittance
-                                    * flux
-                                    * importance
-                                    * d.dot(v.n)
-                                    * std::f32::consts::FRAC_1_PI,
-                                &"primal".to_owned(),
-                            );
-                        }
-                    }
-                }
-                if let Some(edge_id) = v.edge_out {
-                    let edge = path.edge(edge_id);
+            Vertex::Light { edge_out, .. } => {
+                if let Some(edge_id) = edge_out {
+                    let edge = path.edge(*edge_id);
                     if let Some(next_vertex) = edge.vertices.1 {
                         self.evaluate(
                             path,
@@ -204,6 +198,8 @@ impl TechniqueLightTracing {
             }
             _ => {}
         }
+
+
     }
 }
 

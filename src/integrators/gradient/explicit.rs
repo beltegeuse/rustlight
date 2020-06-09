@@ -28,7 +28,7 @@ impl Technique for TechniqueGradientPathTracing {
         _emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor
-        let root = Vertex::Sensor(SensorVertex {
+        let root = Vertex::Sensor {
             uv: Point2::new(
                 self.img_pos.x as f32 + sampler.next(),
                 self.img_pos.y as f32 + sampler.next(),
@@ -36,7 +36,7 @@ impl Technique for TechniqueGradientPathTracing {
             pos: scene.camera.position(),
             edge_in: None,
             edge_out: None,
-        });
+        };
 
         return vec![(path.register_vertex(root), Color::one())];
     }
@@ -59,8 +59,8 @@ impl TechniqueGradientPathTracing {
     ) -> Color {
         let mut l_i = Color::zero();
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
-                for edge_id in &v.edge_out {
+            Vertex::Surface { edge_out, .. } => {
+                for edge_id in edge_out {
                     let edge = path.edge(*edge_id);
                     let contrib = edge.contribution(path);
                     if !contrib.is_zero() {
@@ -92,9 +92,9 @@ impl TechniqueGradientPathTracing {
                     }
                 }
             }
-            Vertex::Sensor(ref v) => {
+            Vertex::Sensor { edge_out, .. } => {
                 // Only one strategy where...
-                let edge = path.edge(v.edge_out.unwrap());
+                let edge = path.edge(edge_out.unwrap());
 
                 // Get the potential contribution
                 let contrib = edge.contribution(path);
