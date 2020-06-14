@@ -14,4 +14,8 @@
 /data/*.bak
 /data/*
 /images/
-
+/*.avi
+/*.tar
+/*.tgz
+/*.tar.gz
+/*.zip

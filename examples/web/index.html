@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Rustlight + WASM!</title>
+  </head>
+  <body>
+    <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
+    <textarea id='scene'>Integrator "path" "integer maxdepth" [ 65 ] 
+      Transform [ 1 -0 -0 -0 -0 1 -0 -0 -0 -0 -1 -0 -0 -1 6.8 1]
+      Sampler "sobol" "integer pixelsamples" [ 64 ] 
+      PixelFilter "triangle" "float xwidth" [ 1.000000 ] "float ywidth" [ 1.000000 ] 
+      Film "image" "integer xresolution" [ 512 ] "integer yresolution" [ 512 ] "string filename" [ "cornell-box.png" ] 
+      Camera "perspective" "float fov" [ 19.500000 ] 
+      WorldBegin
+              MakeNamedMaterial "LeftWall" "string type" [ "matte" ] "rgb Kd" [ 0.630000 0.065000 0.050000 ] 
+              MakeNamedMaterial "RightWall" "string type" [ "matte" ] "rgb Kd" [ 0.140000 0.450000 0.091000 ] 
+              MakeNamedMaterial "Floor" "string type" [ "matte" ] "rgb Kd" [ 0.725000 0.710000 0.680000 ] 
+              MakeNamedMaterial "Ceiling" "string type" [ "matte" ] "rgb Kd" [ 0.725000 0.710000 0.680000 ] 
+              MakeNamedMaterial "BackWall" "string type" [ "matte" ] "rgb Kd" [ 0.725000 0.710000 0.680000 ] 
+              MakeNamedMaterial "ShortBox" "string type" [ "matte" ] "rgb Kd" [ 0.725000 0.710000 0.680000 ] 
+              MakeNamedMaterial "TallBox" "string type" [ "matte" ] "rgb Kd" [ 0.725000 0.710000 0.680000 ] 
+              MakeNamedMaterial "Light" "string type" [ "matte" ] "rgb Kd" [ 0.000000 0.000000 0.000000 ] 
+              NamedMaterial "Floor" 
+              Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ -1 1.74846e-007 -1 -1 1.74846e-007 1 1 -1.74846e-007 1 1 -1.74846e-007 -1 ] "normal N" [ 4.37114e-008 1 1.91069e-015 4.37114e-008 1 1.91069e-015 4.37114e-008 1 1.91069e-015 4.37114e-008 1 1.91069e-015 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
+              NamedMaterial "Ceiling" 
+              Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ 1 2 1 -1 2 1 -1 2 -1 1 2 -1 ] "normal N" [ -8.74228e-008 -1 -4.37114e-008 -8.74228e-008 -1 -4.37114e-008 -8.74228e-008 -1 -4.37114e-008 -8.74228e-008 -1 -4.37114e-008 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
+              NamedMaterial "BackWall" 
+              Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ -1 0 -1 -1 2 -1 1 2 -1 1 0 -1 ] "normal N" [ 8.74228e-008 -4.37114e-008 -1 8.74228e-008 -4.37114e-008 -1 8.74228e-008 -4.37114e-008 -1 8.74228e-008 -4.37114e-008 -1 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
+              NamedMaterial "RightWall" 
+              Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ 1 0 -1 1 2 -1 1 2 1 1 0 1 ] "normal N" [ 1 -4.37114e-008 1.31134e-007 1 -4.37114e-008 1.31134e-007 1 -4.37114e-008 1.31134e-007 1 -4.37114e-008 1.31134e-007 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
+              NamedMaterial "LeftWall" 
+              Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ -1 0 1 -1 2 1 -1 2 -1 -1 0 -1 ] "normal N" [ -1 -4.37114e-008 -4.37114e-008 -1 -4.37114e-008 -4.37114e-008 -1 -4.37114e-008 -4.37114e-008 -1 -4.37114e-008 -4.37114e-008 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
+              NamedMaterial "ShortBox" 
+              Shape "trianglemesh" "integer indices" [ 0 2 1 0 3 2 4 6 5 4 7 6 8 10 9 8 11 10 12 14 13 12 15 14 16 18 17 16 19 18 20 22 21 20 23 22 ] "point P" [ -0.0460751 0.6 0.573007 -0.0460751 -2.98023e-008 0.573007 0.124253 0 0.00310463 0.124253 0.6 0.00310463 0.533009 0 0.746079 0.533009 0.6 0.746079 0.703337 0.6 0.176177 0.703337 2.98023e-008 0.176177 0.533009 0.6 0.746079 -0.0460751 0.6 0.573007 0.124253 0.6 0.00310463 0.703337 0.6 0.176177 0.703337 2.98023e-008 0.176177 0.124253 0 0.00310463 -0.0460751 -2.98023e-008 0.573007 0.533009 0 0.746079 0.533009 0 0.746079 -0.0460751 -2.98023e-008 0.573007 -0.0460751 0.6 0.573007 0.533009 0.6 0.746079 0.703337 0.6 0.176177 0.124253 0.6 0.00310463 0.124253 0 0.00310463 0.703337 2.98023e-008 0.176177 ] "normal N" [ -0.958123 -4.18809e-008 -0.286357 -0.958123 -4.18809e-008 -0.286357 -0.958123 -4.18809e-008 -0.286357 -0.958123 -4.18809e-008 -0.286357 0.958123 4.18809e-008 0.286357 0.958123 4.18809e-008 0.286357 0.958123 4.18809e-008 0.286357 0.958123 4.18809e-008 0.286357 -4.37114e-008 1 -1.91069e-015 -4.37114e-008 1 -1.91069e-015 -4.37114e-008 1 -1.91069e-015 -4.37114e-008 1 -1.91069e-015 4.37114e-008 -1 1.91069e-015 4.37114e-008 -1 1.91069e-015 4.37114e-008 -1 1.91069e-015 4.37114e-008 -1 1.91069e-015 -0.286357 -1.25171e-008 0.958123 -0.286357 -1.25171e-008 0.958123 -0.286357 -1.25171e-008 0.958123 -0.286357 -1.25171e-008 0.958123 0.286357 1.25171e-008 -0.958123 0.286357 1.25171e-008 -0.958123 0.286357 1.25171e-008 -0.958123 0.286357 1.25171e-008 -0.958123 ] "float uv" [ 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 ] 
+              NamedMaterial "TallBox" 
+              Shape "trianglemesh" "integer indices" [ 0 2 1 0 3 2 4 6 5 4 7 6 8 10 9 8 11 10 12 14 13 12 15 14 16 18 17 16 19 18 20 22 21 20 23 22 ] "point P" [ -0.720444 1.2 -0.473882 -0.720444 0 -0.473882 -0.146892 0 -0.673479 -0.146892 1.2 -0.673479 -0.523986 0 0.0906493 -0.523986 1.2 0.0906492 0.0495656 1.2 -0.108948 0.0495656 0 -0.108948 -0.523986 1.2 0.0906492 -0.720444 1.2 -0.473882 -0.146892 1.2 -0.673479 0.0495656 1.2 -0.108948 0.0495656 0 -0.108948 -0.146892 0 -0.673479 -0.720444 0 -0.473882 -0.523986 0 0.0906493 -0.523986 0 0.0906493 -0.720444 0 -0.473882 -0.720444 1.2 -0.473882 -0.523986 1.2 0.0906492 0.0495656 1.2 -0.108948 -0.146892 1.2 -0.673479 -0.146892 0 -0.673479 0.0495656 0 -0.108948 ] "normal N" [ -0.328669 -4.1283e-008 -0.944445 -0.328669 -4.1283e-008 -0.944445 -0.328669 -4.1283e-008 -0.944445 -0.328669 -4.1283e-008 -0.944445 0.328669 4.1283e-008 0.944445 0.328669 4.1283e-008 0.944445 0.328669 4.1283e-008 0.944445 0.328669 4.1283e-008 0.944445 3.82137e-015 1 -4.37114e-008 3.82137e-015 1 -4.37114e-008 3.82137e-015 1 -4.37114e-008 3.82137e-015 1 -4.37114e-008 -3.82137e-015 -1 4.37114e-008 -3.82137e-015 -1 4.37114e-008 -3.82137e-015 -1 4.37114e-008 -3.82137e-015 -1 4.37114e-008 -0.944445 1.43666e-008 0.328669 -0.944445 1.43666e-008 0.328669 -0.944445 1.43666e-008 0.328669 -0.944445 1.43666e-008 0.328669 0.944445 -1.43666e-008 -0.328669 0.944445 -1.43666e-008 -0.328669 0.944445 -1.43666e-008 -0.328669 0.944445 -1.43666e-008 -0.328669 ] "float uv" [ 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 0 0 1 0 1 1 0 1 ] 
+              AttributeBegin
+                      AreaLightSource "diffuse" "rgb L" [ 17.000000 12.000000 4.000000 ] 
+                      NamedMaterial "Light" 
+                      Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ -0.24 1.98 -0.22 0.23 1.98 -0.22 0.23 1.98 0.16 -0.24 1.98 0.16 ] "normal N" [ -8.74228e-008 -1 1.86006e-007 -8.74228e-008 -1 1.86006e-007 -8.74228e-008 -1 1.86006e-007 -8.74228e-008 -1 1.86006e-007 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
+              AttributeEnd
+      WorldEnd</textarea>
+      <button disabled id='render'>Loading wasm...</button>
+      <div id='timing'>
+        Render duration (1spp):
+        <p id='timing-val'></p>
+      </div>
+  
+      <canvas id='canvas'></canvas>
+  
+      <script>
+        document.getElementById('render').disabled = true;
+      </script>
+      <script type="module">
+        //import "./pkg/rustlight_web.js";
+        import init, {Scene} from "./pkg/rustlight_web.js";
+
+        const button = document.getElementById('render');
+        const canvas = document.getElementById('canvas');
+        const scene = document.getElementById('scene');
+
+        // Timing
+        var startTime, endTime;
+
+        // TODO: Non blocking call
+        var x = 0;
+        var y = 0;
+        var ctx = canvas.getContext('2d');
+        var rustlight_scene;
+        const BLOCK_SIZE = 256;
+        var running = false;
+
+        function run() {
+          if(!running) {
+                return;
+          }
+
+          // Render one block
+          rustlight_scene.render_block(x, y, BLOCK_SIZE, BLOCK_SIZE);
+          y = y + BLOCK_SIZE;
+          if(y >= rustlight_scene.height) {
+              y = 0;
+              x = x + BLOCK_SIZE;
+          }
+          if(x >= rustlight_scene.width) {
+              x = 0;
+
+              // Compute time 
+              endTime = new Date();
+              var timeDiff = endTime - startTime; //in ms
+              document.getElementById('timing-val').innerText = timeDiff + " ms";
+              startTime = endTime;
+          }
+
+          rustlight_scene.get_img(ctx);
+          window.requestAnimationFrame(run);
+        }
+
+        button.onclick = function() {
+            if(running) {
+                running = false;
+                rustlight_scene = null; // Free memory?
+                x = 0;
+                y = 0;
+                button.innerText = 'Render!';
+            } else {
+                rustlight_scene = new Scene(scene.value);
+                canvas.width = rustlight_scene.width;
+                canvas.height = rustlight_scene.height;
+                running = true;
+                button.innerText = 'Stop!';
+                startTime = new Date();
+                window.requestAnimationFrame(run);
+            }
+        };
+
+        // Load WASM
+        async function load() {
+          await init();
+          button.innerText = 'Render!';
+          button.disabled = false; 
+        }
+
+        load();
+      </script>
+  </body>
+</html>
