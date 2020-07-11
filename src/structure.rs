@@ -87,6 +87,13 @@ impl Color {
     pub fn sqrt(self) -> Color {
         Color::new(self.r.sqrt(), self.g.sqrt(), self.b.sqrt())
     }
+    pub fn safe_sqrt(self) -> Color {
+        Color::new(
+            self.r.max(0.0).sqrt(), 
+            self.g.max(0.0).sqrt(),
+            self.b.max(0.0).sqrt()
+        )
+    }
     pub fn avg(&self) -> f32 {
         (self.r + self.g + self.b) / 3.0
     }

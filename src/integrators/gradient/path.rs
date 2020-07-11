@@ -1,4 +1,4 @@
-use crate::bsdfs::reflect_vector;
+use crate::bsdfs::utils::reflect_vector;
 use crate::emitter::*;
 use crate::integrators::gradient::*;
 use crate::integrators::*;

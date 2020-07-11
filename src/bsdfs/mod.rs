@@ -2,26 +2,11 @@ use crate::structure::*;
 use serde::{Deserialize, Deserializer};
 use serde_json;
 
-use cgmath::{InnerSpace, Point2, Vector2, Vector3};
+use cgmath::{Point2, Vector2, Vector3};
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
 use std;
 
-pub fn reflect_vector(wo: Vector3<f32>, n: Vector3<f32>) -> Vector3<f32> {
-    -(wo) + n * 2.0 * wo.dot(n)
-}
-pub fn check_reflection_condition(wi: &Vector3<f32>, wo: &Vector3<f32>) -> bool {
-    (wi.z * wo.z - wi.x * wo.x - wi.y * wo.y - 1.0).abs() < 0.0001
-}
-pub fn check_direlectric_condition(
-    wi: &Vector3<f32>,
-    wo: &Vector3<f32>,
-    eta: f32,
-    cos_theta: f32,
-) -> bool {
-    let dot_p = -wi.x * wo.x * eta - wi.y * wo.y * eta - cos_theta.copysign(wi.z) * wo.z;
-    (dot_p - 1.0).abs() < 0.0001
-}
 // Texture or uniform color buffers
 #[derive(Deserialize)]
 pub struct Texture {
@@ -139,6 +124,7 @@ pub mod blend;
 pub mod diffuse;
 pub mod phong;
 pub mod specular;
+pub mod utils;
 
 use crate::bsdfs::diffuse::BSDFDiffuse;
 use crate::bsdfs::phong::BSDFPhong;
@@ -238,7 +224,11 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
         }
         pbrt_rs::BSDF::Mirror(ref v) => {
             let specular = bsdf_texture_match(&v.kr, scene_info).unwrap();
-            Some(Box::new(BSDFSpecular { specular }))
+            Some(Box::new(BSDFSpecular { 
+                specular,
+                eta: Color::value(1.0),
+                k: Color::value(0.0) 
+            }))
         }
         pbrt_rs::BSDF::Substrate(ref v) => {
             let _kd = bsdf_texture_match(&v.kd, scene_info).unwrap();
