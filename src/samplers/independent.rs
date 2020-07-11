@@ -3,7 +3,7 @@ use cgmath::Point2;
 use rand::prelude::*;
 
 pub struct IndependentSampler {
-    rnd: rand::rngs::SmallRng,
+    pub rnd: rand::rngs::SmallRng,
 }
 
 impl Sampler for IndependentSampler {

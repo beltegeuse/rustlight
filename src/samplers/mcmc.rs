@@ -50,26 +50,27 @@ impl Mutator for MutatorKelemen {
             }
             v
         };
-        //FIXME: See why I need to add this test
+        
+        // TODO: This is a dirty fix for now.
         if v == 1.0 {
             v = 0.0;
         }
-
         assert!(v < 1.0);
         assert!(v >= 0.0);
         v
     }
 }
 
+#[derive(Copy, Clone)]
 struct SampleReplayValue {
     pub value: f32,
     pub modify: usize,
 }
 
 pub struct IndependentSamplerReplay {
-    rnd: StdRng,
+    pub rnd: SmallRng,
     values: Vec<SampleReplayValue>,
-    backup: Vec<(usize, f32)>,
+    backup: Vec<(usize, SampleReplayValue)>,
     mutator: Box<dyn Mutator>,
     time: usize,
     time_large: usize,
@@ -79,17 +80,14 @@ pub struct IndependentSamplerReplay {
 
 impl Sampler for IndependentSamplerReplay {
     fn next(&mut self) -> f32 {
-        let i = self.indice;
-        let v = self.sample(i);
+        let v = self.sample(self.indice);
         self.indice += 1;
         v
     }
 
     fn next2d(&mut self) -> Point2<f32> {
-        let i1 = self.indice;
-        let i2 = self.indice + 1;
-        let v1 = self.sample(i1);
-        let v2 = self.sample(i2);
+        let v1 = self.sample(self.indice);
+        let v2 = self.sample(self.indice + 1);
         self.indice += 2;
         Point2::new(v1, v2)
     }
@@ -106,19 +104,27 @@ impl SamplerMCMC for IndependentSamplerReplay {
     }
 
     fn reject(&mut self) {
-        for &(i, v) in &self.backup {
-            self.values[i].value = v;
+        if self.time == 0 {
+            // This is just to catch error in case the random number 
+            // is wrongly initialize. With proper initialization via resampling
+            // this case should never happens
+            warn!("Reject state with time 0 (Maybe the chain was wrongly initialized)");
+            self.values.clear();
+        } else {
+            for &(i, v) in &self.backup {
+                self.values[i] = v;
+            }
+            self.backup.clear();
         }
-        self.backup.clear();
-        self.time += 1;
         self.indice = 0;
     }
 }
 
 impl Default for IndependentSamplerReplay {
     fn default() -> Self {
+        let rnd = rand::rngs::SmallRng::seed_from_u64(random());
         IndependentSamplerReplay {
-            rnd: rand::rngs::StdRng::from_rng(thread_rng()).unwrap(),
+            rnd,
             values: vec![],
             backup: vec![],
             mutator: Box::new(MutatorKelemen::default()),
@@ -146,27 +152,31 @@ impl IndependentSamplerReplay {
 
         if self.values[i].modify < self.time {
             if self.large_step {
-                self.backup.push((i, self.values[i].value));
-                let value = self.rand();
-                self.values[i].value = value;
+                // In case of large step, we do a independent mutation
+                self.backup.push((i, self.values[i]));
+                self.values[i].value = self.rand();
                 self.values[i].modify = self.time;
             } else {
+                // Check if we need to do a large step
                 if self.values[i].modify < self.time_large {
-                    let value = self.rand();
-                    self.values[i].value = value;
+                    self.values[i].value = self.rand();
                     self.values[i].modify = self.time_large;
                 }
 
+                // Replay previous steps (up to time - 1)
                 while self.values[i].modify + 1 < self.time {
                     let random = self.rand();
                     self.values[i].value = self.mutator.mutate(self.values[i].value, random);
                     self.values[i].modify += 1;
                 }
 
-                self.backup.push((i, self.values[i].value));
+                // The chain is now at time - 1 so we need to only
+                // do one mutation
+                self.backup.push((i, self.values[i]));
                 let random = self.rand();
                 self.values[i].value = self.mutator.mutate(self.values[i].value, random);
                 self.values[i].modify += 1;
+                assert_eq!(self.values[i].modify, self.time);
             }
         }
 
