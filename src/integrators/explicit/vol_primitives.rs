@@ -558,7 +558,12 @@ impl TechniqueVolPrimitives {
     ) {
         match path.vertex(vertex_id) {
             Vertex::Surface { .. } => {}
-            Vertex::Volume { pos, d_in, phase_function, .. } => {
+            Vertex::Volume {
+                pos,
+                d_in,
+                phase_function,
+                ..
+            } => {
                 photons.push(Photon {
                     pos: *pos,
                     d_in: *d_in,
@@ -588,7 +593,12 @@ impl TechniqueVolPrimitives {
 }
 
 impl Integrator for IntegratorVolPrimitives {
-    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         if scene.volume.is_none() {
             panic!("Volume integrator need a volume (add -m )");
         }
@@ -621,14 +631,7 @@ impl Integrator for IntegratorVolPrimitives {
                 flux: None,
             };
             let mut path = Path::default();
-            let root = generate(
-                &mut path,
-                accel,
-                scene,
-                &emitters,
-                sampler,
-                &mut technique,
-            );
+            let root = generate(&mut path, accel, scene, &emitters, sampler, &mut technique);
             match self.primitives {
                 VolPrimitivies::Beams | VolPrimitivies::VRL => {
                     technique.convert_beams(
@@ -795,8 +798,12 @@ impl Integrator for IntegratorVolPrimitives {
                                             * 0.01)
                                             .min(1.0);
                                         if rr >= sampler.next() {
-                                            c += (vrl.contribute_vrl(&ray, m, accel, sampler.as_mut())
-                                                / rr)
+                                            c += (vrl.contribute_vrl(
+                                                &ray,
+                                                m,
+                                                accel,
+                                                sampler.as_mut(),
+                                            ) / rr)
                                                 * norm_photon;
                                         }
                                     }

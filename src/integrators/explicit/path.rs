@@ -91,7 +91,7 @@ impl TechniquePathTracing {
         // Check the path depth, if not reach min depth, ignore contribution...
         let add_contrib = match min_depth {
             None => true,
-            Some(v) => curr_depth >= v, 
+            Some(v) => curr_depth >= v,
         };
 
         // If needed, we compute the MIS weight
@@ -146,14 +146,24 @@ impl TechniquePathTracing {
                 for edge_id in edge_out {
                     // Compute the contribution along this edge
                     // this only cover the fact that some next vertices are on some light sources
-                    l_i += self.evalute_edge(curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy);
+                    l_i += self.evalute_edge(
+                        curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy,
+                    );
 
                     // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         l_i += edge.weight
                             * edge.rr_weight
-                            * self.evaluate(curr_depth + 1, min_depth,path, scene, emitters, vertex_next_id, strategy);
+                            * self.evaluate(
+                                curr_depth + 1,
+                                min_depth,
+                                path,
+                                scene,
+                                emitters,
+                                vertex_next_id,
+                                strategy,
+                            );
                     }
                 }
             }
@@ -163,7 +173,7 @@ impl TechniquePathTracing {
 
                 let add_contrib = match min_depth {
                     None => true,
-                    Some(v) => curr_depth >= v, 
+                    Some(v) => curr_depth >= v,
                 };
 
                 // Get the potential contribution
@@ -176,7 +186,15 @@ impl TechniquePathTracing {
                 if let Some(vertex_next_id) = edge.vertices.1 {
                     l_i += edge.weight
                         * edge.rr_weight
-                        * self.evaluate(curr_depth + 1, min_depth, path, scene, emitters, vertex_next_id, strategy);
+                        * self.evaluate(
+                            curr_depth + 1,
+                            min_depth,
+                            path,
+                            scene,
+                            emitters,
+                            vertex_next_id,
+                            strategy,
+                        );
                 }
             }
             _ => {}
@@ -186,7 +204,12 @@ impl TechniquePathTracing {
 }
 
 impl Integrator for IntegratorPathTracing {
-    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         compute_mc(self, sampler, accel, scene)
     }
 }
@@ -224,6 +247,14 @@ impl IntegratorMC for IntegratorPathTracing {
         let mut path = Path::default();
         let root = generate(&mut path, accel, scene, emitters, sampler, &mut technique);
         // Evaluate the sampling graph
-        technique.evaluate(0, self.min_depth, &path, scene, emitters, root[0].0, &self.strategy)
+        technique.evaluate(
+            0,
+            self.min_depth,
+            &path,
+            scene,
+            emitters,
+            root[0].0,
+            &self.strategy,
+        )
     }
 }

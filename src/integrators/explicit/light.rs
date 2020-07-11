@@ -65,7 +65,12 @@ impl TechniqueLightTracing {
     ) {
         // Splat current vertex
         match path.vertex(vertex_id) {
-            Vertex::Volume { pos, phase_function, d_in, ..} => {
+            Vertex::Volume {
+                pos,
+                phase_function,
+                d_in,
+                ..
+            } => {
                 if self.render_volume {
                     let pos_sensor = scene.camera.position();
                     let d = (pos_sensor - pos).normalize();
@@ -105,14 +110,12 @@ impl TechniqueLightTracing {
                             // Compute BSDF for the splatting
                             let wo_local = its.frame.to_local(d);
                             let wi_global = its.frame.to_world(its.wi);
-                            let bsdf_value = its.mesh.bsdf.eval(
-                                &its.uv,
-                                &its.wi,
-                                &wo_local,
-                                Domain::SolidAngle,
-                            );
-                            let correction = (its.wi.z * d.dot(its.n_g))
-                                / (wo_local.z * wi_global.dot(its.n_g));
+                            let bsdf_value =
+                                its.mesh
+                                    .bsdf
+                                    .eval(&its.uv, &its.wi, &wo_local, Domain::SolidAngle);
+                            let correction =
+                                (its.wi.z * d.dot(its.n_g)) / (wo_local.z * wi_global.dot(its.n_g));
 
                             // If medium, need to take into account the transmittance
                             let transmittance = if let Some(ref m) = scene.volume {
@@ -198,13 +201,16 @@ impl TechniqueLightTracing {
             }
             _ => {}
         }
-
-
     }
 }
 
 impl Integrator for IntegratorLightTracing {
-    fn compute(&mut self, sampler: &mut dyn Sampler,  accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         // Number of samples that the system will trace
         // The strategy for multithread is to have 4 job per threads
         // All job will have the same number of samples to deal with
@@ -245,7 +251,14 @@ impl Integrator for IntegratorLightTracing {
                         render_volume: self.render_volume,
                     };
                     let mut path = Path::default();
-                    let root = generate(&mut path, accel, scene, &emitters, s.as_mut(), &mut technique);
+                    let root = generate(
+                        &mut path,
+                        accel,
+                        scene,
+                        &emitters,
+                        s.as_mut(),
+                        &mut technique,
+                    );
                     // Evaluate the path generated using camera splatting operation
                     technique.evaluate(&path, accel, scene, root[0].0, &mut my_img, Color::one());
                 });

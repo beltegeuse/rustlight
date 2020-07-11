@@ -1,7 +1,7 @@
+use crate::accel::*;
 use crate::emitter::*;
 use crate::samplers::*;
 use crate::scene::*;
-use crate::accel::*;
 use crate::structure::*;
 use crate::tools::StepRangeInt;
 use crate::Scale;
@@ -19,16 +19,15 @@ use std::time::Instant;
 /// PBR Wrapper for conditional compilation
 #[cfg(feature = "progress-bar")]
 struct ProgressBar {
-    progress: pbr::ProgressBar<std::io::Stdout>
+    progress: pbr::ProgressBar<std::io::Stdout>,
 }
 #[cfg(not(feature = "progress-bar"))]
-struct ProgressBar {
-}
+struct ProgressBar {}
 impl ProgressBar {
     #[cfg(feature = "progress-bar")]
     fn new(n: u64) -> ProgressBar {
         ProgressBar {
-            progress: pbr::ProgressBar::new(n)
+            progress: pbr::ProgressBar::new(n),
         }
     }
     #[cfg(not(feature = "progress-bar"))]
@@ -215,16 +214,31 @@ impl Scale<f32> for BufferCollection {
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, _sampler: &mut dyn Sampler, _accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        _sampler: &mut dyn Sampler,
+        _accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
 pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection;
+    fn compute_gradients(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection;
     fn reconstruct(&self) -> &(dyn PoissonReconstruction + Sync);
 
-    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         // Rendering the gradient informations
         info!("Gradient Rendering...");
         let start = Instant::now();
@@ -282,7 +296,7 @@ impl IntegratorType {
                             0.0,
                         );
                     }
-    
+
                     for i in 0..m.indices.len() {
                         tris[i] = cgmath::Vector3::new(
                             m.indices[i].x as u32,
@@ -328,7 +342,11 @@ pub trait IntegratorMC: Sync + Send {
     ) -> Color;
 }
 
-pub fn generate_img_blocks(scene: &Scene, sampler: &mut dyn Sampler, buffernames: &[String]) -> Vec<(BufferCollection, Box<dyn Sampler>)> {
+pub fn generate_img_blocks(
+    scene: &Scene,
+    sampler: &mut dyn Sampler,
+    buffernames: &[String],
+) -> Vec<(BufferCollection, Box<dyn Sampler>)> {
     let mut image_blocks: Vec<(BufferCollection, Box<dyn Sampler>)> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {

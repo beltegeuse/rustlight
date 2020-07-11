@@ -3,7 +3,7 @@ use crate::bsdfs::*;
 pub struct BSDFBlend {
     pub bsdf1: Box<dyn BSDF + Sync + Send>,
     pub bsdf2: Box<dyn BSDF + Sync + Send>,
-    pub weight: f32, 
+    pub weight: f32,
 }
 
 impl BSDF for BSDFBlend {
@@ -20,7 +20,10 @@ impl BSDF for BSDFBlend {
             let scaled_sample = Point2::new(sample.x * (1.0 / self.weight), sample.y);
             self.bsdf1.sample(uv, d_in, scaled_sample)
         } else {
-            let scaled_sample = Point2::new((sample.x - self.weight) * (1.0 / (1.0 - self.weight)), sample.y);
+            let scaled_sample = Point2::new(
+                (sample.x - self.weight) * (1.0 / (1.0 - self.weight)),
+                sample.y,
+            );
             self.bsdf2.sample(uv, d_in, scaled_sample)
         };
 
@@ -62,7 +65,8 @@ impl BSDF for BSDFBlend {
         domain: Domain,
     ) -> Color {
         debug_assert!(self.weight >= 0.0 && self.weight <= 1.0);
-        self.weight * self.bsdf1.eval(uv, d_in, d_out, domain) + (1.0 - self.weight) * self.bsdf2.eval(uv, d_in, d_out, domain)
+        self.weight * self.bsdf1.eval(uv, d_in, d_out, domain)
+            + (1.0 - self.weight) * self.bsdf2.eval(uv, d_in, d_out, domain)
     }
 
     fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {

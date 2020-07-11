@@ -37,7 +37,6 @@ impl Texture {
     pub fn pixel(&self, _uv: Vector2<f32>) -> Color {
         unimplemented!("No support of images");
     }
-
 }
 
 #[cfg(feature = "image")]
@@ -224,10 +223,10 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
         }
         pbrt_rs::BSDF::Mirror(ref v) => {
             let specular = bsdf_texture_match(&v.kr, scene_info).unwrap();
-            Some(Box::new(BSDFSpecular { 
+            Some(Box::new(BSDFSpecular {
                 specular,
                 eta: Color::value(1.0),
-                k: Color::value(0.0) 
+                k: Color::value(0.0),
             }))
         }
         pbrt_rs::BSDF::Substrate(ref v) => {

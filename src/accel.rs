@@ -1,5 +1,5 @@
-use crate::structure::*;
 use crate::scene::Scene;
+use crate::structure::*;
 use cgmath::*;
 
 #[derive(Debug)]
@@ -163,39 +163,36 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
     }
 }
 
-
 pub trait Acceleration: Sync + Send {
     fn trace(&self, ray: &Ray) -> Option<Intersection>;
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
 }
 
 pub struct NaiveAcceleration<'scene> {
-    pub scene: &'scene Scene
+    pub scene: &'scene Scene,
 }
 impl<'scene> NaiveAcceleration<'scene> {
     pub fn new(scene: &'scene Scene) -> NaiveAcceleration<'scene> {
-        NaiveAcceleration {
-            scene
-        }
+        NaiveAcceleration { scene }
     }
 }
-impl<'a> Acceleration for NaiveAcceleration<'a> {    
+impl<'a> Acceleration for NaiveAcceleration<'a> {
     fn trace(&self, ray: &Ray) -> Option<Intersection> {
         let mut its = IntersectionUV {
             t: std::f32::MAX,
             p: Point3::new(0.0, 0.0, 0.0),
             n: Vector3::new(0.0, 0.0, 0.0),
             u: 0.0,
-            v: 0.0
+            v: 0.0,
         };
-        let (mut id_m, mut id_t) = (0,0);
+        let (mut id_m, mut id_t) = (0, 0);
 
         for m in 0..self.scene.meshes.len() {
             let mesh = &self.scene.meshes[m];
             for i in 0..mesh.indices.len() {
                 if mesh.intersection_tri(i, &ray.o, &ray.d, &mut its) {
                     id_m = m;
-                    id_t = i; 
+                    id_t = i;
                 }
             }
         }
@@ -203,8 +200,9 @@ impl<'a> Acceleration for NaiveAcceleration<'a> {
         if its.t == std::f32::MAX {
             None
         } else {
-            Some(Intersection::fill_intersection(id_m, id_t, self.scene, 
-                its.u, its.v, ray, its.n, its.t, its.p))
+            Some(Intersection::fill_intersection(
+                id_m, id_t, self.scene, its.u, its.v, ray, its.n, its.t, its.p,
+            ))
         }
     }
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
@@ -219,9 +217,9 @@ impl<'a> Acceleration for NaiveAcceleration<'a> {
             p: Point3::new(0.0, 0.0, 0.0),
             n: Vector3::new(0.0, 0.0, 0.0),
             u: 0.0,
-            v: 0.0
+            v: 0.0,
         };
-        
+
         for m in 0..self.scene.meshes.len() {
             let mesh = &self.scene.meshes[m];
             for i in 0..mesh.indices.len() {
@@ -230,7 +228,7 @@ impl<'a> Acceleration for NaiveAcceleration<'a> {
                 }
             }
         }
-        return true; 
+        return true;
     }
 }
 
@@ -263,7 +261,8 @@ impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
             ray.tfar,
         );
         let mut ray_hit = embree_rs::RayHit::new(embree_ray);
-        self.embree_scene_commited.intersect(&mut intersection_ctx, &mut ray_hit);
+        self.embree_scene_commited
+            .intersect(&mut intersection_ctx, &mut ray_hit);
         if ray_hit.hit.hit() {
             let mut n_g = Vector3::new(ray_hit.hit.Ng_x, ray_hit.hit.Ng_y, ray_hit.hit.Ng_z);
             let n_g_dot = n_g.dot(n_g);
@@ -275,9 +274,17 @@ impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
                 ray_hit.ray.org_y + ray_hit.ray.tfar * ray_hit.ray.dir_y,
                 ray_hit.ray.org_z + ray_hit.ray.tfar * ray_hit.ray.dir_z,
             );
-            Some(Intersection::fill_intersection(ray_hit.hit.geomID as usize, 
-                ray_hit.hit.primID as usize, self.scene, 
-                ray_hit.hit.u, ray_hit.hit.v, ray, n_g, ray_hit.ray.tfar, p))
+            Some(Intersection::fill_intersection(
+                ray_hit.hit.geomID as usize,
+                ray_hit.hit.primID as usize,
+                self.scene,
+                ray_hit.hit.u,
+                ray_hit.hit.v,
+                ray,
+                n_g,
+                ray_hit.ray.tfar,
+                p,
+            ))
         } else {
             None
         }

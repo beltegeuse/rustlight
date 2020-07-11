@@ -1,11 +1,11 @@
 use crate::constants;
 use crate::geometry::Mesh;
 use crate::math::Frame;
-use crate::tools::*;
 use crate::scene::Scene;
+use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Vector3, InnerSpace};
+use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3};
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, Pixel};
 #[cfg(feature = "openexr")]
@@ -89,9 +89,9 @@ impl Color {
     }
     pub fn safe_sqrt(self) -> Color {
         Color::new(
-            self.r.max(0.0).sqrt(), 
+            self.r.max(0.0).sqrt(),
             self.g.max(0.0).sqrt(),
-            self.b.max(0.0).sqrt()
+            self.b.max(0.0).sqrt(),
         )
     }
     pub fn avg(&self) -> f32 {
@@ -217,7 +217,6 @@ impl Div<f32> for Color {
             }
         }
         //assert_ne!(other, 0.0);
-        
     }
 }
 
@@ -764,8 +763,17 @@ impl<'a> Intersection<'a> {
     pub fn to_world(&self, d: &Vector3<f32>) -> Vector3<f32> {
         self.frame.to_world(*d)
     }
-    pub fn fill_intersection(mesh_id: usize, tri_id: usize, scene: &'a Scene, 
-        hit_u: f32, hit_v: f32, ray: &Ray, n_g: Vector3<f32>, dist: f32, p: Point3<f32>) -> Intersection<'a> {
+    pub fn fill_intersection(
+        mesh_id: usize,
+        tri_id: usize,
+        scene: &'a Scene,
+        hit_u: f32,
+        hit_v: f32,
+        ray: &Ray,
+        n_g: Vector3<f32>,
+        dist: f32,
+        p: Point3<f32>,
+    ) -> Intersection<'a> {
         let mesh = &scene.meshes[mesh_id];
         let index = mesh.indices[tri_id];
 
@@ -773,9 +781,7 @@ impl<'a> Intersection<'a> {
             let d0 = &normals[index.x];
             let d1 = &normals[index.y];
             let d2 = &normals[index.z];
-            let mut n_s = d0 * (1.0 - hit_u - hit_v)
-                + d1 * hit_u
-                + d2 * hit_v;
+            let mut n_s = d0 * (1.0 - hit_u - hit_v) + d1 * hit_u + d2 * hit_v;
             if n_g.dot(n_s) < 0.0 {
                 n_s = -n_s;
             }
@@ -800,11 +806,7 @@ impl<'a> Intersection<'a> {
             let d0 = &uv_data[index.x];
             let d1 = &uv_data[index.y];
             let d2 = &uv_data[index.z];
-            Some(
-                d0 * (1.0 - hit_u - hit_v)
-                    + d1 * hit_u
-                    + d2 * hit_v,
-            )
+            Some(d0 * (1.0 - hit_u - hit_v) + d1 * hit_u + d2 * hit_v)
         } else {
             None
         };

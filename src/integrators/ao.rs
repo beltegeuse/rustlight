@@ -7,7 +7,12 @@ pub struct IntegratorAO {
 }
 
 impl Integrator for IntegratorAO {
-    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         compute_mc(self, sampler, accel, scene)
     }
 }

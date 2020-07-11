@@ -50,7 +50,7 @@ impl Mutator for MutatorKelemen {
             }
             v
         };
-        
+
         // TODO: This is a dirty fix for now.
         if v == 1.0 {
             v = 0.0;
@@ -105,7 +105,7 @@ impl SamplerMCMC for IndependentSamplerReplay {
 
     fn reject(&mut self) {
         if self.time == 0 {
-            // This is just to catch error in case the random number 
+            // This is just to catch error in case the random number
             // is wrongly initialize. With proper initialization via resampling
             // this case should never happens
             warn!("Reject state with time 0 (Maybe the chain was wrongly initialized)");

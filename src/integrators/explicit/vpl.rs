@@ -8,7 +8,7 @@ use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 pub enum IntegratorVPLOption {
     Volume,
     Surface,
-    All
+    All,
 }
 
 pub struct IntegratorVPL {
@@ -92,7 +92,7 @@ impl TechniqueVPL {
         flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface { its, edge_out, .. }=> {
+            Vertex::Surface { its, edge_out, .. } => {
                 if options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Surface(VPLSurface {
                         its: its.clone(),
@@ -115,7 +115,13 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Volume { pos, d_in, phase_function, edge_out, .. } => {
+            Vertex::Volume {
+                pos,
+                d_in,
+                phase_function,
+                edge_out,
+                ..
+            } => {
                 if options != IntegratorVPLOption::Surface {
                     vpls.push(VPL::Volume(VPLVolume {
                         pos: *pos,
@@ -140,7 +146,9 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Light { edge_out, pos, n, .. } => {
+            Vertex::Light {
+                edge_out, pos, n, ..
+            } => {
                 let flux = *self.flux.as_ref().unwrap();
                 if options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Emitter(VPLEmitter {
@@ -170,7 +178,12 @@ impl TechniqueVPL {
 }
 
 impl Integrator for IntegratorVPL {
-    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         info!("Generating the VPL...");
         let buffernames = vec![String::from("primal")];
         let mut nb_path_shot = 0;
@@ -185,15 +198,15 @@ impl Integrator for IntegratorVPL {
                 flux: None,
             };
             let mut path = Path::default();
-            let root = generate(
-                &mut path,
-                accel,
+            let root = generate(&mut path, accel, scene, &emitters, sampler, &mut technique);
+            technique.convert_vpl(
+                &path,
                 scene,
-                &emitters,
-                sampler,
-                &mut technique,
+                root[0].0,
+                self.option_vpl,
+                &mut vpls,
+                Color::one(),
             );
-            technique.convert_vpl(&path, scene, root[0].0, self.option_vpl, &mut vpls, Color::one());
             nb_path_shot += 1;
         }
         let vpls = vpls;
@@ -464,8 +477,9 @@ impl IntegratorVPL {
                 l_i
             } else {
                 if self.option_lt != IntegratorVPLOption::Volume {
-                    l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
-                        * mrec.w;
+                    l_i +=
+                        self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
+                            * mrec.w;
                 }
                 l_i
             }

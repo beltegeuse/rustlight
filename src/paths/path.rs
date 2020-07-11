@@ -1,10 +1,10 @@
+use crate::accel::*;
 use crate::cgmath::InnerSpace;
 use crate::emitter::*;
 use crate::math::*;
 use crate::paths::vertex::*;
 use crate::samplers::*;
 use crate::scene::*;
-use crate::accel::*;
 use crate::structure::*;
 use crate::volume::*;
 use crate::Scale;
@@ -69,12 +69,8 @@ impl DirectionalSamplingStrategy {
                 );
                 (Some(edge), new_vertex)
             }
-            Vertex::Surface { its, .. }=> {
-                if let Some(sampled_bsdf) =
-                    its
-                        .mesh
-                        .bsdf
-                        .sample(&its.uv, &its.wi, sampler.next2d())
+            Vertex::Surface { its, .. } => {
+                if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.uv, &its.wi, sampler.next2d())
                 {
                     let d_out_global = its.frame.to_world(sampled_bsdf.d);
 
@@ -121,7 +117,12 @@ impl DirectionalSamplingStrategy {
 
                 (None, None)
             }
-            Vertex::Volume { phase_function, d_in, pos, .. } => {
+            Vertex::Volume {
+                phase_function,
+                d_in,
+                pos,
+                ..
+            } => {
                 let sampled_phase = phase_function.sample(&d_in, sampler.next2d());
 
                 // Update the throughput
@@ -273,7 +274,11 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                 }
                 unimplemented!();
             }
-            Vertex::Volume { phase_function, d_in, .. } => Some(phase_function.pdf(d_in, &edge.d)),
+            Vertex::Volume {
+                phase_function,
+                d_in,
+                ..
+            } => Some(phase_function.pdf(d_in, &edge.d)),
             Vertex::Sensor { .. } => Some(1.0), // TODO: Why this value?
             Vertex::Light { .. } => None,       // Impossible to do BSDF sampling on a light source
         }
@@ -301,7 +306,9 @@ impl LightSamplingStrategy {
                     None
                 }
             }
-            Vertex::Light { emitter, pos, n, .. } => {
+            Vertex::Light {
+                emitter, pos, n, ..
+            } => {
                 if let PDF::SolidAngle(light_pdf) = emitters.direct_pdf(
                     *emitter,
                     &LightSamplingPDF {
@@ -316,7 +323,7 @@ impl LightSamplingStrategy {
                     None
                 }
             }
-            Vertex::Sensor { .. } | Vertex::Volume { .. }=> None
+            Vertex::Sensor { .. } | Vertex::Volume { .. } => None,
         }
     }
 }
@@ -343,12 +350,8 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Note that during this procedure, we did not evaluate the product of the path throughput
                 // and the incomming direct light. This evaluation will be done later when MIS
                 // will be computed.
-                let light_record = emitters.sample_light(
-                    &its.p,
-                    sampler.next(),
-                    sampler.next(),
-                    sampler.next2d(),
-                );
+                let light_record =
+                    emitters.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
                 let visible = accel.visible(&its.p, &light_record.p);
                 if light_record.is_valid() && visible {
                     // We create a new vertex as it is a light
@@ -405,7 +408,12 @@ impl SamplingStrategy for LightSamplingStrategy {
                     return None;
                 }
             }
-            Vertex::Volume { pos, phase_function, d_in, .. } => {
+            Vertex::Volume {
+                pos,
+                phase_function,
+                d_in,
+                ..
+            } => {
                 // Generate the light sampling record based on the current vertex location
                 // Note that during this procedure, we did not evaluate the product of the path throughput
                 // and the incomming direct light. This evaluation will be done later when MIS

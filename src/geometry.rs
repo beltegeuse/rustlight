@@ -176,7 +176,13 @@ impl Mesh {
         let v2 = self.vertices[id.z];
         (v0 + v1 + v2) / 3.0
     }
-    pub fn intersection_tri(&self, i: usize, p_c: &Point3<f32>, d_c: &Vector3<f32>, its: &mut IntersectionUV) -> bool {
+    pub fn intersection_tri(
+        &self,
+        i: usize,
+        p_c: &Point3<f32>,
+        d_c: &Vector3<f32>,
+        its: &mut IntersectionUV,
+    ) -> bool {
         let id = self.indices[i];
         let v0 = self.vertices[id.x];
         let v1 = self.vertices[id.y];
@@ -210,7 +216,8 @@ impl Mesh {
             // TODO: Review the condition because
             //      for now it only return true
             //      if the itersection is updated
-            if t < its.t && t > 0.00001 { // Avoid self intersection
+            if t < its.t && t > 0.00001 {
+                // Avoid self intersection
                 // FIXME: Make this code cleaner
                 its.t = t;
                 its.u = u;

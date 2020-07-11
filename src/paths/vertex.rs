@@ -1,6 +1,6 @@
+use crate::accel::*;
 use crate::emitter::Emitter;
 use crate::samplers::*;
-use crate::accel::*;
 use crate::structure::*;
 use crate::volume::*;
 use cgmath::*;
@@ -226,7 +226,7 @@ pub enum Vertex<'scene, 'emitter> {
         rr_weight: f32,
         edge_in: EdgeID,
         edge_out: Vec<EdgeID>,
-    }
+    },
 }
 impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
     pub fn pixel_pos(&self) -> Point2<f32> {
@@ -238,13 +238,15 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
     pub fn position(&self) -> Point3<f32> {
         match self {
             Vertex::Surface { its, .. } => its.p,
-            Vertex::Sensor { pos, .. } | Vertex::Light { pos, .. } | Vertex::Volume { pos, .. } => *pos
+            Vertex::Sensor { pos, .. } | Vertex::Light { pos, .. } | Vertex::Volume { pos, .. } => {
+                *pos
+            }
         }
     }
     pub fn on_surface(&self) -> bool {
         match *self {
             Vertex::Surface { .. } | Vertex::Light { .. } => true,
-            Vertex::Sensor { .. } | Vertex::Volume { .. }  => false,
+            Vertex::Sensor { .. } | Vertex::Volume { .. } => false,
         }
     }
     pub fn on_light_source(&self) -> bool {
@@ -257,7 +259,7 @@ impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
 
     pub fn contribution(&self, edge: &Edge) -> Color {
         match self {
-            Vertex::Surface { its, ..} => {
+            Vertex::Surface { its, .. } => {
                 if its.n_s.dot(-edge.d) >= 0.0 {
                     its.mesh.emission
                 } else {
@@ -315,8 +317,7 @@ impl<'scene, 'emitter> Path<'scene, 'emitter> {
     pub fn next_vertices(&self, vertex_id: VertexID) -> Vec<(EdgeID, VertexID)> {
         let mut next_vertices = vec![];
         match self.vertex(vertex_id) {
-            Vertex::Surface { edge_out, .. } 
-            | Vertex::Volume { edge_out, .. } => {
+            Vertex::Surface { edge_out, .. } | Vertex::Volume { edge_out, .. } => {
                 for edge_id in edge_out {
                     let edge = self.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {
@@ -324,8 +325,7 @@ impl<'scene, 'emitter> Path<'scene, 'emitter> {
                     }
                 }
             }
-            Vertex::Sensor { edge_out, .. } 
-            | Vertex::Light { edge_out, .. } => {
+            Vertex::Sensor { edge_out, .. } | Vertex::Light { edge_out, .. } => {
                 if let Some(edge_id) = edge_out {
                     let edge = self.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {

@@ -1,6 +1,6 @@
 use crate::integrators::gradient::*;
-use crate::Scale;
 use crate::samplers;
+use crate::Scale;
 use cgmath::Vector2;
 
 pub struct BaggingPoissonReconstruction {
@@ -163,7 +163,10 @@ impl PoissonReconstruction for WeightedPoissonReconstruction {
         // Generate the buffer names
         let mut sampler = samplers::independent::IndependentSampler::default();
         let image_blocks = generate_img_blocks(scene, &mut sampler, &buffernames);
-        let mut image_blocks = image_blocks.into_iter().map(|(img, _)| img).collect::<Vec<_>>();
+        let mut image_blocks = image_blocks
+            .into_iter()
+            .map(|(img, _)| img)
+            .collect::<Vec<_>>();
 
         let pool = generate_pool(scene);
         pool.install(|| {
@@ -276,7 +279,10 @@ impl PoissonReconstruction for UniformPoissonReconstruction {
         let mut current = BufferCollection::new(Point2::new(0, 0), img_size, &buffernames);
         let mut sampler = samplers::independent::IndependentSampler::default();
         let image_blocks = generate_img_blocks(scene, &mut sampler, &buffernames);
-        let mut image_blocks = image_blocks.into_iter().map(|(img, _)| img).collect::<Vec<_>>();
+        let mut image_blocks = image_blocks
+            .into_iter()
+            .map(|(img, _)| img)
+            .collect::<Vec<_>>();
 
         // Define names of buffers so we do not need to reallocate them
         let primal_name = "primal";

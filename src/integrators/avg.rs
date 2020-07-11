@@ -8,7 +8,12 @@ pub struct IntegratorAverage {
 }
 
 impl Integrator for IntegratorAverage {
-    fn compute(&mut self, sampler: &mut dyn Sampler, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         // Get the output file type
         let output_ext = match std::path::Path::new(&scene.output_img_path).extension() {
             None => panic!("No file extension provided"),
