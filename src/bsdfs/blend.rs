@@ -3,6 +3,7 @@ use crate::bsdfs::*;
 pub struct BSDFBlend {
     pub bsdf1: Box<dyn BSDF + Sync + Send>,
     pub bsdf2: Box<dyn BSDF + Sync + Send>,
+    pub weight: f32,
 }
 
 impl BSDF for BSDFBlend {
@@ -14,11 +15,15 @@ impl BSDF for BSDFBlend {
     ) -> Option<SampledDirection> {
         assert!(!self.bsdf1.is_smooth() && !self.bsdf2.is_smooth());
 
-        let sampled_dir = if sample.x < 0.5 {
-            let scaled_sample = Point2::new(sample.x * 2.0, sample.y);
+        // Select the BSDF proportional to their respective weights
+        let sampled_dir = if sample.x < self.weight {
+            let scaled_sample = Point2::new(sample.x * (1.0 / self.weight), sample.y);
             self.bsdf1.sample(uv, d_in, scaled_sample)
         } else {
-            let scaled_sample = Point2::new((sample.x - 0.5) * 2.0, sample.y);
+            let scaled_sample = Point2::new(
+                (sample.x - self.weight) * (1.0 / (1.0 - self.weight)),
+                sample.y,
+            );
             self.bsdf2.sample(uv, d_in, scaled_sample)
         };
 
@@ -43,10 +48,10 @@ impl BSDF for BSDFBlend {
         d_out: &Vector3<f32>,
         domain: Domain,
     ) -> PDF {
-        let pdf_1 = self.bsdf1.pdf(uv, d_in, d_out, domain);
-        let pdf_2 = self.bsdf2.pdf(uv, d_in, d_out, domain);
+        let pdf_1 = self.bsdf1.pdf(uv, d_in, d_out, domain) * self.weight;
+        let pdf_2 = self.bsdf2.pdf(uv, d_in, d_out, domain) * (1.0 - self.weight);
         if let (PDF::SolidAngle(pdf_1), PDF::SolidAngle(pdf_2)) = (pdf_1, pdf_2) {
-            PDF::SolidAngle((pdf_1 + pdf_2) * 0.5)
+            PDF::SolidAngle(pdf_1 + pdf_2)
         } else {
             panic!("get wrong type of BSDF");
         }
@@ -59,7 +64,9 @@ impl BSDF for BSDFBlend {
         d_out: &Vector3<f32>,
         domain: Domain,
     ) -> Color {
-        self.bsdf1.eval(uv, d_in, d_out, domain) + self.bsdf2.eval(uv, d_in, d_out, domain)
+        debug_assert!(self.weight >= 0.0 && self.weight <= 1.0);
+        self.weight * self.bsdf1.eval(uv, d_in, d_out, domain)
+            + (1.0 - self.weight) * self.bsdf2.eval(uv, d_in, d_out, domain)
     }
 
     fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32 {

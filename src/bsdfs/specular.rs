@@ -1,8 +1,12 @@
+use crate::bsdfs::utils::*;
 use crate::bsdfs::*;
 
 #[derive(Deserialize)]
 pub struct BSDFSpecular {
     pub specular: BSDFColor,
+    /// Real and imaginary material component
+    pub eta: Color,
+    pub k: Color,
 }
 
 impl BSDF for BSDFSpecular {
@@ -16,7 +20,7 @@ impl BSDF for BSDFSpecular {
             None
         } else {
             Some(SampledDirection {
-                weight: self.specular.color(uv),
+                weight: self.specular.color(uv) * fresnel_conductor(d_in.z, self.eta, self.k),
                 d: reflect(d_in),
                 pdf: PDF::Discrete(1.0),
             })
@@ -48,7 +52,7 @@ impl BSDF for BSDFSpecular {
     ) -> Color {
         assert!(domain == Domain::Discrete);
         if check_reflection_condition(wi, wo) {
-            self.specular.color(uv)
+            self.specular.color(uv) * fresnel_conductor(wi.z.abs(), self.eta, self.k)
         } else {
             // For now, raise an error.
             unimplemented!();

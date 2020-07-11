@@ -12,6 +12,7 @@ extern crate byteorder;
 // For the vector op
 extern crate cgmath;
 // For fast intersection
+#[cfg(feature = "embree")]
 extern crate embree_rs;
 // For the image (LDR) export and loading
 #[cfg(feature = "image")]
@@ -34,6 +35,7 @@ extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
 // For print a progress bar
+#[cfg(feature = "progress-bar")]
 extern crate pbr;
 // For loading other type of scene format
 #[cfg(feature = "pbrt")]

@@ -1,6 +1,7 @@
 use crate::integrators::*;
 use crate::samplers;
 use cgmath::Point2;
+use rayon::prelude::*;
 
 struct MCMCState {
     pub value: Color,
@@ -29,7 +30,12 @@ pub struct IntegratorPSSMLT {
     pub integrator: Box<dyn IntegratorMC>,
 }
 impl Integrator for IntegratorPSSMLT {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        _: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         ///////////// Define the closure
         let sample = |s: &mut dyn Sampler, emitters: &EmitterSampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
@@ -43,8 +49,9 @@ impl Integrator for IntegratorPSSMLT {
 
         ///////////// Compute the normalization factor
         info!("Computing normalization factor...");
-        let b = self.compute_normalization(accel, scene, 10000);
+        let (seeds, cdf, b) = self.compute_normalization(accel, scene, 100_000);
         info!("Normalisation factor: {:?}", b);
+        info!("Number of seeds: {}", seeds.len());
 
         ///////////// Compute the state initialization
         let nb_samples_total =
@@ -52,6 +59,7 @@ impl Integrator for IntegratorPSSMLT {
         let nb_samples_per_chains = 100_000;
         let nb_chains = nb_samples_total / nb_samples_per_chains;
         info!("Number of states: {:?}", nb_chains);
+
         // - Initialize the samplers
         let mut samplers = Vec::new();
         for _ in 0..nb_chains {
@@ -70,16 +78,29 @@ impl Integrator for IntegratorPSSMLT {
         ));
         let pool = generate_pool(scene);
         pool.install(|| {
-            samplers.par_iter_mut().for_each(|s| {
+            samplers.par_iter_mut().enumerate().for_each(|(id, s)| {
                 let emitters = scene.emitters_sampler();
+
                 // Initialize the sampler
                 s.large_step = true;
-                let mut current_state = sample(s as &mut dyn Sampler, &emitters);
-                while current_state.tf == 0.0 {
-                    s.reject();
-                    current_state = sample(s as &mut dyn Sampler, &emitters);
+                let previous_rnd = s.rnd.clone(); // We save the RNG (to recover it later)
+                                                  // Use deterministic sampling to select a given seed
+                let id_v = (id as f32 + 0.5) / nb_chains as f32;
+                let seed = &seeds[cdf.sample(id_v)];
+                // Replace the seed, check that the target function values matches
+                s.rnd = seed.1.clone();
+                let mut current_state = sample(s, &emitters);
+                if current_state.tf != seed.0 {
+                    error!(
+                        "Unconsitency found when seeding the chain {} ({})",
+                        current_state.tf, seed.0
+                    );
+                    return; // Stop this chain. Maybe consider completely stop the program.
                 }
                 s.accept();
+                // We replace the RNG again. This is important as two chain
+                // selective the same seed need to be independent
+                s.rnd = previous_rnd;
 
                 let mut my_img: BufferCollection =
                     BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
@@ -137,21 +158,42 @@ impl IntegratorPSSMLT {
         accel: &dyn Acceleration,
         scene: &Scene,
         nb_samples: usize,
-    ) -> f32 {
+    ) -> (
+        Vec<(f32, rand::rngs::SmallRng)>,
+        crate::math::Distribution1D,
+        f32,
+    ) {
         assert_ne!(nb_samples, 0);
 
         let mut sampler = samplers::independent::IndependentSampler::default();
-        (0..nb_samples)
-            .map(|_i| {
-                let emitters = scene.emitters_sampler();
-                let x = (sampler.next() * scene.camera.size().x as f32) as u32;
-                let y = (sampler.next() * scene.camera.size().y as f32) as u32;
-                let c =
-                    self.integrator
-                        .compute_pixel((x, y), accel, scene, &mut sampler, &emitters);
-                (c.r + c.g + c.b) / 3.0
-            })
-            .sum::<f32>()
-            / (nb_samples as f32)
+
+        // Generate seeds
+        let mut seeds = vec![];
+        for _ in 0..nb_samples {
+            let seed = sampler.rnd.clone();
+            let emitters = scene.emitters_sampler();
+            let x = (sampler.next() * scene.camera.size().x as f32) as u32;
+            let y = (sampler.next() * scene.camera.size().y as f32) as u32;
+            let c = self
+                .integrator
+                .compute_pixel((x, y), accel, scene, &mut sampler, &emitters);
+            let tf = (c.r + c.g + c.b) / 3.0;
+            if tf > 0.0 {
+                seeds.push((tf, seed));
+            }
+        }
+
+        if seeds.is_empty() {
+            panic!("Found no valid path for seed, quit!");
+        }
+
+        // Build CDF for select the first state
+        let mut cdf = crate::math::Distribution1DConstruct::new(seeds.len());
+        for s in &seeds {
+            cdf.add(s.0);
+        }
+        let cdf = cdf.normalize();
+        let b = cdf.normalization / nb_samples as f32;
+        (seeds, cdf, b)
     }
 }

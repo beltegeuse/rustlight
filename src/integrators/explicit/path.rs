@@ -33,7 +33,7 @@ impl Technique for TechniquePathTracing {
         _emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor
-        let root = Vertex::Sensor(SensorVertex {
+        let root = Vertex::Sensor {
             uv: Point2::new(
                 self.img_pos.x as f32 + sampler.next(),
                 self.img_pos.y as f32 + sampler.next(),
@@ -41,7 +41,7 @@ impl Technique for TechniquePathTracing {
             pos: scene.camera.position(),
             edge_in: None,
             edge_out: None,
-        });
+        };
 
         return vec![(path.register_vertex(root), Color::one())];
     }
@@ -91,7 +91,7 @@ impl TechniquePathTracing {
         // Check the path depth, if not reach min depth, ignore contribution...
         let add_contrib = match min_depth {
             None => true,
-            Some(v) => curr_depth >= v, 
+            Some(v) => curr_depth >= v,
         };
 
         // If needed, we compute the MIS weight
@@ -136,51 +136,44 @@ impl TechniquePathTracing {
         vertex_id: VertexID,
         strategy: &IntegratorPathTracingStrategies,
     ) -> Color {
+        if self.single_scattering && path.vertex(vertex_id).on_surface() {
+            return Color::zero();
+        }
+
         let mut l_i = Color::zero();
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
-                if self.single_scattering {
-                    return Color::zero();
-                }
-                for edge_id in &v.edge_out {
+            Vertex::Surface { edge_out, .. } | Vertex::Volume { edge_out, .. } => {
+                for edge_id in edge_out {
                     // Compute the contribution along this edge
                     // this only cover the fact that some next vertices are on some light sources
-                    // TODO: Modify this scheme at some point
-                    l_i += self.evalute_edge(curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy);
+                    l_i += self.evalute_edge(
+                        curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy,
+                    );
 
                     // Continue on the edges if there is a vertex
                     let edge = path.edge(*edge_id);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         l_i += edge.weight
                             * edge.rr_weight
-                            * self.evaluate(curr_depth + 1, min_depth,path, scene, emitters, vertex_next_id, strategy);
+                            * self.evaluate(
+                                curr_depth + 1,
+                                min_depth,
+                                path,
+                                scene,
+                                emitters,
+                                vertex_next_id,
+                                strategy,
+                            );
                     }
                 }
             }
-            Vertex::Volume(ref v) => {
-                for edge_id in &v.edge_out {
-                    // Compute the contribution along this edge
-                    // this only cover the fact that some next vertices are on some light sources
-                    // TODO: Modify this scheme at some point
-                    l_i += self.evalute_edge(curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy);
-
-                    // Continue on the edges if there is a vertex
-                    let edge = path.edge(*edge_id);
-
-                    if let Some(vertex_next_id) = edge.vertices.1 {
-                        l_i += edge.weight
-                            * edge.rr_weight
-                            * self.evaluate(curr_depth + 1, min_depth, path, scene, emitters, vertex_next_id, strategy);
-                    }
-                }
-            }
-            Vertex::Sensor(ref v) => {
+            Vertex::Sensor { edge_out, .. } => {
                 // Only one strategy where...
-                let edge = path.edge(v.edge_out.unwrap());
+                let edge = path.edge(edge_out.unwrap());
 
                 let add_contrib = match min_depth {
                     None => true,
-                    Some(v) => curr_depth >= v, 
+                    Some(v) => curr_depth >= v,
                 };
 
                 // Get the potential contribution
@@ -193,7 +186,15 @@ impl TechniquePathTracing {
                 if let Some(vertex_next_id) = edge.vertices.1 {
                     l_i += edge.weight
                         * edge.rr_weight
-                        * self.evaluate(curr_depth + 1, min_depth, path, scene, emitters, vertex_next_id, strategy);
+                        * self.evaluate(
+                            curr_depth + 1,
+                            min_depth,
+                            path,
+                            scene,
+                            emitters,
+                            vertex_next_id,
+                            strategy,
+                        );
                 }
             }
             _ => {}
@@ -203,8 +204,13 @@ impl TechniquePathTracing {
 }
 
 impl Integrator for IntegratorPathTracing {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
-        compute_mc(self, accel, scene)
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
+        compute_mc(self, sampler, accel, scene)
     }
 }
 impl IntegratorMC for IntegratorPathTracing {
@@ -241,6 +247,14 @@ impl IntegratorMC for IntegratorPathTracing {
         let mut path = Path::default();
         let root = generate(&mut path, accel, scene, emitters, sampler, &mut technique);
         // Evaluate the sampling graph
-        technique.evaluate(0, self.min_depth, &path, scene, emitters, root[0].0, &self.strategy)
+        technique.evaluate(
+            0,
+            self.min_depth,
+            &path,
+            scene,
+            emitters,
+            root[0].0,
+            &self.strategy,
+        )
     }
 }

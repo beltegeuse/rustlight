@@ -71,6 +71,13 @@ fn main() {
                     .help("number of thread for the computation (could be negative)"),
             )
             .arg(
+                Arg::with_name("random_number_generator")
+                .takes_value(true)
+                .short("r")
+                .default_value("independent")
+                .help("the random number generator used"),
+            )
+            .arg(
                 Arg::with_name("image_scale")
                     .takes_value(true)
                     .short("s")
@@ -423,9 +430,7 @@ fn main() {
                 _ => panic!("invalid strategy: {}", strategy),
             };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
-                    strategy
-                },
+                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla { strategy },
             ))
         }
         ("path", Some(m)) => {
@@ -502,7 +507,9 @@ fn main() {
                 let options = value_t_or_exit!(m.value_of(name), String);
                 match options.as_ref() {
                     "all" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::All,
-                    "surface" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface,
+                    "surface" => {
+                        rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface
+                    }
                     "volume" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Volume,
                     _ => panic!("Invalid options: [all, surface, volume]"),
                 }
@@ -513,7 +520,7 @@ fn main() {
             let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
             let option_vpl = get_option("option_vpl");
             let option_lt = get_option("option_lt");
-           
+
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::vpl::IntegratorVPL {
                     nb_vpl,
@@ -546,8 +553,7 @@ fn main() {
                 _ => panic!(
                     "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
                     strategy
-                ),
-            
+                )
             };
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::uncorrelated_plane_single::IntegratorSinglePlaneUncorrelated {
@@ -574,8 +580,7 @@ fn main() {
                 _ => panic!(
                     "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
                     strategy
-                ),
-            
+                )
             };
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::plane_single::IntegratorSinglePlane {
@@ -639,6 +644,26 @@ fn main() {
         }
         _ => panic!("unknown integrator"),
     };
+
+    // Read the sampler argument
+    let sampler = value_t_or_exit!(matches.value_of("random_number_generator"), String);
+    let sampler = sampler
+        .split(":")
+        .into_iter()
+        .map(|v| v)
+        .collect::<Vec<_>>();
+    let mut sampler = match &sampler[..] {
+        ["independent"] => {
+            Box::new(rustlight::samplers::independent::IndependentSampler::default())
+        }
+        ["independent", s] => Box::new(
+            rustlight::samplers::independent::IndependentSampler::from_seed(
+                s.parse::<u64>().expect("Seed need to be u64 type"),
+            ),
+        ),
+        _ => panic!("Wrong sampler type provided {:?}", sampler),
+    };
+
     let img = if matches.is_present("average") {
         let time_out = match_infinity(matches.value_of("average").unwrap());
         let mut int =
@@ -646,9 +671,9 @@ fn main() {
                 time_out,
                 integrator: int,
             }));
-        int.compute(&scene)
+        int.compute(sampler.as_mut(), &scene)
     } else {
-        int.compute(&scene)
+        int.compute(sampler.as_mut(), &scene)
     };
 
     // Save the image

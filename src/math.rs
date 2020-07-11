@@ -97,6 +97,8 @@ impl Distribution1DConstruct {
     }
 
     pub fn normalize(&mut self) -> Distribution1D {
+        assert!(self.elements.len() > 0);
+
         // Create the new CDF
         let mut cdf = Vec::with_capacity(self.elements.len() + 1);
         let mut cur = 0.0;

@@ -1,7 +1,6 @@
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::samplers;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 
@@ -9,7 +8,7 @@ use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 pub enum IntegratorVPLOption {
     Volume,
     Surface,
-    All
+    All,
 }
 
 pub struct IntegratorVPL {
@@ -62,13 +61,13 @@ impl Technique for TechniqueVPL {
             sampler.next(),
             sampler.next2d(),
         );
-        let emitter_vertex = Vertex::Light(EmitterVertex {
+        let emitter_vertex = Vertex::Light {
             pos: sampled_point.p,
             n: sampled_point.n,
             emitter,
             edge_in: None,
             edge_out: None,
-        });
+        };
         self.flux = Some(flux); // Capture the scaled flux
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
@@ -93,16 +92,16 @@ impl TechniqueVPL {
         flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
+            Vertex::Surface { its, edge_out, .. } => {
                 if options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Surface(VPLSurface {
-                        its: v.its.clone(),
+                        its: its.clone(),
                         radiance: flux,
                     }));
                 }
 
                 // Continue to bounce...
-                for edge in &v.edge_out {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         self.convert_vpl(
@@ -116,18 +115,24 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Volume(ref v) => {
+            Vertex::Volume {
+                pos,
+                d_in,
+                phase_function,
+                edge_out,
+                ..
+            } => {
                 if options != IntegratorVPLOption::Surface {
                     vpls.push(VPL::Volume(VPLVolume {
-                        pos: v.pos,
-                        d_in: v.d_in,
-                        phase_function: v.phase_function.clone(),
+                        pos: *pos,
+                        d_in: *d_in,
+                        phase_function: phase_function.clone(),
                         radiance: flux,
                     }));
                 }
 
                 // Continue to bounce...
-                for edge in &v.edge_out {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         self.convert_vpl(
@@ -141,18 +146,20 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Light(ref v) => {
+            Vertex::Light {
+                edge_out, pos, n, ..
+            } => {
                 let flux = *self.flux.as_ref().unwrap();
                 if options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Emitter(VPLEmitter {
-                        pos: v.pos,
-                        n: v.n,
+                        pos: *pos,
+                        n: *n,
                         emitted_radiance: flux,
                     }));
                 }
 
-                if let Some(edge) = v.edge_out {
-                    let edge = path.edge(edge);
+                if let Some(edge) = edge_out {
+                    let edge = path.edge(*edge);
                     if let Some(next_vertex_id) = edge.vertices.1 {
                         self.convert_vpl(
                             path,
@@ -165,16 +172,20 @@ impl TechniqueVPL {
                     }
                 }
             }
-            Vertex::Sensor(ref _v) => {}
+            Vertex::Sensor { .. } => {}
         }
     }
 }
 
 impl Integrator for IntegratorVPL {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         info!("Generating the VPL...");
         let buffernames = vec![String::from("primal")];
-        let mut sampler = samplers::independent::IndependentSampler::default();
         let mut nb_path_shot = 0;
         let mut vpls = vec![];
         let emitters = scene.emitters_sampler();
@@ -187,21 +198,21 @@ impl Integrator for IntegratorVPL {
                 flux: None,
             };
             let mut path = Path::default();
-            let root = generate(
-                &mut path,
-                accel,
+            let root = generate(&mut path, accel, scene, &emitters, sampler, &mut technique);
+            technique.convert_vpl(
+                &path,
                 scene,
-                &emitters,
-                &mut sampler,
-                &mut technique,
+                root[0].0,
+                self.option_vpl,
+                &mut vpls,
+                Color::one(),
             );
-            technique.convert_vpl(&path, scene, root[0].0, self.option_vpl, &mut vpls, Color::one());
             nb_path_shot += 1;
         }
         let vpls = vpls;
 
         // Generate the image block to get VPL efficiently
-        let mut image_blocks = generate_img_blocks(scene, &buffernames);
+        let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
 
         // Render the image blocks VPL integration
         info!("Gathering VPL...");
@@ -209,8 +220,7 @@ impl Integrator for IntegratorVPL {
         let norm_vpl = 1.0 / nb_path_shot as f32;
         let pool = generate_pool(scene);
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|im_block| {
-                let mut sampler = independent::IndependentSampler::default();
+            image_blocks.par_iter_mut().for_each(|(im_block, sampler)| {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..scene.nb_samples {
@@ -218,7 +228,7 @@ impl Integrator for IntegratorVPL {
                                 (ix + im_block.pos.x, iy + im_block.pos.y),
                                 accel,
                                 scene,
-                                &mut sampler,
+                                sampler.as_mut(),
                                 &vpls,
                                 norm_vpl,
                             );
@@ -236,7 +246,7 @@ impl Integrator for IntegratorVPL {
         // Fill the image
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for im_block in &image_blocks {
+        for (im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image
@@ -467,8 +477,9 @@ impl IntegratorVPL {
                 l_i
             } else {
                 if self.option_lt != IntegratorVPLOption::Volume {
-                    l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
-                        * mrec.w;
+                    l_i +=
+                        self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
+                            * mrec.w;
                 }
                 l_i
             }

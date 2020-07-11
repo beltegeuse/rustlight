@@ -1,3 +1,4 @@
+use crate::accel::*;
 use crate::emitter::*;
 use crate::integrators::gradient::explicit::TechniqueGradientPathTracing;
 use crate::paths::path::*;

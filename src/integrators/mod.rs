@@ -1,3 +1,4 @@
+use crate::accel::*;
 use crate::emitter::*;
 use crate::samplers::*;
 use crate::scene::*;
@@ -6,7 +7,6 @@ use crate::tools::StepRangeInt;
 use crate::Scale;
 
 use cgmath::{Point2, Vector2};
-use pbr::ProgressBar;
 use rayon;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std;
@@ -14,6 +14,34 @@ use std::cmp;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
+
+//////////////// Progress bar
+/// PBR Wrapper for conditional compilation
+#[cfg(feature = "progress-bar")]
+struct ProgressBar {
+    progress: pbr::ProgressBar<std::io::Stdout>,
+}
+#[cfg(not(feature = "progress-bar"))]
+struct ProgressBar {}
+impl ProgressBar {
+    #[cfg(feature = "progress-bar")]
+    fn new(n: u64) -> ProgressBar {
+        ProgressBar {
+            progress: pbr::ProgressBar::new(n),
+        }
+    }
+    #[cfg(not(feature = "progress-bar"))]
+    fn new(_: u64) -> ProgressBar {
+        ProgressBar {}
+    }
+
+    #[cfg(feature = "progress-bar")]
+    fn inc(&mut self) {
+        self.progress.inc();
+    }
+    #[cfg(not(feature = "progress-bar"))]
+    fn inc(&mut self) {}
+}
 
 //////////////// Helpers
 /// Image block
@@ -186,20 +214,35 @@ impl Scale<f32> for BufferCollection {
 
 /////////////// Integrators code
 pub trait Integrator {
-    fn compute(&mut self, _accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        _sampler: &mut dyn Sampler,
+        _accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
 }
 pub trait IntegratorGradient: Integrator {
-    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection;
+    fn compute_gradients(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection;
     fn reconstruct(&self) -> &(dyn PoissonReconstruction + Sync);
 
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         // Rendering the gradient informations
         info!("Gradient Rendering...");
         let start = Instant::now();
-        let image = self.compute_gradients(accel, scene);
+        let image = self.compute_gradients(sampler, accel, scene);
         let elapsed = start.elapsed();
         info!("Gradient Rendering Elapsed: {:?}", elapsed,);
 
@@ -222,50 +265,61 @@ pub enum IntegratorType {
     Gradient(Box<dyn IntegratorGradient>),
 }
 impl IntegratorType {
-    pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
+    pub fn compute(&mut self, sampler: &mut dyn Sampler, scene: &Scene) -> BufferCollection {
         info!("Build acceleration data structure...");
-        let embree_device = embree_rs::Device::new();
-        let mut embree_scene = embree_rs::Scene::new(&embree_device);
-        // Add all meshes
-        for m in &scene.meshes {
-            let mut tris = embree_rs::TriangleMesh::unanimated(
-                &embree_device,
-                m.indices.len(),
-                m.vertices.len(),
-            );
-            {
-                let mut verts = tris.vertex_buffer.map();
-                let mut tris = tris.index_buffer.map();
-                for i in 0..m.vertices.len() {
-                    verts[i] = cgmath::Vector4::new(
-                        m.vertices[i].x,
-                        m.vertices[i].y,
-                        m.vertices[i].z,
-                        0.0,
-                    );
-                }
 
-                for i in 0..m.indices.len() {
-                    tris[i] = cgmath::Vector3::new(
-                        m.indices[i].x as u32,
-                        m.indices[i].y as u32,
-                        m.indices[i].z as u32,
-                    );
+        // Naive Acceleration ...
+        #[cfg(not(feature = "embree"))]
+        let accel = NaiveAcceleration::new(scene);
+        // or Embree ...
+        // TODO: Need to found a work around due to the lifetime issue
+        #[cfg(feature = "embree")]
+        let embree_device = embree_rs::Device::new();
+        #[cfg(feature = "embree")]
+        let mut embree_scene = embree_rs::Scene::new(&embree_device);
+        #[cfg(feature = "embree")]
+        {
+            for m in &scene.meshes {
+                let mut tris = embree_rs::TriangleMesh::unanimated(
+                    &embree_device,
+                    m.indices.len(),
+                    m.vertices.len(),
+                );
+                {
+                    let mut verts = tris.vertex_buffer.map();
+                    let mut tris = tris.index_buffer.map();
+                    for i in 0..m.vertices.len() {
+                        verts[i] = cgmath::Vector4::new(
+                            m.vertices[i].x,
+                            m.vertices[i].y,
+                            m.vertices[i].z,
+                            0.0,
+                        );
+                    }
+
+                    for i in 0..m.indices.len() {
+                        tris[i] = cgmath::Vector3::new(
+                            m.indices[i].x as u32,
+                            m.indices[i].y as u32,
+                            m.indices[i].z as u32,
+                        );
+                    }
                 }
+                let mut tri_geom = embree_rs::Geometry::Triangle(tris);
+                tri_geom.commit();
+                embree_scene.attach_geometry(tri_geom);
             }
-            let mut tri_geom = embree_rs::Geometry::Triangle(tris);
-            tri_geom.commit();
-            embree_scene.attach_geometry(tri_geom);
         }
+        #[cfg(feature = "embree")]
         let accel = EmbreeAcceleration::new(scene, &embree_scene);
 
         info!("Run Integrator...");
         let start = Instant::now();
 
         let img = match self {
-            IntegratorType::Primal(ref mut v) => v.compute(&accel, scene),
+            IntegratorType::Primal(ref mut v) => v.compute(sampler, &accel, scene),
             IntegratorType::Gradient(ref mut v) => {
-                IntegratorGradient::compute(v.as_mut(), &accel, scene)
+                IntegratorGradient::compute(v.as_mut(), sampler, &accel, scene)
             }
         };
 
@@ -288,8 +342,12 @@ pub trait IntegratorMC: Sync + Send {
     ) -> Color;
 }
 
-pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferCollection> {
-    let mut image_blocks: Vec<BufferCollection> = Vec::new();
+pub fn generate_img_blocks(
+    scene: &Scene,
+    sampler: &mut dyn Sampler,
+    buffernames: &[String],
+) -> Vec<(BufferCollection, Box<dyn Sampler>)> {
+    let mut image_blocks: Vec<(BufferCollection, Box<dyn Sampler>)> = Vec::new();
     for ix in StepRangeInt::new(0, scene.camera.size().x as usize, 16) {
         for iy in StepRangeInt::new(0, scene.camera.size().y as usize, 16) {
             let block = BufferCollection::new(
@@ -303,7 +361,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferC
                 },
                 buffernames,
             );
-            image_blocks.push(block);
+            image_blocks.push((block, sampler.clone()));
         }
     }
     image_blocks
@@ -311,6 +369,7 @@ pub fn generate_img_blocks(scene: &Scene, buffernames: &[String]) -> Vec<BufferC
 
 pub fn compute_mc<T: IntegratorMC + Integrator>(
     int: &T,
+    sampler: &mut dyn Sampler,
     accel: &dyn Acceleration,
     scene: &Scene,
 ) -> BufferCollection {
@@ -319,15 +378,13 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
     let buffernames = vec!["primal".to_string()];
 
     // Create rendering blocks
-    let mut image_blocks = generate_img_blocks(scene, &buffernames);
+    let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
 
     // Render the image blocks
     let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
     let pool = generate_pool(scene);
     pool.install(|| {
-        image_blocks.par_iter_mut().for_each(|im_block| {
-            // image_blocks.iter_mut().for_each(|im_block| {
-            let mut sampler = independent::IndependentSampler::default();
+        image_blocks.par_iter_mut().for_each(|(im_block, sampler)| {
             let light_sampling = scene.emitters_sampler();
             for iy in 0..im_block.size.y {
                 for ix in 0..im_block.size.x {
@@ -336,7 +393,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
                             (ix + im_block.pos.x, iy + im_block.pos.y),
                             accel,
                             scene,
-                            &mut sampler,
+                            sampler.as_mut(),
                             &light_sampling,
                         );
                         im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
@@ -353,7 +410,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
 
     // Fill the image
     let mut image = BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-    for im_block in &image_blocks {
+    for (im_block, _) in &image_blocks {
         image.accumulate_bitmap(im_block);
     }
     image

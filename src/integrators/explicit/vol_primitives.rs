@@ -2,7 +2,6 @@ use crate::accel::*;
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
-use crate::samplers;
 use crate::structure::AABB;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
@@ -41,13 +40,13 @@ impl Technique for TechniqueVolPrimitives {
             sampler.next(),
             sampler.next2d(),
         );
-        let emitter_vertex = Vertex::Light(EmitterVertex {
+        let emitter_vertex = Vertex::Light {
             pos: sampled_point.p,
             n: sampled_point.n,
             emitter,
             edge_in: None,
             edge_out: None,
-        });
+        };
         self.flux = Some(flux); // Capture the scaled flux
         vec![(path.register_vertex(emitter_vertex), Color::one())]
     }
@@ -407,8 +406,8 @@ impl TechniqueVolPrimitives {
         mut flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Volume(ref v) => {
-                for edge in &v.edge_out {
+            Vertex::Volume { edge_out, pos, .. } => {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         // Need to check two things:
@@ -426,7 +425,7 @@ impl TechniqueVolPrimitives {
                             let length0 = edge.sampled_distance.as_ref().unwrap().continued_t;
                             let length1 = next_edge.sampled_distance.as_ref().unwrap().continued_t;
                             planes.push(PhotonPlane {
-                                o: v.pos,
+                                o: *pos,
                                 d0: edge.d,
                                 d1: next_edge.d,
                                 length0,
@@ -438,7 +437,7 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Light(ref _v) => {
+            Vertex::Light { .. } => {
                 // FIXME
                 flux *= *self.flux.as_ref().unwrap();
             }
@@ -470,13 +469,13 @@ impl TechniqueVolPrimitives {
         mut flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref v) => {
-                for edge in &v.edge_out {
+            Vertex::Surface { edge_out, its, .. } => {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(_vertex_next_id) = edge.vertices.1 {
                         // Always push this as it come from surfaces
                         beams.push(PhotonBeam {
-                            o: v.its.p,
+                            o: its.p,
                             d: edge.d,
                             length: edge.dist.unwrap(),
                             phase_function: PhaseFunction::Isotropic(),
@@ -487,8 +486,8 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Volume(ref v) => {
-                for edge in &v.edge_out {
+            Vertex::Volume { edge_out, pos, .. } => {
+                for edge in edge_out {
                     let edge = path.edge(*edge);
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         // Need to check two things (inverse)
@@ -502,7 +501,7 @@ impl TechniqueVolPrimitives {
                         };
                         if push_beam {
                             beams.push(PhotonBeam {
-                                o: v.pos,
+                                o: *pos,
                                 d: edge.d,
                                 length: edge.dist.unwrap(),
                                 phase_function: PhaseFunction::Isotropic(),
@@ -514,13 +513,13 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Light(ref v) => {
+            Vertex::Light { edge_out, pos, .. } => {
                 flux *= *self.flux.as_ref().unwrap();
-                if let Some(edge) = v.edge_out {
-                    let edge = path.edge(edge);
+                if let Some(edge) = edge_out {
+                    let edge = path.edge(*edge);
                     if let Some(_next_vertex_id) = edge.vertices.1 {
                         beams.push(PhotonBeam {
-                            o: v.pos,
+                            o: *pos,
                             d: edge.d,
                             length: edge.dist.unwrap(),
                             phase_function: PhaseFunction::Isotropic(),
@@ -531,7 +530,7 @@ impl TechniqueVolPrimitives {
                     }
                 }
             }
-            Vertex::Sensor(ref _v) => {}
+            Vertex::Sensor { .. } => {}
         }
 
         for (edge_id, next_vertex_id) in path.next_vertices(vertex_id) {
@@ -558,20 +557,25 @@ impl TechniqueVolPrimitives {
         mut flux: Color,
     ) {
         match path.vertex(vertex_id) {
-            Vertex::Surface(ref _v) => {}
-            Vertex::Volume(ref v) => {
+            Vertex::Surface { .. } => {}
+            Vertex::Volume {
+                pos,
+                d_in,
+                phase_function,
+                ..
+            } => {
                 photons.push(Photon {
-                    pos: v.pos,
-                    d_in: v.d_in,
-                    phase_function: v.phase_function.clone(),
+                    pos: *pos,
+                    d_in: *d_in,
+                    phase_function: phase_function.clone(),
                     radiance: flux,
                     radius,
                 });
             }
-            Vertex::Light(ref _v) => {
+            Vertex::Light { .. } => {
                 flux *= *self.flux.as_ref().unwrap();
             }
-            Vertex::Sensor(ref _v) => {}
+            Vertex::Sensor { .. } => {}
         }
 
         for (edge_id, next_vertex_id) in path.next_vertices(vertex_id) {
@@ -589,7 +593,12 @@ impl TechniqueVolPrimitives {
 }
 
 impl Integrator for IntegratorVolPrimitives {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         if scene.volume.is_none() {
             panic!("Volume integrator need a volume (add -m )");
         }
@@ -604,7 +613,6 @@ impl Integrator for IntegratorVolPrimitives {
 
         info!("Generating the light paths...");
         let buffernames = vec![String::from("primal")];
-        let mut sampler = samplers::independent::IndependentSampler::default();
         let mut nb_path_shot = 0;
 
         // Primitives vectors
@@ -623,14 +631,7 @@ impl Integrator for IntegratorVolPrimitives {
                 flux: None,
             };
             let mut path = Path::default();
-            let root = generate(
-                &mut path,
-                accel,
-                scene,
-                &emitters,
-                &mut sampler,
-                &mut technique,
-            );
+            let root = generate(&mut path, accel, scene, &emitters, sampler, &mut technique);
             match self.primitives {
                 VolPrimitivies::Beams | VolPrimitivies::VRL => {
                     technique.convert_beams(
@@ -744,7 +745,7 @@ impl Integrator for IntegratorVolPrimitives {
         };
 
         // Generate the image block to get VPL efficiently
-        let mut image_blocks = generate_img_blocks(scene, &buffernames);
+        let mut image_blocks = generate_img_blocks(scene, sampler, &buffernames);
 
         // Render the image blocks VPL integration
         info!("Gathering Photons (BRE/Beams)...");
@@ -753,8 +754,7 @@ impl Integrator for IntegratorVolPrimitives {
         info!(" - Number of path generated: {}", nb_path_shot);
         let pool = generate_pool(scene);
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|im_block| {
-                let mut sampler = independent::IndependentSampler::default();
+            image_blocks.par_iter_mut().for_each(|(im_block, sampler)| {
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..scene.nb_samples {
@@ -798,8 +798,12 @@ impl Integrator for IntegratorVolPrimitives {
                                             * 0.01)
                                             .min(1.0);
                                         if rr >= sampler.next() {
-                                            c += (vrl.contribute_vrl(&ray, m, accel, &mut sampler)
-                                                / rr)
+                                            c += (vrl.contribute_vrl(
+                                                &ray,
+                                                m,
+                                                accel,
+                                                sampler.as_mut(),
+                                            ) / rr)
                                                 * norm_photon;
                                         }
                                     }
@@ -839,7 +843,7 @@ impl Integrator for IntegratorVolPrimitives {
         // Fill the image
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for im_block in &image_blocks {
+        for (im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image

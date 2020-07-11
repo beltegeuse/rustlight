@@ -1,5 +1,6 @@
+use crate::scene::Scene;
 use crate::structure::*;
-use cgmath::Point3;
+use cgmath::*;
 
 #[derive(Debug)]
 struct BVHNode {
@@ -159,5 +160,144 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
             }
         }
         res
+    }
+}
+
+pub trait Acceleration: Sync + Send {
+    fn trace(&self, ray: &Ray) -> Option<Intersection>;
+    fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool;
+}
+
+pub struct NaiveAcceleration<'scene> {
+    pub scene: &'scene Scene,
+}
+impl<'scene> NaiveAcceleration<'scene> {
+    pub fn new(scene: &'scene Scene) -> NaiveAcceleration<'scene> {
+        NaiveAcceleration { scene }
+    }
+}
+impl<'a> Acceleration for NaiveAcceleration<'a> {
+    fn trace(&self, ray: &Ray) -> Option<Intersection> {
+        let mut its = IntersectionUV {
+            t: std::f32::MAX,
+            p: Point3::new(0.0, 0.0, 0.0),
+            n: Vector3::new(0.0, 0.0, 0.0),
+            u: 0.0,
+            v: 0.0,
+        };
+        let (mut id_m, mut id_t) = (0, 0);
+
+        for m in 0..self.scene.meshes.len() {
+            let mesh = &self.scene.meshes[m];
+            for i in 0..mesh.indices.len() {
+                if mesh.intersection_tri(i, &ray.o, &ray.d, &mut its) {
+                    id_m = m;
+                    id_t = i;
+                }
+            }
+        }
+
+        if its.t == std::f32::MAX {
+            None
+        } else {
+            Some(Intersection::fill_intersection(
+                id_m, id_t, self.scene, its.u, its.v, ray, its.n, its.t, its.p,
+            ))
+        }
+    }
+    fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
+        const SHADOW_EPS: f32 = 0.00001;
+        // Compute ray dir
+        let mut d = p1 - p0;
+        let length = d.magnitude();
+        d /= length;
+
+        let mut its = IntersectionUV {
+            t: length * (1.0 - SHADOW_EPS),
+            p: Point3::new(0.0, 0.0, 0.0),
+            n: Vector3::new(0.0, 0.0, 0.0),
+            u: 0.0,
+            v: 0.0,
+        };
+
+        for m in 0..self.scene.meshes.len() {
+            let mesh = &self.scene.meshes[m];
+            for i in 0..mesh.indices.len() {
+                if mesh.intersection_tri(i, &p0, &d, &mut its) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+}
+
+#[cfg(feature = "embree")]
+pub struct EmbreeAcceleration<'scene, 'embree> {
+    pub scene: &'scene Scene,
+    pub embree_scene_commited: embree_rs::CommittedScene<'embree>,
+}
+#[cfg(feature = "embree")]
+impl<'scene, 'embree> EmbreeAcceleration<'scene, 'embree> {
+    pub fn new(
+        scene: &'scene Scene,
+        embree_scene: &'embree embree_rs::Scene,
+    ) -> EmbreeAcceleration<'scene, 'embree> {
+        EmbreeAcceleration {
+            scene,
+            embree_scene_commited: embree_scene.commit(),
+        }
+    }
+}
+
+#[cfg(feature = "embree")]
+impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
+    fn trace(&self, ray: &Ray) -> Option<Intersection> {
+        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
+        let embree_ray = embree_rs::Ray::segment(
+            Vector3::new(ray.o.x, ray.o.y, ray.o.z),
+            ray.d,
+            ray.tnear,
+            ray.tfar,
+        );
+        let mut ray_hit = embree_rs::RayHit::new(embree_ray);
+        self.embree_scene_commited
+            .intersect(&mut intersection_ctx, &mut ray_hit);
+        if ray_hit.hit.hit() {
+            let mut n_g = Vector3::new(ray_hit.hit.Ng_x, ray_hit.hit.Ng_y, ray_hit.hit.Ng_z);
+            let n_g_dot = n_g.dot(n_g);
+            if n_g_dot != 1.0 {
+                n_g /= n_g_dot.sqrt();
+            }
+            let p = Point3::new(
+                ray_hit.ray.org_x + ray_hit.ray.tfar * ray_hit.ray.dir_x,
+                ray_hit.ray.org_y + ray_hit.ray.tfar * ray_hit.ray.dir_y,
+                ray_hit.ray.org_z + ray_hit.ray.tfar * ray_hit.ray.dir_z,
+            );
+            Some(Intersection::fill_intersection(
+                ray_hit.hit.geomID as usize,
+                ray_hit.hit.primID as usize,
+                self.scene,
+                ray_hit.hit.u,
+                ray_hit.hit.v,
+                ray,
+                n_g,
+                ray_hit.ray.tfar,
+                p,
+            ))
+        } else {
+            None
+        }
+    }
+    fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
+        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
+        let mut d = p1 - p0;
+        let length = d.magnitude();
+        d /= length;
+        let mut embree_ray =
+            embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
+        self.embree_scene_commited
+            .occluded(&mut intersection_ctx, &mut embree_ray);
+        embree_ray.tfar != std::f32::NEG_INFINITY
     }
 }

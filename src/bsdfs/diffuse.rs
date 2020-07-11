@@ -2,6 +2,7 @@ use crate::bsdfs::*;
 use crate::math::cosine_sample_hemisphere;
 use std;
 
+/// Lambertian BSDF Model
 #[derive(Deserialize)]
 pub struct BSDFDiffuse {
     pub diffuse: BSDFColor,
