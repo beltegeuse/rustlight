@@ -1,4 +1,5 @@
 use crate::integrators::gradient::shiftmapping::*;
+use crate::paths::strategy::*;
 use crate::samplers::Sampler;
 use crate::structure::*;
 use cgmath::Point2;

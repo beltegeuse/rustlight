@@ -2,7 +2,6 @@ use crate::accel::*;
 use crate::emitter::*;
 use crate::integrators::gradient::explicit::TechniqueGradientPathTracing;
 use crate::paths::path::*;
-use crate::paths::vertex::*;
 use crate::samplers::Sampler;
 use crate::scene::*;
 use crate::structure::Color;

@@ -1,6 +1,6 @@
 use crate::integrators::*;
 use crate::paths::path::*;
-use crate::paths::vertex::*;
+use crate::paths::{strategy::*, strategy_dir::*, vertex::*};
 use cgmath::InnerSpace;
 use cgmath::Point2;
 

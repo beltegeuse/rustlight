@@ -1,7 +1,7 @@
 use crate::accel::*;
 use crate::integrators::*;
 use crate::paths::path::*;
-use crate::paths::vertex::*;
+use crate::paths::{strategy::*, strategy_dir::*, vertex::*};
 use crate::structure::AABB;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};

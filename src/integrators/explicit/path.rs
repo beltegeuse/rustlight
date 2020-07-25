@@ -1,6 +1,6 @@
 use crate::integrators::*;
 use crate::paths::path::*;
-use crate::paths::vertex::*;
+use crate::paths::{strategy::*, strategy_dir::*, strategy_light::*, vertex::*};
 use cgmath::Point2;
 
 /// This structure store the rendering options

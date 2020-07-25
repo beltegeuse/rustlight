@@ -1,7 +1,7 @@
 use crate::integrators::gradient::shiftmapping::{random_replay::RandomReplay, ShiftMapping};
 use crate::integrators::{gradient::*, *};
 use crate::paths::path::*;
-use crate::paths::vertex::*;
+use crate::paths::{strategy::*, strategy_dir::*, strategy_light::*, vertex::*};
 use cgmath::Point2;
 
 /// Path tracing system
