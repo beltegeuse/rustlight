@@ -20,32 +20,9 @@ pub struct IntegratorPathTracing {
 pub struct TechniquePathTracing {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<dyn SamplingStrategy>>,
-    pub img_pos: Point2<u32>,
     pub single_scattering: bool,
 }
 impl Technique for TechniquePathTracing {
-    fn init<'scene, 'emitter>(
-        &mut self,
-        path: &mut Path<'scene, 'emitter>,
-        _accel: &dyn Acceleration,
-        scene: &'scene Scene,
-        sampler: &mut dyn Sampler,
-        _emitters: &'emitter EmitterSampler,
-    ) -> Vec<(VertexID, Color)> {
-        // Only generate a path from the sensor
-        let root = Vertex::Sensor {
-            uv: Point2::new(
-                self.img_pos.x as f32 + sampler.next(),
-                self.img_pos.y as f32 + sampler.next(),
-            ),
-            pos: scene.camera.position(),
-            edge_in: None,
-            edge_out: None,
-        };
-
-        return vec![(path.register_vertex(root), Color::one())];
-    }
-
     fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
@@ -234,18 +211,25 @@ impl IntegratorMC for IntegratorPathTracing {
             }
             _ => {}
         }
-
         // Create the technique responsible for the actual tracing
         let mut technique = TechniquePathTracing {
             max_depth: self.max_depth,
             samplings,
-            img_pos: Point2::new(ix, iy),
             single_scattering: self.single_scattering,
         };
         // Call the generator on this technique
         // the generator give back the root nodes
         let mut path = Path::default();
-        let root = generate(&mut path, accel, scene, emitters, sampler, &mut technique);
+        let root = path.from_sensor(Point2::new(ix, iy), scene, sampler);
+        generate(
+            &mut path,
+            root.0,
+            accel,
+            scene,
+            emitters,
+            sampler,
+            &mut technique,
+        );
         // Evaluate the sampling graph
         technique.evaluate(
             0,
@@ -253,7 +237,7 @@ impl IntegratorMC for IntegratorPathTracing {
             &path,
             scene,
             emitters,
-            root[0].0,
+            root.0,
             &self.strategy,
         )
     }

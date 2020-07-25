@@ -44,34 +44,9 @@ enum VPL<'a> {
 pub struct TechniqueVPL {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<dyn SamplingStrategy>>,
-    pub flux: Option<Color>,
 }
 
 impl Technique for TechniqueVPL {
-    fn init<'scene, 'emitter>(
-        &mut self,
-        path: &mut Path<'scene, 'emitter>,
-        _accel: &dyn Acceleration,
-        _scene: &'scene Scene,
-        sampler: &mut dyn Sampler,
-        emitters: &'emitter EmitterSampler,
-    ) -> Vec<(VertexID, Color)> {
-        let (emitter, sampled_point, flux) = emitters.random_sample_emitter_position(
-            sampler.next(),
-            sampler.next(),
-            sampler.next2d(),
-        );
-        let emitter_vertex = Vertex::Light {
-            pos: sampled_point.p,
-            n: sampled_point.n,
-            emitter,
-            edge_in: None,
-            edge_out: None,
-        };
-        self.flux = Some(flux); // Capture the scaled flux
-        vec![(path.register_vertex(emitter_vertex), Color::one())]
-    }
-
     fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
@@ -149,7 +124,6 @@ impl TechniqueVPL {
             Vertex::Light {
                 edge_out, pos, n, ..
             } => {
-                let flux = *self.flux.as_ref().unwrap();
                 if options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Emitter(VPLEmitter {
                         pos: *pos,
@@ -189,24 +163,28 @@ impl Integrator for IntegratorVPL {
         let mut nb_path_shot = 0;
         let mut vpls = vec![];
         let emitters = scene.emitters_sampler();
+
+        // Samplings
+        let samplings: Vec<Box<dyn SamplingStrategy>> =
+            vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
+        let mut technique = TechniqueVPL {
+            max_depth: self.max_depth,
+            samplings,
+        };
+        let mut path = Path::default();
         while vpls.len() < self.nb_vpl as usize {
-            let samplings: Vec<Box<dyn SamplingStrategy>> =
-                vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
-            let mut technique = TechniqueVPL {
-                max_depth: self.max_depth,
-                samplings,
-                flux: None,
-            };
-            let mut path = Path::default();
-            let root = generate(&mut path, accel, scene, &emitters, sampler, &mut technique);
-            technique.convert_vpl(
-                &path,
+            path.clear();
+            let root = path.from_light(sampler, &emitters);
+            generate(
+                &mut path,
+                root.0,
+                accel,
                 scene,
-                root[0].0,
-                self.option_vpl,
-                &mut vpls,
-                Color::one(),
+                &emitters,
+                sampler,
+                &mut technique,
             );
+            technique.convert_vpl(&path, scene, root.0, self.option_vpl, &mut vpls, root.1);
             nb_path_shot += 1;
         }
         let vpls = vpls;

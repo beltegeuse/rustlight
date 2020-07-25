@@ -1,5 +1,10 @@
+use crate::emitter::EmitterSampler;
 use crate::paths::edge::*;
 use crate::paths::vertex::*;
+use crate::samplers::Sampler;
+use crate::scene::Scene;
+use crate::structure::Color;
+use cgmath::Point2;
 
 #[derive(Clone, Copy, Debug)]
 pub struct VertexID(usize);
@@ -21,6 +26,51 @@ impl<'scene, 'emitter> Default for Path<'scene, 'emitter> {
     }
 }
 impl<'scene, 'emitter> Path<'scene, 'emitter> {
+    /// Clear path (to be able to reuse it)
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.edges.clear();
+    }
+
+    /// Generate a root path from a light
+    pub fn from_light(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        emitters: &'emitter EmitterSampler,
+    ) -> (VertexID, Color) {
+        let (emitter, sampled_point, flux) = emitters.random_sample_emitter_position(
+            sampler.next(),
+            sampler.next(),
+            sampler.next2d(),
+        );
+        let emitter_vertex = Vertex::Light {
+            pos: sampled_point.p,
+            n: sampled_point.n,
+            emitter,
+            edge_in: None,
+            edge_out: None,
+        };
+        (self.register_vertex(emitter_vertex), flux)
+    }
+    pub fn from_sensor(
+        &mut self,
+        img_pos: Point2<u32>,
+        scene: &Scene,
+        sampler: &mut dyn Sampler,
+    ) -> (VertexID, Color) {
+        // Only generate a path from the sensor
+        let root = Vertex::Sensor {
+            uv: Point2::new(
+                img_pos.x as f32 + sampler.next(),
+                img_pos.y as f32 + sampler.next(),
+            ),
+            pos: scene.camera.position(),
+            edge_in: None,
+            edge_out: None,
+        };
+        return (self.register_vertex(root), Color::one());
+    }
+
     pub fn register_edge(&mut self, e: Edge) -> EdgeID {
         let id = self.edges.len();
         self.edges.push(e);

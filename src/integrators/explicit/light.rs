@@ -14,37 +14,12 @@ pub struct IntegratorLightTracing {
 pub struct TechniqueLightTracing {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<dyn SamplingStrategy>>,
-    pub flux: Option<Color>,
     // To be able to select only a subset of the light transport
     pub render_surface: bool,
     pub render_volume: bool,
 }
 
 impl Technique for TechniqueLightTracing {
-    fn init<'scene, 'emitter>(
-        &mut self,
-        path: &mut Path<'scene, 'emitter>,
-        _accel: &dyn Acceleration,
-        _scene: &'scene Scene,
-        sampler: &mut dyn Sampler,
-        emitters: &'emitter EmitterSampler,
-    ) -> Vec<(VertexID, Color)> {
-        let (emitter, sampled_point, flux) = emitters.random_sample_emitter_position(
-            sampler.next(),
-            sampler.next(),
-            sampler.next2d(),
-        );
-        let emitter_vertex = Vertex::Light {
-            pos: sampled_point.p,
-            n: sampled_point.n,
-            emitter,
-            edge_in: None,
-            edge_out: None,
-        };
-        self.flux = Some(flux); // Capture the scaled flux for later evaluation
-        vec![(path.register_vertex(emitter_vertex), Color::one())]
-    }
-
     fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
@@ -137,7 +112,6 @@ impl TechniqueLightTracing {
                 }
             }
             Vertex::Light { pos, n, .. } => {
-                let flux = *self.flux.as_ref().unwrap();
                 if self.render_surface {
                     let pos_sensor = scene.camera.position();
                     let d = (pos_sensor - pos).normalize();
@@ -238,21 +212,27 @@ impl Integrator for IntegratorLightTracing {
                 let mut my_img =
                     BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
                 let emitters = scene.emitters_sampler();
+
+                // Initialize the strategy and the path
+                // the path will be reused for each samples generated
+                // The sampling strategies
+                let samplings: Vec<Box<dyn SamplingStrategy>> =
+                    vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
+                // Do the sampling here
+                let mut technique = TechniqueLightTracing {
+                    max_depth: self.max_depth,
+                    samplings,
+                    render_surface: self.render_surface,
+                    render_volume: self.render_volume,
+                };
+                let mut path = Path::default();
+
                 (0..nb_samples).for_each(|_| {
-                    // The sampling strategies
-                    let samplings: Vec<Box<dyn SamplingStrategy>> =
-                        vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
-                    // Do the sampling here
-                    let mut technique = TechniqueLightTracing {
-                        max_depth: self.max_depth,
-                        samplings,
-                        flux: None,
-                        render_surface: self.render_surface,
-                        render_volume: self.render_volume,
-                    };
-                    let mut path = Path::default();
-                    let root = generate(
+                    path.clear();
+                    let root = path.from_light(s.as_mut(), &emitters);
+                    generate(
                         &mut path,
+                        root.0,
                         accel,
                         scene,
                         &emitters,
@@ -260,7 +240,7 @@ impl Integrator for IntegratorLightTracing {
                         &mut technique,
                     );
                     // Evaluate the path generated using camera splatting operation
-                    technique.evaluate(&path, accel, scene, root[0].0, &mut my_img, Color::one());
+                    technique.evaluate(&path, accel, scene, root.0, &mut my_img, root.1);
                 });
 
                 // Scale and add the results

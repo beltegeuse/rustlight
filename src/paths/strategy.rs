@@ -36,14 +36,14 @@ pub trait SamplingStrategy {
 
 pub fn generate<'scene, 'emitter, T: Technique>(
     path: &mut Path<'scene, 'emitter>,
+    root: VertexID,
     accel: &'scene dyn Acceleration,
     scene: &'scene Scene,
     emitters: &'emitter EmitterSampler,
     sampler: &mut dyn Sampler,
     technique: &mut T,
-) -> Vec<(VertexID, Color)> {
-    let root = technique.init(path, accel, scene, sampler, emitters);
-    let mut curr = root.clone();
+) {
+    let mut curr = vec![(root, Color::one())];
     let mut next = vec![];
     let mut depth = 1;
     while !curr.is_empty() {
@@ -80,19 +80,9 @@ pub fn generate<'scene, 'emitter, T: Technique>(
         mem::swap(&mut curr, &mut next);
         depth += 1;
     }
-
-    root
 }
 
 pub trait Technique {
-    fn init<'scene, 'emitter>(
-        &mut self,
-        path: &mut Path<'scene, 'emitter>,
-        accel: &'scene dyn Acceleration,
-        scene: &'scene Scene,
-        sampler: &mut dyn Sampler,
-        emitters: &'emitter EmitterSampler,
-    ) -> Vec<(VertexID, Color)>;
     fn strategies(&self, vertex: &Vertex) -> &Vec<Box<dyn SamplingStrategy>>;
     fn expand(&self, vertex: &Vertex, depth: u32) -> bool;
 }

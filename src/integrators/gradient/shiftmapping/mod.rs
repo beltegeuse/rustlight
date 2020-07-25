@@ -53,5 +53,4 @@ pub trait ShiftMapping {
     fn clear(&mut self);
 }
 
-pub mod diffuse;
 pub mod random_replay;

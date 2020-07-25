@@ -22,35 +22,10 @@ pub struct IntegratorVolPrimitives {
 pub struct TechniqueVolPrimitives {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<dyn SamplingStrategy>>,
-    pub flux: Option<Color>,
 }
 
 // TODO: Need to refactor this
 impl Technique for TechniqueVolPrimitives {
-    fn init<'scene, 'emitter>(
-        &mut self,
-        path: &mut Path<'scene, 'emitter>,
-        _accel: &dyn Acceleration,
-        _scene: &'scene Scene,
-        sampler: &mut dyn Sampler,
-        emitters: &'emitter EmitterSampler,
-    ) -> Vec<(VertexID, Color)> {
-        let (emitter, sampled_point, flux) = emitters.random_sample_emitter_position(
-            sampler.next(),
-            sampler.next(),
-            sampler.next2d(),
-        );
-        let emitter_vertex = Vertex::Light {
-            pos: sampled_point.p,
-            n: sampled_point.n,
-            emitter,
-            edge_in: None,
-            edge_out: None,
-        };
-        self.flux = Some(flux); // Capture the scaled flux
-        vec![(path.register_vertex(emitter_vertex), Color::one())]
-    }
-
     fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
@@ -403,7 +378,7 @@ impl TechniqueVolPrimitives {
         scene: &'scene Scene,
         vertex_id: VertexID,
         planes: &mut Vec<PhotonPlane>,
-        mut flux: Color,
+        flux: Color,
     ) {
         match path.vertex(vertex_id) {
             Vertex::Volume { edge_out, pos, .. } => {
@@ -438,8 +413,7 @@ impl TechniqueVolPrimitives {
                 }
             }
             Vertex::Light { .. } => {
-                // FIXME
-                flux *= *self.flux.as_ref().unwrap();
+                // Flux already have light flux
             }
             _ => {
                 // Do nothing except for the medium
@@ -466,7 +440,7 @@ impl TechniqueVolPrimitives {
         vertex_id: VertexID,
         beams: &mut Vec<PhotonBeam>,
         radius: f32,
-        mut flux: Color,
+        flux: Color,
     ) {
         match path.vertex(vertex_id) {
             Vertex::Surface { edge_out, its, .. } => {
@@ -514,7 +488,6 @@ impl TechniqueVolPrimitives {
                 }
             }
             Vertex::Light { edge_out, pos, .. } => {
-                flux *= *self.flux.as_ref().unwrap();
                 if let Some(edge) = edge_out {
                     let edge = path.edge(*edge);
                     if let Some(_next_vertex_id) = edge.vertices.1 {
@@ -554,7 +527,7 @@ impl TechniqueVolPrimitives {
         vertex_id: VertexID,
         photons: &mut Vec<Photon>,
         radius: f32,
-        mut flux: Color,
+        flux: Color,
     ) {
         match path.vertex(vertex_id) {
             Vertex::Surface { .. } => {}
@@ -572,9 +545,7 @@ impl TechniqueVolPrimitives {
                     radius,
                 });
             }
-            Vertex::Light { .. } => {
-                flux *= *self.flux.as_ref().unwrap();
-            }
+            Vertex::Light { .. } => {}
             Vertex::Sensor { .. } => {}
         }
 
@@ -622,53 +593,40 @@ impl Integrator for IntegratorVolPrimitives {
 
         let emitters = scene.emitters_sampler();
         let mut still_shoot = true;
+
+        let samplings: Vec<Box<dyn SamplingStrategy>> =
+            vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
+        let mut technique = TechniqueVolPrimitives {
+            max_depth: self.max_depth,
+            samplings,
+        };
+        let mut path = Path::default();
         while still_shoot {
-            let samplings: Vec<Box<dyn SamplingStrategy>> =
-                vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
-            let mut technique = TechniqueVolPrimitives {
-                max_depth: self.max_depth,
-                samplings,
-                flux: None,
-            };
-            let mut path = Path::default();
-            let root = generate(&mut path, accel, scene, &emitters, sampler, &mut technique);
+            path.clear();
+            let root = path.from_light(sampler, &emitters);
+            generate(
+                &mut path,
+                root.0,
+                accel,
+                scene,
+                &emitters,
+                sampler,
+                &mut technique,
+            );
             match self.primitives {
                 VolPrimitivies::Beams | VolPrimitivies::VRL => {
-                    technique.convert_beams(
-                        false,
-                        &path,
-                        scene,
-                        root[0].0,
-                        &mut beams,
-                        0.001,
-                        Color::one(),
-                    );
+                    technique.convert_beams(false, &path, scene, root.0, &mut beams, 0.001, root.1);
                     still_shoot = beams.len() < self.nb_primitive as usize;
                 }
                 VolPrimitivies::BRE => {
-                    technique.convert_photons(
-                        &path,
-                        scene,
-                        root[0].0,
-                        &mut photons,
-                        0.001,
-                        Color::one(),
-                    );
+                    technique.convert_photons(&path, scene, root.0, &mut photons, 0.001, root.1);
                     still_shoot = photons.len() < self.nb_primitive as usize;
                 }
                 VolPrimitivies::Planes => {
                     // Generate beams from surfaces
-                    technique.convert_beams(
-                        true,
-                        &path,
-                        scene,
-                        root[0].0,
-                        &mut beams,
-                        0.001,
-                        Color::one(),
-                    );
+                    technique.convert_beams(true, &path, scene, root.0, &mut beams, 0.001, root.1);
                     // Generate planes
-                    technique.convert_planes(&path, scene, root[0].0, &mut planes, Color::one());
+                    technique.convert_planes(&path, scene, root.0, &mut planes, root.1);
                     still_shoot = planes.len() < self.nb_primitive as usize;
                 }
             }

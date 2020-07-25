@@ -70,18 +70,18 @@ impl ShiftMapping for RandomReplay {
         };
         // Call the generator on this technique
         // the generator give back the root nodes
-        technique.img_pos = pos;
-        let root = generate(
+        let root = path.from_sensor(pos, scene, &mut capture_sampler);
+        generate(
             path,
+            root.0,
             accel,
             scene,
             emitters,
             &mut capture_sampler,
             technique,
         );
-        let root = root[0].0;
-        self.base_value = technique.evaluate(path, scene, emitters, root);
-        (self.base_value, root)
+        self.base_value = technique.evaluate(path, scene, emitters, root.0);
+        (self.base_value, root.0)
     }
     fn shift<'scene, 'emitter>(
         &mut self,
@@ -94,21 +94,22 @@ impl ShiftMapping for RandomReplay {
         sampler: &mut dyn Sampler,
         _base: VertexID,
     ) -> ShiftValue {
-        technique.img_pos = pos;
+        let offset = path.from_sensor(pos, scene, sampler);
         let mut capture_sampler = ReplaySampler {
             sampler,
             random: &mut self.random_sequence,
             indice: 0,
         };
-        let offset = generate(
+        generate(
             path,
+            offset.0,
             accel,
             scene,
             emitters,
             &mut capture_sampler,
             technique,
         );
-        let offset_contrib = technique.evaluate(path, scene, emitters, offset[0].0);
+        let offset_contrib = technique.evaluate(path, scene, emitters, offset.0);
         ShiftValue {
             base: 0.5 * self.base_value,
             offset: 0.5 * offset_contrib,

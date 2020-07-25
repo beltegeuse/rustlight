@@ -16,31 +16,8 @@ pub struct IntegratorGradientPathTracing {
 pub struct TechniqueGradientPathTracing {
     pub max_depth: Option<u32>,
     pub samplings: Vec<Box<dyn SamplingStrategy>>,
-    pub img_pos: Point2<u32>,
 }
 impl Technique for TechniqueGradientPathTracing {
-    fn init<'scene, 'emitter>(
-        &mut self,
-        path: &mut Path<'scene, 'emitter>,
-        _accel: &'scene dyn Acceleration,
-        scene: &'scene Scene,
-        sampler: &mut dyn Sampler,
-        _emitters: &'emitter EmitterSampler,
-    ) -> Vec<(VertexID, Color)> {
-        // Only generate a path from the sensor
-        let root = Vertex::Sensor {
-            uv: Point2::new(
-                self.img_pos.x as f32 + sampler.next(),
-                self.img_pos.y as f32 + sampler.next(),
-            ),
-            pos: scene.camera.position(),
-            edge_in: None,
-            edge_out: None,
-        };
-
-        return vec![(path.register_vertex(root), Color::one())];
-    }
-
     fn expand(&self, _vertex: &Vertex, depth: u32) -> bool {
         self.max_depth.map_or(true, |max| depth < max)
     }
@@ -254,7 +231,6 @@ impl IntegratorGradientPathTracing {
         let mut technique = TechniqueGradientPathTracing {
             max_depth: None, // FIXME
             samplings,
-            img_pos: Point2::new(0, 0), // FIXME
         };
 
         let (base_contrib, base_path) = shiftmapping.base(
