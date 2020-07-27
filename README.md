@@ -24,9 +24,9 @@ $ unzip plane_scene.zip
 $ export SCENE=scene/meeting_ply.pbrt
 $ export NBPLANES=40960
 $ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o ualpha.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s ualpha
-$ cargo run --features="pbrt openexr" --release -- -s $SCALE -t -2 -n 1 -o smis_jacobian_k2_stratified.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s smis_jacobian -k 2 -x
-$ cargo run --features="pbrt openexr" --release -- -s $SCALE -t -2 -n 1 -o smis_all_k2_stratified.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s smis_all -k 2 -x
-$ cargo run --features="pbrt openexr" --release -- -s $SCALE -t -2 -n 1 -o cmis.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s cmis
+$ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o smis_jacobian_k2_stratified.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s smis_jacobian -k 2 -x
+$ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o smis_all_k2_stratified.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s smis_all -k 2 -x
+$ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o cmis.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s cmis
 ```
 The precomputed reference is available at: http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/research/2020_CMIS/plane_reference.exr
 
