@@ -75,19 +75,24 @@ impl IntegratorMC for IntegratorDirect {
             {
                 // Compute the contribution of direct lighting
                 // FIXME: A bit waste full, need to detect before sampling the light...
-                if let PDF::SolidAngle(pdf_bsdf) =
-                    its.mesh
-                        .bsdf
-                        .pdf(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
-                {
+                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(
+                    &its.uv,
+                    &its.wi,
+                    &d_out_local,
+                    Domain::SolidAngle,
+                    Transport::Importance,
+                ) {
                     // Compute MIS weights
                     let weight_light =
                         mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
                     l_i += &(weight_light
-                        * its
-                            .mesh
-                            .bsdf
-                            .eval(&its.uv, &its.wi, &d_out_local, Domain::SolidAngle)
+                        * its.mesh.bsdf.eval(
+                            &its.uv,
+                            &its.wi,
+                            &d_out_local,
+                            Domain::SolidAngle,
+                            Transport::Importance,
+                        )
                         * weight_nb_light
                         * light_record.weight);
                 }
@@ -99,7 +104,11 @@ impl IntegratorMC for IntegratorDirect {
         /////////////////////////////////
         // Compute an new direction (diffuse)
         for _ in 0..self.nb_bsdf_samples {
-            if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.uv, &its.wi, sampler.next2d()) {
+            if let Some(sampled_bsdf) =
+                its.mesh
+                    .bsdf
+                    .sample(&its.uv, &its.wi, sampler.next2d(), Transport::Importance)
+            {
                 // Generate the new ray and do the intersection
                 let d_out_world = its.frame.to_world(sampled_bsdf.d);
                 let ray = Ray::new(its.p, d_out_world);

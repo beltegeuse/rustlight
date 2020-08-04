@@ -13,7 +13,7 @@ use crate::Scale;
 use cgmath::InnerSpace;
 
 pub struct DirectionalSamplingStrategy {
-    pub from_sensor: bool,
+    pub transport: Transport,
 }
 impl DirectionalSamplingStrategy {
     pub fn bounce<'scene>(
@@ -46,20 +46,27 @@ impl DirectionalSamplingStrategy {
                 (Some(edge), new_vertex)
             }
             Vertex::Surface { its, .. } => {
-                if let Some(sampled_bsdf) = its.mesh.bsdf.sample(&its.uv, &its.wi, sampler.next2d())
+                if let Some(sampled_bsdf) =
+                    its.mesh
+                        .bsdf
+                        .sample(&its.uv, &its.wi, sampler.next2d(), self.transport)
                 {
                     let d_out_global = its.frame.to_world(sampled_bsdf.d);
+
+                    // TODO: This is fine with debug, but might be too costly for production
+                    // Make sure that we get a valid outgoing direction
+                    assert_approx_eq!(d_out_global.dot(d_out_global), 1.0, 0.0001);
 
                     // Update the throughput
                     *throughput *= &sampled_bsdf.weight;
 
                     // TODO: Need to further test this part
                     // TODO: This might be problematic for BDPT implementation
-                    if !self.from_sensor {
+                    if self.transport == Transport::Radiance {
                         let wi_global = its.frame.to_world(its.wi);
                         let correction = (its.wi.z * d_out_global.dot(its.n_g))
                             / (sampled_bsdf.d.z * wi_global.dot(its.n_g));
-                        *throughput *= correction;
+                        *throughput *= correction.abs();
                     }
 
                     if throughput.is_zero() {
@@ -245,6 +252,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
                     &its.wi,
                     &its.frame.to_local(edge.d),
                     Domain::SolidAngle,
+                    self.transport,
                 ) {
                     return Some(pdf);
                 }

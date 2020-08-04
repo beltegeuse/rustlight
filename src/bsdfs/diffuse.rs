@@ -14,6 +14,7 @@ impl BSDF for BSDFDiffuse {
         uv: &Option<Vector2<f32>>,
         d_in: &Vector3<f32>,
         sample: Point2<f32>,
+        _: Transport,
     ) -> Option<SampledDirection> {
         if d_in.z <= 0.0 {
             None
@@ -23,6 +24,7 @@ impl BSDF for BSDFDiffuse {
                 weight: self.diffuse.color(uv),
                 d: d_out,
                 pdf: PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
+                eta: 1.0,
             })
         }
     }
@@ -33,6 +35,7 @@ impl BSDF for BSDFDiffuse {
         d_in: &Vector3<f32>,
         d_out: &Vector3<f32>,
         domain: Domain,
+        _: Transport,
     ) -> PDF {
         assert!(domain == Domain::SolidAngle);
 
@@ -52,6 +55,7 @@ impl BSDF for BSDFDiffuse {
         d_in: &Vector3<f32>,
         d_out: &Vector3<f32>,
         domain: Domain,
+        _: Transport,
     ) -> Color {
         assert!(domain == Domain::SolidAngle);
 

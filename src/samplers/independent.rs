@@ -15,24 +15,20 @@ impl Sampler for IndependentSampler {
         let y = self.rnd.gen();
         Point2::new(x, y)
     }
-    fn next_u64(&mut self) -> u64 {
-        self.rnd.next_u64()
+    fn clone_box(&mut self) -> Box<dyn Sampler> {
+        Box::new(IndependentSampler {
+            rnd: rand::rngs::SmallRng::seed_from_u64(self.rnd.next_u64()),
+        })
     }
-    fn clone(&mut self) -> Box<dyn Sampler> {
-        Box::new(IndependentSampler::from_seed(self.next_u64()))
-    }
+
+    fn next_sample(&mut self) {}
+    fn next_pixel(&mut self, _: Point2<u32>) {}
 }
 
 impl Default for IndependentSampler {
     fn default() -> Self {
-        IndependentSampler::from_seed(random())
-    }
-}
-
-impl IndependentSampler {
-    pub fn from_seed(seed: u64) -> Self {
         IndependentSampler {
-            rnd: rand::rngs::SmallRng::seed_from_u64(seed),
+            rnd: rand::rngs::SmallRng::from_seed(random()),
         }
     }
 }

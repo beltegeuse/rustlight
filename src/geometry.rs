@@ -107,7 +107,7 @@ impl Mesh {
         name: String,
         vertices: Vec<Vector3<f32>>,
         indices: Vec<Vector3<usize>>,
-        normals: Option<Vec<Vector3<f32>>>,
+        mut normals: Option<Vec<Vector3<f32>>>,
         uv: Option<Vec<Vector2<f32>>>,
     ) -> Mesh {
         // Construct the mesh CDF
@@ -119,6 +119,18 @@ impl Mesh {
 
             let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
             dist_const.add(area);
+        }
+
+        // Normalize all the normal if if it is necessary
+        // Indeed, sometimes the normal are not properly normalized
+        if let Some(ref mut ns) = normals.as_mut() {
+            for n in ns.iter_mut() {
+                let l = n.dot(*n);
+                assert_ne!(l, 0.0);
+                if l != 1.0 {
+                    *n /= l.sqrt();
+                }
+            }
         }
 
         Mesh {

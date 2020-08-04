@@ -118,7 +118,7 @@ pub fn generate_img_blocks_gradient(
                 x_size_off: if desired_size.x <= max_size.x { 1 } else { 0 },
                 y_size_off: if desired_size.y <= max_size.y { 1 } else { 0 },
             };
-            image_blocks.push((info, block, sampler.clone()));
+            image_blocks.push((info, block, sampler.clone_box()));
         }
     }
     (

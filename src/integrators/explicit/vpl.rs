@@ -68,7 +68,8 @@ impl TechniqueVPL {
     ) {
         match path.vertex(vertex_id) {
             Vertex::Surface { its, edge_out, .. } => {
-                if options != IntegratorVPLOption::Volume {
+                let bsdf_smooth = its.mesh.bsdf.is_smooth();
+                if options != IntegratorVPLOption::Volume && !bsdf_smooth {
                     vpls.push(VPL::Surface(VPLSurface {
                         its: its.clone(),
                         radiance: flux,
@@ -166,7 +167,9 @@ impl Integrator for IntegratorVPL {
 
         // Samplings
         let samplings: Vec<Box<dyn SamplingStrategy>> =
-            vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
+            vec![Box::new(DirectionalSamplingStrategy {
+                transport: Transport::Radiance,
+            })];
         let mut technique = TechniqueVPL {
             max_depth: self.max_depth,
             samplings,
@@ -282,6 +285,7 @@ impl IntegratorVPL {
                                 &its.wi,
                                 &its.to_local(&d),
                                 Domain::SolidAngle,
+                                Transport::Importance,
                             );
                             let trans = self.transmittance(medium, its.p, vpl.pos);
                             l_i += trans * norm_vpl * emitted_radiance * bsdf_val / (dist * dist);
@@ -300,6 +304,7 @@ impl IntegratorVPL {
                             &its.wi,
                             &its.to_local(&d),
                             Domain::SolidAngle,
+                            Transport::Importance,
                         );
                         let trans = self.transmittance(medium, its.p, vpl.pos);
                         l_i += trans * norm_vpl * emitted_radiance * bsdf_val * vpl.radiance
@@ -318,12 +323,14 @@ impl IntegratorVPL {
                                 &vpl.its.wi,
                                 &vpl.its.to_local(&-d),
                                 Domain::SolidAngle,
+                                Transport::Radiance, // TODO: Check this
                             );
                             let bsdf_val = its.mesh.bsdf.eval(
                                 &its.uv,
                                 &its.wi,
                                 &its.to_local(&d),
                                 Domain::SolidAngle,
+                                Transport::Importance,
                             );
                             let trans = self.transmittance(medium, its.p, vpl.its.p);
                             l_i += trans * norm_vpl * emitted_radiance * bsdf_val * vpl.radiance
@@ -385,6 +392,7 @@ impl IntegratorVPL {
                             &vpl.its.wi,
                             &vpl.its.to_local(&-d),
                             Domain::SolidAngle,
+                            Transport::Radiance,
                         );
                         let phase_val = phase.eval(&d_cam, &d);
                         let trans = self.transmittance(medium, pos, vpl.its.p);

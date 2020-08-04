@@ -40,6 +40,11 @@ extern crate pbr;
 // For loading other type of scene format
 #[cfg(feature = "pbrt")]
 extern crate pbrt_rs;
+// For building hashmap in build time
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate assert_approx_eq;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;
@@ -49,10 +54,21 @@ pub trait Scale<T> {
     fn scale(&mut self, v: T);
 }
 
+fn clamp<T: PartialOrd>(v: T, min: T, max: T) -> T {
+    if v < min {
+        min
+    } else if v > max {
+        max
+    } else {
+        v
+    }
+}
+
 // all the modules
 pub mod accel;
 pub mod bsdfs;
 pub mod camera;
+pub mod color;
 pub mod emitter;
 pub mod geometry;
 pub mod integrators;

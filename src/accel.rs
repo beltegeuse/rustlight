@@ -253,7 +253,7 @@ impl<'scene, 'embree> EmbreeAcceleration<'scene, 'embree> {
 #[cfg(feature = "embree")]
 impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
     fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
+        let mut intersection_ctx = embree_rs::IntersectContext::incoherent();
         let embree_ray = embree_rs::Ray::segment(
             Vector3::new(ray.o.x, ray.o.y, ray.o.z),
             ray.d,

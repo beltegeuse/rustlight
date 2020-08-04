@@ -1,6 +1,8 @@
 use crate::integrators::*;
+use crate::math::*;
 use crate::samplers;
 use cgmath::Point2;
+use rand::rngs::SmallRng;
 use rayon::prelude::*;
 
 struct MCMCState {
@@ -25,8 +27,46 @@ impl MCMCState {
     }
 }
 
+/// Function to compute the normalization factor
+fn compute_normalization<F>(
+    nb_samples: usize,
+    routine: F,
+) -> (f32, Vec<(f32, SmallRng)>, Distribution1D)
+where
+    F: Fn(&mut dyn Sampler) -> MCMCState,
+{
+    assert_ne!(nb_samples, 0);
+
+    // TODO: Here we do not need to change the way to sample the image space
+    //  As there is no burning period implemented.
+    let mut sampler = crate::samplers::independent::IndependentSampler::default();
+    let mut seeds = vec![];
+
+    // Generate seeds
+    for _ in 0..nb_samples {
+        let current_seed = sampler.rnd.clone();
+        let state = routine(&mut sampler);
+        if state.tf > 0.0 {
+            seeds.push((state.tf, current_seed));
+        }
+    }
+
+    let mut cdf = Distribution1DConstruct::new(seeds.len());
+    for s in &seeds {
+        cdf.add(s.0);
+    }
+    let cdf = cdf.normalize();
+    let b = cdf.normalization / nb_samples as f32;
+    if b == 0.0 {
+        panic!("Normalization is 0, impossible to continue");
+    }
+
+    (b, seeds, cdf)
+}
+
 pub struct IntegratorPSSMLT {
     pub large_prob: f32,
+    pub nb_samples_norm: usize,
     pub integrator: Box<dyn IntegratorMC>,
 }
 impl Integrator for IntegratorPSSMLT {
@@ -49,9 +89,14 @@ impl Integrator for IntegratorPSSMLT {
 
         ///////////// Compute the normalization factor
         info!("Computing normalization factor...");
-        let (seeds, cdf, b) = self.compute_normalization(accel, scene, 100_000);
+        let (b, seeds, cdf) = {
+            let emitters = scene.emitters_sampler();
+            let sample_uni = |s: &mut dyn Sampler| -> MCMCState { sample(s, &emitters) };
+
+            compute_normalization(self.nb_samples_norm, sample_uni)
+        };
         info!("Normalisation factor: {:?}", b);
-        info!("Number of seeds: {}", seeds.len());
+        info!("Number of *potential* seeds: {}", seeds.len());
 
         ///////////// Compute the state initialization
         let nb_samples_total =
@@ -150,50 +195,5 @@ impl Integrator for IntegratorPSSMLT {
         img.scale(b / img_avg_lum);
 
         img
-    }
-}
-impl IntegratorPSSMLT {
-    fn compute_normalization(
-        &self,
-        accel: &dyn Acceleration,
-        scene: &Scene,
-        nb_samples: usize,
-    ) -> (
-        Vec<(f32, rand::rngs::SmallRng)>,
-        crate::math::Distribution1D,
-        f32,
-    ) {
-        assert_ne!(nb_samples, 0);
-
-        let mut sampler = samplers::independent::IndependentSampler::default();
-
-        // Generate seeds
-        let mut seeds = vec![];
-        for _ in 0..nb_samples {
-            let seed = sampler.rnd.clone();
-            let emitters = scene.emitters_sampler();
-            let x = (sampler.next() * scene.camera.size().x as f32) as u32;
-            let y = (sampler.next() * scene.camera.size().y as f32) as u32;
-            let c = self
-                .integrator
-                .compute_pixel((x, y), accel, scene, &mut sampler, &emitters);
-            let tf = (c.r + c.g + c.b) / 3.0;
-            if tf > 0.0 {
-                seeds.push((tf, seed));
-            }
-        }
-
-        if seeds.is_empty() {
-            panic!("Found no valid path for seed, quit!");
-        }
-
-        // Build CDF for select the first state
-        let mut cdf = crate::math::Distribution1DConstruct::new(seeds.len());
-        for s in &seeds {
-            cdf.add(s.0);
-        }
-        let cdf = cdf.normalize();
-        let b = cdf.normalization / nb_samples as f32;
-        (seeds, cdf, b)
     }
 }

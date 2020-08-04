@@ -203,7 +203,9 @@ impl IntegratorMC for IntegratorPathTracing {
         let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
 
         // Always need the directional strategy to expend the path
-        samplings.push(Box::new(DirectionalSamplingStrategy { from_sensor: true }));
+        samplings.push(Box::new(DirectionalSamplingStrategy {
+            transport: Transport::Importance,
+        }));
         match self.strategy {
             IntegratorPathTracingStrategies::All | IntegratorPathTracingStrategies::Emitter => {
                 // This strategy only make sense in case of light sampling

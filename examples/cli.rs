@@ -11,10 +11,12 @@ extern crate clap;
 extern crate env_logger;
 #[macro_use]
 extern crate log;
+extern crate rand;
 extern crate rayon;
 extern crate rustlight;
 
 use clap::{App, Arg, SubCommand};
+use rand::SeedableRng;
 use rustlight::integrators::IntegratorType;
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
     match input {
@@ -132,11 +134,25 @@ fn main() {
                     .arg(&max_arg)
                     .arg(&min_arg)
                     .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .help("difefrent sampling strategy: [all, bsdf, emitter]")
+                            .default_value("all"),
+                    )
+                    .arg(
                         Arg::with_name("large_prob")
                             .help("probability to perform a large step")
                             .takes_value(true)
                             .short("p")
                             .default_value("0.3"),
+                    )
+                    .arg(
+                        Arg::with_name("nb_samples_norm")
+                            .help("number of samples to compute to sample X0")
+                            .takes_value(true)
+                            .short("b")
+                            .default_value("100000"),
                     ),
             )
             .subcommand(
@@ -171,6 +187,7 @@ fn main() {
                 SubCommand::with_name("light")
                     .about("light tracing generating path from the lights")
                     .arg(&max_arg)
+                    .arg(&min_arg)
                     .arg(
                         Arg::with_name("lightpaths")
                             .takes_value(true)
@@ -461,6 +478,7 @@ fn main() {
         }
         ("light", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let min_depth = match_infinity(m.value_of("min").unwrap());
             let strategy = value_t_or_exit!(m.value_of("lightpaths"), String);
             let (render_surface, render_volume) = match strategy.as_ref() {
                 "all" => (true, true),
@@ -471,6 +489,7 @@ fn main() {
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::light::IntegratorLightTracing {
                     max_depth,
+                    min_depth,
                     render_surface,
                     render_volume,
                 },
@@ -615,14 +634,29 @@ fn main() {
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
+            let nb_samples_norm = value_t_or_exit!(m.value_of("nb_samples_norm"), usize);
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "all" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
+                }
+                "bsdf" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::BSDF
+                }
+                "emitter" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::Emitter
+                }
+                _ => panic!("invalid strategy: {}", strategy),
+            };
             assert!(large_prob > 0.0 && large_prob <= 1.0);
             IntegratorType::Primal(Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
                 large_prob,
+                nb_samples_norm,
                 integrator: Box::new(
                     rustlight::integrators::explicit::path::IntegratorPathTracing {
                         min_depth,
                         max_depth,
-                        strategy: rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All,
+                        strategy,
                         single_scattering: false,
                     },
                 ),
@@ -652,15 +686,18 @@ fn main() {
         .into_iter()
         .map(|v| v)
         .collect::<Vec<_>>();
-    let mut sampler = match &sampler[..] {
+    let mut sampler: Box<dyn rustlight::samplers::Sampler> = match &sampler[..] {
         ["independent"] => {
             Box::new(rustlight::samplers::independent::IndependentSampler::default())
         }
-        ["independent", s] => Box::new(
-            rustlight::samplers::independent::IndependentSampler::from_seed(
+        ["independent", s] => Box::new(rustlight::samplers::independent::IndependentSampler {
+            rnd: rand::rngs::SmallRng::seed_from_u64(
                 s.parse::<u64>().expect("Seed need to be u64 type"),
             ),
-        ),
+        }),
+        ["stratified"] => Box::new(rustlight::samplers::stratified::StratifiedSampler::create(
+            nb_samples, 4,
+        )),
         _ => panic!("Wrong sampler type provided {:?}", sampler),
     };
 

@@ -38,6 +38,11 @@ impl<'sampler, 'seq> Sampler for ReplaySampler<'sampler, 'seq> {
         let v2 = self.generate();
         Point2::new(v1, v2)
     }
+    fn next_sample(&mut self) {}
+    fn next_pixel(&mut self, _: Point2<u32>) {}
+    fn clone_box(&mut self) -> Box<dyn Sampler> {
+        unimplemented!("Clone replay sampler is not implemented")
+    }
 }
 pub struct RandomReplay {
     pub random_sequence: Vec<f32>,

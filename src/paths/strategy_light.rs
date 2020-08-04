@@ -102,6 +102,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                         &its.wi,
                         &its.to_local(&light_record.d),
                         Domain::SolidAngle,
+                        Transport::Importance,
                     );
 
                     if let Some(m) = medium {

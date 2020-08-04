@@ -361,7 +361,7 @@ pub fn generate_img_blocks(
                 },
                 buffernames,
             );
-            image_blocks.push((block, sampler.clone()));
+            image_blocks.push((block, sampler.clone_box()));
         }
     }
     image_blocks
@@ -388,6 +388,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
             let light_sampling = scene.emitters_sampler();
             for iy in 0..im_block.size.y {
                 for ix in 0..im_block.size.x {
+                    sampler.next_pixel(Point2::new(ix, iy));
                     for _ in 0..scene.nb_samples {
                         let c = int.compute_pixel(
                             (ix + im_block.pos.x, iy + im_block.pos.y),
@@ -397,6 +398,7 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
                             &light_sampling,
                         );
                         im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
+                        sampler.next_sample();
                     }
                 }
             }

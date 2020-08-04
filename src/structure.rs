@@ -28,6 +28,11 @@ pub enum Domain {
     SolidAngle,
     Discrete,
 }
+#[derive(PartialEq, Clone, Copy)]
+pub enum Transport {
+    Importance, //< From the camera
+    Radiance,   //< From the light
+}
 
 impl PDF {
     pub fn is_zero(&self) -> bool {
@@ -633,6 +638,8 @@ pub struct Ray {
 
 impl Ray {
     pub fn new(o: Point3<f32>, d: Vector3<f32>) -> Ray {
+        // TODO: Check if this assert is not too costly.
+        assert_approx_eq!(d.dot(d), 1.0, 0.0001);
         Ray {
             o,
             d,
@@ -785,12 +792,25 @@ impl<'a> Intersection<'a> {
             if n_g.dot(n_s) < 0.0 {
                 n_s = -n_s;
             }
-            n_s
+            // Normalize the shading normal
+            // TODO: This can be costly, but we want to be sure that the normal are corrects
+            //  But I guess it is the cost to pay to prevent other problem due to bad
+            //  geometry. I need to check what are the other strategies that have been used
+            //  in other rendering engine.
+            let l = n_s.dot(n_s);
+            if l != 1.0 {
+                n_s / l.sqrt()
+            } else {
+                n_s
+            }
         } else {
             n_g.clone()
         };
 
-        // TODO: Hack for now for make automatic twosided.
+        // Hack for two sided surfaces
+        // Note that we do not fix the surfaces if:
+        //  - the bsdf is not two sided (like glass where the normal orientation gives us extra information)
+        //  - if it is a light source
         let (n_s, n_g) =
             if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && ray.d.dot(n_s) > 0.0 {
                 (

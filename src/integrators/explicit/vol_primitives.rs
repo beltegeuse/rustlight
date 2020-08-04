@@ -595,7 +595,9 @@ impl Integrator for IntegratorVolPrimitives {
         let mut still_shoot = true;
 
         let samplings: Vec<Box<dyn SamplingStrategy>> =
-            vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
+            vec![Box::new(DirectionalSamplingStrategy {
+                transport: Transport::Radiance,
+            })];
         let mut technique = TechniqueVolPrimitives {
             max_depth: self.max_depth,
             samplings,

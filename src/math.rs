@@ -40,7 +40,7 @@ pub fn sample_uniform_sphere(u: Point2<f32>) -> Vector3<f32> {
 
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Frame(Matrix3<f32>);
 
 impl Frame {

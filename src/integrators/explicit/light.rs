@@ -6,6 +6,7 @@ use cgmath::Point2;
 
 pub struct IntegratorLightTracing {
     pub max_depth: Option<u32>,
+    pub min_depth: Option<u32>,
     pub render_surface: bool,
     pub render_volume: bool,
 }
@@ -13,7 +14,8 @@ pub struct IntegratorLightTracing {
 /// This structure is responsible to the graph generation
 pub struct TechniqueLightTracing {
     pub max_depth: Option<u32>,
-    pub samplings: Vec<Box<dyn SamplingStrategy>>,
+    pub min_depth: Option<u32>,
+    pub samplings: Vec<Box<dyn SamplingStrategy>>, //< Might be not ideal...
     // To be able to select only a subset of the light transport
     pub render_surface: bool,
     pub render_volume: bool,
@@ -31,6 +33,7 @@ impl Technique for TechniqueLightTracing {
 impl TechniqueLightTracing {
     fn evaluate<'scene>(
         &self,
+        depth: u32,
         path: &Path<'scene, '_>,
         accel: &dyn Acceleration,
         scene: &'scene Scene,
@@ -38,6 +41,11 @@ impl TechniqueLightTracing {
         bitmap: &mut BufferCollection,
         flux: Color,
     ) {
+        let accumulate = match self.min_depth {
+            Some(v) => v <= depth,
+            None => true,
+        };
+
         // Splat current vertex
         match path.vertex(vertex_id) {
             Vertex::Volume {
@@ -46,7 +54,7 @@ impl TechniqueLightTracing {
                 d_in,
                 ..
             } => {
-                if self.render_volume {
+                if accumulate && self.render_volume {
                     let pos_sensor = scene.camera.position();
                     let d = (pos_sensor - pos).normalize();
                     if accel.visible(pos, &pos_sensor) {
@@ -75,8 +83,10 @@ impl TechniqueLightTracing {
                 }
             }
             Vertex::Surface { its, .. } => {
-                if self.render_surface {
+                if accumulate && self.render_surface {
                     // Chech the visibility from the point to the sensor
+                    // we also exclude smooth BSDF as there is 0 chance to get
+                    // a succesful connection
                     let pos_sensor = scene.camera.position();
                     let d = (pos_sensor - its.p).normalize();
                     if !its.mesh.bsdf.is_smooth() && accel.visible(&its.p, &pos_sensor) {
@@ -85,10 +95,13 @@ impl TechniqueLightTracing {
                             // Compute BSDF for the splatting
                             let wo_local = its.frame.to_local(d);
                             let wi_global = its.frame.to_world(its.wi);
-                            let bsdf_value =
-                                its.mesh
-                                    .bsdf
-                                    .eval(&its.uv, &its.wi, &wo_local, Domain::SolidAngle);
+                            let bsdf_value = its.mesh.bsdf.eval(
+                                &its.uv,
+                                &its.wi,
+                                &wo_local,
+                                Domain::SolidAngle,
+                                Transport::Radiance,
+                            );
                             let correction =
                                 (its.wi.z * d.dot(its.n_g)) / (wo_local.z * wi_global.dot(its.n_g));
 
@@ -112,7 +125,7 @@ impl TechniqueLightTracing {
                 }
             }
             Vertex::Light { pos, n, .. } => {
-                if self.render_surface {
+                if accumulate && self.render_surface {
                     let pos_sensor = scene.camera.position();
                     let d = (pos_sensor - pos).normalize();
                     if accel.visible(pos, &pos_sensor) {
@@ -148,6 +161,7 @@ impl TechniqueLightTracing {
                     let edge = path.edge(*edge_id);
                     if let Some(vertex_next) = edge.vertices.1 {
                         self.evaluate(
+                            depth + 1,
                             path,
                             accel,
                             scene,
@@ -163,6 +177,7 @@ impl TechniqueLightTracing {
                     let edge = path.edge(*edge_id);
                     if let Some(next_vertex) = edge.vertices.1 {
                         self.evaluate(
+                            depth + 1,
                             path,
                             accel,
                             scene,
@@ -190,7 +205,9 @@ impl Integrator for IntegratorLightTracing {
         // All job will have the same number of samples to deal with
         let nb_threads = rayon::current_num_threads();
         let nb_jobs = nb_threads * 4;
-        let mut samplers = (0..nb_jobs).map(|_| sampler.clone()).collect::<Vec<_>>();
+        let mut samplers = (0..nb_jobs)
+            .map(|_| sampler.clone_box())
+            .collect::<Vec<_>>();
 
         // Ajust the number of light path that we need to generate
         let nb_samples = (scene.nb_samples
@@ -217,10 +234,13 @@ impl Integrator for IntegratorLightTracing {
                 // the path will be reused for each samples generated
                 // The sampling strategies
                 let samplings: Vec<Box<dyn SamplingStrategy>> =
-                    vec![Box::new(DirectionalSamplingStrategy { from_sensor: false })];
+                    vec![Box::new(DirectionalSamplingStrategy {
+                        transport: Transport::Importance,
+                    })];
                 // Do the sampling here
                 let mut technique = TechniqueLightTracing {
                     max_depth: self.max_depth,
+                    min_depth: self.min_depth,
                     samplings,
                     render_surface: self.render_surface,
                     render_volume: self.render_volume,
@@ -240,7 +260,7 @@ impl Integrator for IntegratorLightTracing {
                         &mut technique,
                     );
                     // Evaluate the path generated using camera splatting operation
-                    technique.evaluate(&path, accel, scene, root.0, &mut my_img, root.1);
+                    technique.evaluate(0, &path, accel, scene, root.0, &mut my_img, root.1);
                 });
 
                 // Scale and add the results

@@ -4,8 +4,10 @@ use rand::prelude::*;
 
 pub trait Mutator: Send {
     fn mutate(&self, v: f32, r: f32) -> f32;
+    fn clone_box(&self) -> Box<dyn Mutator>;
 }
 
+#[derive(Clone)]
 struct MutatorKelemen {
     pub s1: f32,
     pub s2: f32,
@@ -59,6 +61,10 @@ impl Mutator for MutatorKelemen {
         assert!(v >= 0.0);
         v
     }
+
+    fn clone_box(&self) -> Box<dyn Mutator> {
+        Box::new(self.clone())
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -91,6 +97,24 @@ impl Sampler for IndependentSamplerReplay {
         self.indice += 2;
         Point2::new(v1, v2)
     }
+
+    fn clone_box(&mut self) -> Box<dyn Sampler> {
+        let rnd = rand::rngs::SmallRng::seed_from_u64(self.rnd.next_u64());
+        Box::new(IndependentSamplerReplay {
+            rnd,
+            values: vec![],
+            backup: vec![],
+            mutator: self.mutator.clone_box(),
+            time: 0,
+            time_large: 0,
+            indice: 0,
+            large_step: false,
+        })
+    }
+
+    // Nothing to do here!
+    fn next_sample(&mut self) {}
+    fn next_pixel(&mut self, _: Point2<u32>) {}
 }
 
 impl SamplerMCMC for IndependentSamplerReplay {

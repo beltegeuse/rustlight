@@ -279,6 +279,7 @@ impl IntegratorGradientPath {
                     &main.its.wi,
                     &main_d_out_local,
                     Domain::SolidAngle,
+                    Transport::Importance,
                 ); // f(...) * cos(...)
                 let main_bsdf_pdf = if main_light_visible {
                     f64::from(
@@ -290,6 +291,7 @@ impl IntegratorGradientPath {
                                 &main.its.wi,
                                 &main_d_out_local,
                                 Domain::SolidAngle,
+                                Transport::Importance,
                             )
                             .value(),
                     )
@@ -342,6 +344,7 @@ impl IntegratorGradientPath {
                                                 &shift_d_in_local,
                                                 &main_d_out_local,
                                                 Domain::SolidAngle,
+                                                Transport::Importance,
                                             )
                                             .value(),
                                     );
@@ -350,6 +353,7 @@ impl IntegratorGradientPath {
                                         &shift_d_in_local,
                                         &main_d_out_local,
                                         Domain::SolidAngle,
+                                        Transport::Importance,
                                     );
                                     // Compute and return
                                     let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER)
@@ -389,6 +393,7 @@ impl IntegratorGradientPath {
                                         &s.its.wi,
                                         &shift_d_out_local,
                                         Domain::SolidAngle, // Already check that we are on a non smooth surface
+                                        Transport::Importance,
                                     );
                                     let shift_bsdf_pdf = if shift_light_visible {
                                         f64::from(
@@ -399,6 +404,7 @@ impl IntegratorGradientPath {
                                                     &s.its.wi,
                                                     &shift_d_out_local,
                                                     Domain::SolidAngle,
+                                                    Transport::Importance,
                                                 )
                                                 .value(),
                                         )
@@ -453,16 +459,15 @@ impl IntegratorGradientPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let main_sampled_bsdf =
-                match main
-                    .its
-                    .mesh
-                    .bsdf
-                    .sample(&main.its.uv, &main.its.wi, sampler.next2d())
-                {
-                    Some(x) => x,
-                    None => return l_i,
-                };
+            let main_sampled_bsdf = match main.its.mesh.bsdf.sample(
+                &main.its.uv,
+                &main.its.wi,
+                sampler.next2d(),
+                Transport::Importance,
+            ) {
+                Some(x) => x,
+                None => return l_i,
+            };
 
             // Generate the new ray and do the intersection
             let main_d_out_global = main.its.frame.to_world(main_sampled_bsdf.d);
@@ -561,6 +566,7 @@ impl IntegratorGradientPath {
                                                 &shift_d_in_local,
                                                 &main_sampled_bsdf.d,
                                                 Domain::SolidAngle,
+                                                Transport::Importance,
                                             )
                                             .value(),
                                     );
@@ -569,6 +575,7 @@ impl IntegratorGradientPath {
                                         &shift_d_in_local,
                                         &main_sampled_bsdf.d,
                                         Domain::SolidAngle,
+                                        Transport::Importance,
                                     );
                                     // Update main path
                                     let shift_pdf_pred = s.pdf;
@@ -618,6 +625,7 @@ impl IntegratorGradientPath {
                                         &s.its.wi,
                                         &shift_d_out_local,
                                         Domain::SolidAngle, // Already checked that we are not on a smooth surface
+                                        Transport::Importance,
                                     );
                                     let shift_bsdf_pdf = f64::from(
                                         s.its
@@ -628,6 +636,7 @@ impl IntegratorGradientPath {
                                                 &s.its.wi,
                                                 &shift_d_out_local,
                                                 Domain::SolidAngle,
+                                                Transport::Importance,
                                             )
                                             .value(),
                                     );
@@ -767,12 +776,19 @@ impl IntegratorGradientPath {
                                         &s.its.wi,
                                         &wo,
                                         Domain::Discrete,
+                                        Transport::Importance,
                                     );
                                     s.pdf *= f64::from(
                                         s.its
                                             .mesh
                                             .bsdf
-                                            .pdf(&s.its.uv, &s.its.wi, &wo, Domain::Discrete)
+                                            .pdf(
+                                                &s.its.uv,
+                                                &s.its.wi,
+                                                &wo,
+                                                Domain::Discrete,
+                                                Transport::Importance,
+                                            )
                                             .value(),
                                     );
                                     // Shoot a ray to compute the next intersection
