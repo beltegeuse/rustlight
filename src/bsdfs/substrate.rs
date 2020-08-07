@@ -34,7 +34,7 @@ impl BSDF for BSDFSubstrate {
         // TODO: Importance sampling specular or diffuse part
         let (d_out, domain) = if s.x < 0.5 {
             s.x *= 2.0; // Rescale random number
-            // assert!(s.x >= 0.0 && s.x < 1.0, "Wrong s.x for diffuse {}", s.x);
+                        // assert!(s.x >= 0.0 && s.x < 1.0, "Wrong s.x for diffuse {}", s.x);
             let d_out = cosine_sample_hemisphere(s);
             (d_out, Domain::SolidAngle)
         } else {

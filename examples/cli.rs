@@ -156,6 +156,37 @@ fn main() {
                     ),
             )
             .subcommand(
+                SubCommand::with_name("erpt")
+                    .about("path tracing with MCMC sampling")
+                    .arg(&max_arg)
+                    .arg(&min_arg)
+                    .arg(
+                        Arg::with_name("no_stratified")
+                        .short("k")
+                        .help("remove stratification of ERPT")
+                    )
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .help("difefrent sampling strategy: [all, bsdf, emitter]")
+                            .default_value("all"),
+                    )
+                    .arg(
+                        Arg::with_name("nb_mc")
+                            .takes_value(true)
+                            .short("e")
+                            .help("number of MC samples")
+                            .default_value("1"),
+                    ).arg(
+                        Arg::with_name("chain_samples")
+                            .takes_value(true)
+                            .short("c")
+                            .help("number of chains samples")
+                            .default_value("100"),
+                    ),
+            )
+            .subcommand(
                 SubCommand::with_name("path_kulla")
                     .about("path tracing for single scattering")
                     .arg(
@@ -649,18 +680,55 @@ fn main() {
                 _ => panic!("invalid strategy: {}", strategy),
             };
             assert!(large_prob > 0.0 && large_prob <= 1.0);
-            IntegratorType::Primal(Box::new(rustlight::integrators::pssmlt::IntegratorPSSMLT {
-                large_prob,
-                nb_samples_norm,
-                integrator: Box::new(
-                    rustlight::integrators::explicit::path::IntegratorPathTracing {
-                        min_depth,
-                        max_depth,
-                        strategy,
-                        single_scattering: false,
-                    },
-                ),
-            }))
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::mcmc::pssmlt::IntegratorPSSMLT {
+                    large_prob,
+                    nb_samples_norm,
+                    integrator: Box::new(
+                        rustlight::integrators::explicit::path::IntegratorPathTracing {
+                            min_depth,
+                            max_depth,
+                            strategy,
+                            single_scattering: false,
+                        },
+                    ),
+                },
+            ))
+        }
+        ("erpt", Some(m)) => {
+            let min_depth = match_infinity(m.value_of("min").unwrap());
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "all" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
+                }
+                "bsdf" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::BSDF
+                }
+                "emitter" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::Emitter
+                }
+                _ => panic!("invalid strategy: {}", strategy),
+            };
+            let nb_mc = value_t_or_exit!(m.value_of("nb_mc"), usize);
+            let chain_samples = value_t_or_exit!(m.value_of("chain_samples"), usize);
+            let stratified = !m.is_present("no_stratified");
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::mcmc::erpt::IntegratorERPT {
+                    nb_mc,
+                    chain_samples,
+                    integrator: Box::new(
+                        rustlight::integrators::explicit::path::IntegratorPathTracing {
+                            min_depth,
+                            max_depth,
+                            strategy,
+                            single_scattering: false,
+                        },
+                    ),
+                    stratified,
+                },
+            ))
         }
         ("ao", Some(m)) => {
             let normal_correction = m.is_present("normal-correction");

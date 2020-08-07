@@ -68,19 +68,19 @@ impl Mutator for MutatorKelemen {
 }
 
 #[derive(Copy, Clone)]
-struct SampleReplayValue {
+pub struct SampleReplayValue {
     pub value: f32,
     pub modify: usize,
 }
 
 pub struct IndependentSamplerReplay {
     pub rnd: SmallRng,
-    values: Vec<SampleReplayValue>,
-    backup: Vec<(usize, SampleReplayValue)>,
-    mutator: Box<dyn Mutator>,
-    time: usize,
-    time_large: usize,
-    indice: usize,
+    pub values: Vec<SampleReplayValue>,
+    pub backup: Vec<(usize, SampleReplayValue)>,
+    pub mutator: Box<dyn Mutator>,
+    pub time: usize,
+    pub time_large: usize,
+    pub indice: usize,
     pub large_step: bool,
 }
 

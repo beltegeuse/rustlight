@@ -449,4 +449,4 @@ pub mod avg;
 pub mod direct;
 pub mod explicit;
 pub mod gradient;
-pub mod pssmlt;
+pub mod mcmc;

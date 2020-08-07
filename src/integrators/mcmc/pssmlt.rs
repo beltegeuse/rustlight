@@ -1,68 +1,8 @@
+use crate::integrators::mcmc::*;
 use crate::integrators::*;
-use crate::math::*;
 use crate::samplers;
 use cgmath::Point2;
-use rand::rngs::SmallRng;
 use rayon::prelude::*;
-
-struct MCMCState {
-    pub value: Color,
-    pub tf: f32,
-    pub pix: Point2<u32>,
-    pub weight: f32,
-}
-
-impl MCMCState {
-    pub fn new(v: Color, pix: Point2<u32>) -> MCMCState {
-        MCMCState {
-            value: v,
-            tf: (v.r + v.g + v.b) / 3.0,
-            pix,
-            weight: 0.0,
-        }
-    }
-
-    pub fn color(&self) -> Color {
-        self.value * (self.weight / self.tf)
-    }
-}
-
-/// Function to compute the normalization factor
-fn compute_normalization<F>(
-    nb_samples: usize,
-    routine: F,
-) -> (f32, Vec<(f32, SmallRng)>, Distribution1D)
-where
-    F: Fn(&mut dyn Sampler) -> MCMCState,
-{
-    assert_ne!(nb_samples, 0);
-
-    // TODO: Here we do not need to change the way to sample the image space
-    //  As there is no burning period implemented.
-    let mut sampler = crate::samplers::independent::IndependentSampler::default();
-    let mut seeds = vec![];
-
-    // Generate seeds
-    for _ in 0..nb_samples {
-        let current_seed = sampler.rnd.clone();
-        let state = routine(&mut sampler);
-        if state.tf > 0.0 {
-            seeds.push((state.tf, current_seed));
-        }
-    }
-
-    let mut cdf = Distribution1DConstruct::new(seeds.len());
-    for s in &seeds {
-        cdf.add(s.0);
-    }
-    let cdf = cdf.normalize();
-    let b = cdf.normalization / nb_samples as f32;
-    if b == 0.0 {
-        panic!("Normalization is 0, impossible to continue");
-    }
-
-    (b, seeds, cdf)
-}
 
 pub struct IntegratorPSSMLT {
     pub large_prob: f32,
@@ -158,24 +98,16 @@ impl Integrator for IntegratorPSSMLT {
                     current_state.weight += 1.0 - accept_prob;
                     proposed_state.weight += accept_prob;
                     if accept_prob > s.rand() {
-                        my_img.accumulate(
-                            current_state.pix,
-                            current_state.color(),
-                            &buffer_names[0],
-                        );
+                        current_state.accumulate(&mut my_img, &buffer_names[0]);
                         s.accept();
                         current_state = proposed_state;
                     } else {
-                        my_img.accumulate(
-                            proposed_state.pix,
-                            proposed_state.color(),
-                            &buffer_names[0],
-                        );
+                        proposed_state.accumulate(&mut my_img, &buffer_names[0]);
                         s.reject();
                     }
                 });
                 // Flush the last state
-                my_img.accumulate(current_state.pix, current_state.color(), &buffer_names[0]);
+                current_state.accumulate(&mut my_img, &buffer_names[0]);
 
                 my_img.scale(1.0 / (nb_samples_per_chains as f32));
                 {

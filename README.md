@@ -81,6 +81,7 @@ For now, these are the following features implemented:
     * Path-tracing with NEE
     * **[*]** Gradient-path tracing [1]
     * Primary-sample space MLT [2]
+    * Energy redistribution PT (in PSS) [10]
     * Light tracing
     * Virtual Point Light
 - Special volumetric integrators (via vol_primitives):
@@ -142,4 +143,5 @@ This code has been inspired from several repositories:
 [6] Novak et al. "Virtual ray lights for rendering scenes with participating media" (SIGGRAPH 2012) \
 [7] Rousselle et al. "Image-space control variates for rendering" (SIGGRAPH 2016) \
 [8] Deng et al. "Photon surfaces for robust, unbiased volumetric density estimation" (SIGGRAPH 2019) \
-[9] Kulla et al. "Importance Sampling Techniques for Path Tracing in Participating Media" (EGSR 2012)
+[9] Kulla et al. "Importance Sampling Techniques for Path Tracing in Participating Media" (EGSR 2012) \
+[10] Cline et al. "energy redistribution path tracing" (SIGGRAPH 2012)
