@@ -67,6 +67,7 @@ It is possible to activate/desactivate some features of rustlight depending of y
 - **image**(*): load and save LDR images (via [image]((https://github.com/image-rs/image)))
 - **openexr**: load and save EXR images (via [openexr-rs](https://github.com/cessen/openexr-rs))
 - **pbrt**(*): read PBRT files (via [pbrt_rs]((https://github.com/beltegeuse/pbrt_rs))) [Not that only support a subset PBRT primitives]
+- **mitsuba**(*): read Mitsuba files (via [mitsuba_rs]((https://github.com/beltegeuse/mitsuba_rs))) [Not that only support a subset Mitsuba primitives]
 - **progress-bar**(*): show progress bar (via [pbr]((https://crates.io/crates/pbr))) 
 - **embree**: fast intersection (via [embree-rs](https://github.com/Twinklebear/embree-rs))
 

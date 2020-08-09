@@ -5,8 +5,9 @@ authors = ["Adrien Gruson <adrien.gruson@gmail.com>"]
 edition = "2018"
 
 [features]
-default = ["image", "pbrt", "progress-bar"]
+default = ["image", "pbrt", "progress-bar", "mitsuba"]
 pbrt = ["pbrt_rs"]
+mitsuba = ["mitsuba_rs"]
 embree = ["embree-rs"]
 progress-bar = ["pbr"]
 
@@ -25,6 +26,7 @@ serde_json = "1.0"
 tobj = "*"
 pbr = { version = "*", optional = true }
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs", optional = true }
+mitsuba_rs = { git = "https://github.com/beltegeuse/mitsuba_rs", optional = true }
 lazy_static = "1.4"
 assert_approx_eq = "1.1"
 

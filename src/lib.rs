@@ -38,6 +38,8 @@ extern crate tobj;
 #[cfg(feature = "progress-bar")]
 extern crate pbr;
 // For loading other type of scene format
+#[cfg(feature = "mitsuba")]
+extern crate mitsuba_rs;
 #[cfg(feature = "pbrt")]
 extern crate pbrt_rs;
 // For building hashmap in build time

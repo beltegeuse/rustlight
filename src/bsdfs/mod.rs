@@ -3,6 +3,8 @@ use serde::{Deserialize, Deserializer};
 use serde_json;
 
 use cgmath::{Point2, Vector2, Vector3};
+#[cfg(feature = "mitsuba")]
+use mitsuba_rs;
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
 use std;
@@ -159,7 +161,7 @@ pub fn parse_bsdf(
 }
 
 #[cfg(feature = "pbrt")]
-fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option<BSDFColor> {
+fn bsdf_texture_match_pbrt(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option<BSDFColor> {
     match v {
         pbrt_rs::Param::Float(ref v) => {
             if v.len() != 1 {
@@ -183,22 +185,11 @@ fn bsdf_texture_match(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option
     }
 }
 
-// Debug macro for color
-// macro_rules! default_color {
-//     ($texture: expr, $default:expr) => {{
-//         if let Some(v) = $texture {
-//             v
-//         } else {
-//             BSDFColor::UniformColor($default)
-//         }
-//     }};
-// }
-
 #[cfg(feature = "pbrt")]
 pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn BSDF + Sync + Send> {
     let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
         pbrt_rs::BSDF::Matte(ref v) => {
-            if let Some(diffuse) = bsdf_texture_match(&v.kd, scene_info) {
+            if let Some(diffuse) = bsdf_texture_match_pbrt(&v.kd, scene_info) {
                 Some(Box::new(BSDFDiffuse { diffuse }))
             } else {
                 None
@@ -206,12 +197,12 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
         }
         pbrt_rs::BSDF::Glass(ref v) => {
             // Get BSDF colors
-            let specular_reflectance = bsdf_texture_match(&v.kr, scene_info).unwrap();
-            let specular_transmittance = bsdf_texture_match(&v.kt, scene_info).unwrap();
+            let specular_reflectance = bsdf_texture_match_pbrt(&v.kr, scene_info).unwrap();
+            let specular_transmittance = bsdf_texture_match_pbrt(&v.kt, scene_info).unwrap();
 
             // Roughness
-            let u_roughness = bsdf_texture_match(&v.u_roughness, scene_info).unwrap();
-            let v_roughness = bsdf_texture_match(&v.v_roughness, scene_info).unwrap();
+            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, scene_info).unwrap();
+            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, scene_info).unwrap();
 
             // FIXME: be able to load float textures?
             let (u_roughness, v_roughness) =
@@ -223,7 +214,7 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
                 );
             }
 
-            let index = bsdf_texture_match(&v.index, scene_info).unwrap();
+            let index = bsdf_texture_match_pbrt(&v.index, scene_info).unwrap();
             let eta = match index {
                 BSDFColor::UniformColor(v) => v.r,
                 _ => unimplemented!("Texture ETA is not supported"),
@@ -241,19 +232,19 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             ))
         }
         pbrt_rs::BSDF::Metal(ref v) => {
-            let eta = bsdf_texture_match(&v.eta, scene_info).unwrap();
-            let k = bsdf_texture_match(&v.k, scene_info).unwrap();
+            let eta = bsdf_texture_match_pbrt(&v.eta, scene_info).unwrap();
+            let k = bsdf_texture_match_pbrt(&v.k, scene_info).unwrap();
             let (u_roughness, v_roughness) = if let (Some(ref u_rough), Some(ref v_rough)) =
                 (v.u_roughness.as_ref(), v.v_roughness.as_ref())
             {
                 (
-                    bsdf_texture_match(u_rough, scene_info).unwrap(),
-                    bsdf_texture_match(v_rough, scene_info).unwrap(),
+                    bsdf_texture_match_pbrt(u_rough, scene_info).unwrap(),
+                    bsdf_texture_match_pbrt(v_rough, scene_info).unwrap(),
                 )
             } else {
                 (
-                    bsdf_texture_match(&v.roughness, scene_info).unwrap(),
-                    bsdf_texture_match(&v.roughness, scene_info).unwrap(),
+                    bsdf_texture_match_pbrt(&v.roughness, scene_info).unwrap(),
+                    bsdf_texture_match_pbrt(&v.roughness, scene_info).unwrap(),
                 )
             };
             // FIXME: be able to load float textures?
@@ -275,7 +266,7 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             }))
         }
         pbrt_rs::BSDF::Mirror(ref v) => {
-            let specular = bsdf_texture_match(&v.kr, scene_info).unwrap();
+            let specular = bsdf_texture_match_pbrt(&v.kr, scene_info).unwrap();
             Some(Box::new(BSDFMetal {
                 specular,
                 eta: BSDFColor::UniformColor(Color::one()),
@@ -284,10 +275,10 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             }))
         }
         pbrt_rs::BSDF::Substrate(ref v) => {
-            let kd = bsdf_texture_match(&v.kd, scene_info).unwrap();
-            let ks = bsdf_texture_match(&v.ks, scene_info).unwrap();
-            let u_roughness = bsdf_texture_match(&v.u_roughness, scene_info).unwrap();
-            let v_roughness = bsdf_texture_match(&v.v_roughness, scene_info).unwrap();
+            let kd = bsdf_texture_match_pbrt(&v.kd, scene_info).unwrap();
+            let ks = bsdf_texture_match_pbrt(&v.ks, scene_info).unwrap();
+            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, scene_info).unwrap();
+            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, scene_info).unwrap();
 
             // FIXME: be able to load float textures?
             let (u_roughness, v_roughness) =
@@ -309,6 +300,68 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
                 distribution,
             }))
         } // _ => None,
+    };
+
+    if let Some(bsdf) = bsdf {
+        bsdf
+    } else {
+        Box::new(BSDFDiffuse {
+            diffuse: BSDFColor::UniformColor(Color::value(0.8)),
+        })
+    }
+}
+
+#[cfg(feature = "mitsuba")]
+fn bsdf_texture_match_mts(v: &mitsuba_rs::BSDFColorSpectrum, wk: &std::path::Path) -> BSDFColor {
+    match v {
+        mitsuba_rs::BSDFColorSpectrum::Constant(v) => {
+            let v = v.clone().as_rgb();
+            let v = Color {
+                r: v.r,
+                g: v.g,
+                b: v.b,
+            };
+            BSDFColor::UniformColor(v)
+        }
+        mitsuba_rs::BSDFColorSpectrum::Texture(v) => {
+            BSDFColor::TextureColor(Texture::load(wk.join(v.filename.clone()).to_str().unwrap()))
+        }
+    }
+}
+
+#[cfg(feature = "mitsuba")]
+pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF + Sync + Send> {
+    let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
+        mitsuba_rs::BSDF::TwoSided { bsdf } => {
+            // Rustlight automatically apply twosided
+            Some(bsdf_mts(&bsdf, wk))
+        }
+        mitsuba_rs::BSDF::Diffuse { reflectance } => {
+            let diffuse = bsdf_texture_match_mts(reflectance, wk);
+            Some(Box::new(BSDFDiffuse { diffuse }))
+        }
+        // Thin material are ignored
+        mitsuba_rs::BSDF::Dielectric {
+            int_ior,
+            ext_ior,
+            specular_reflectance,
+            specular_transmittance,
+            ..
+        } => {
+            // TODO: Implement distribution
+            let specular_reflectance = bsdf_texture_match_mts(specular_reflectance, wk);
+            let specular_transmittance = bsdf_texture_match_mts(specular_transmittance, wk);
+            Some(Box::new(
+                BSDFGlass {
+                    specular_transmittance,
+                    specular_reflectance,
+                    eta: 1.0,
+                    inv_eta: 1.0,
+                }
+                .eta(*int_ior, *ext_ior),
+            ))
+        }
+        _ => None,
     };
 
     if let Some(bsdf) = bsdf {

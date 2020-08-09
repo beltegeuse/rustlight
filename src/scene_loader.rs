@@ -5,7 +5,10 @@ use crate::emitter::*;
 use crate::geometry;
 use crate::scene::*;
 use crate::structure::*;
+use cgmath::Transform;
 use cgmath::*;
+#[cfg(feature = "mitsuba")]
+use mitsuba_rs;
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
 use serde_json;
@@ -47,6 +50,8 @@ impl Default for SceneLoaderManager {
         loaders.register("json", Rc::new(JSONSceneLoader {}));
         #[cfg(feature = "pbrt")]
         loaders.register("pbrt", Rc::new(PBRTSceneLoader {}));
+        #[cfg(feature = "mitsuba")]
+        loaders.register("xml", Rc::new(MTSSceneLoader {}));
         loaders
     }
 }
@@ -265,6 +270,100 @@ impl SceneLoader for PBRTSceneLoader {
         camera.print_info();
 
         info!("image size: {:?}", scene_info.image_size);
+        Ok(Scene {
+            camera,
+            meshes,
+            nb_samples: 1,
+            nb_threads: None,
+            output_img_path: "out.pfm".to_string(),
+            emitter_environment,
+            volume: None,
+        })
+    }
+}
+
+#[cfg(feature = "mitsuba")]
+pub struct MTSSceneLoader {}
+#[cfg(feature = "mitsuba")]
+impl SceneLoader for MTSSceneLoader {
+    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
+        // Load the scene
+        let mut mts = mitsuba_rs::parse(filename);
+        let wk = std::path::Path::new(filename).parent().unwrap();
+        dbg!(&wk);
+
+        // Load camera
+        let camera = {
+            assert_eq!(mts.sensors.len(), 1);
+            let mts_sensor = mts.sensors.pop().unwrap();
+
+            let img_size = Vector2::new(mts_sensor.film.width, mts_sensor.film.height);
+            let mat = mts_sensor.to_world;
+            Camera::new(img_size, mts_sensor.fov, mat.as_matrix())
+        };
+
+        // Load meshes
+        let mts_shapes = mts
+            .shapes_id
+            .into_iter()
+            .map(|(_, v)| v)
+            .chain(mts.shapes_unamed.into_iter());
+        let meshes = mts_shapes
+            .map(|s| {
+                match s {
+                    mitsuba_rs::Shape::Obj { filename, option, .. } => {
+                        let obj_path = wk.join(std::path::Path::new(&filename));
+
+                        // TODO: Apply transformation
+                        let to_world = option.to_world;
+                        assert!(to_world.is_none());
+
+                        // Load the geometry
+                        let mut meshes = geometry::load_obj(&obj_path).unwrap();
+
+                        // apply BSDF
+                        for m in &mut meshes {
+                            m.bsdf = match &option.bsdf {
+                                Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
+                                None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
+                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
+                                }),
+                            };
+                        }
+
+                        // Check if a emitter is attached
+                        if let Some(v) = option.emitter {
+                            for m in &mut meshes {
+                                let rgb = v.radiance.clone().as_rgb();
+                                m.emission = Color {
+                                    r: rgb.r,
+                                    g: rgb.g,
+                                    b: rgb.b,
+                                };
+                            }
+                        }
+                        meshes
+                    }
+                    mitsuba_rs::Shape::Serialized {
+                        ..
+                        //filename,
+                        //shape_index,
+                        //option,
+                    } => {
+                        todo!();
+                    }
+                    _ => {
+                        warn!("Ignoring shape {:?}", s);
+                        vec![]
+                    }
+                }
+            })
+            .flatten()
+            .collect();
+
+        // Other
+        let emitter_environment = None;
+
         Ok(Scene {
             camera,
             meshes,

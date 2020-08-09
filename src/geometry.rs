@@ -10,7 +10,7 @@ use tobj;
 /// for now, only add diffuse color
 /// custom texture coordinates or normals are not supported yet
 pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadError> {
-    println!("Try to load {:?}", file_name);
+    info!("Try to load {:?}", file_name);
     let (models, materials) = tobj::load_obj(file_name, true)?;
     let wk = file_name.parent().unwrap();
     info!("Working directory for loading the scene: {:?}", wk);
