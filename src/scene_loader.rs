@@ -1,6 +1,6 @@
 use crate::bsdfs;
 use crate::bsdfs::*;
-use crate::camera::Camera;
+use crate::camera::{Camera, Fov};
 use crate::emitter::*;
 use crate::geometry;
 use crate::scene::*;
@@ -139,7 +139,7 @@ impl SceneLoader for JSONSceneLoader {
                 );
 
                 info!("m: {:?}", matrix);
-                Camera::new(img, fov, matrix)
+                Camera::new(img, Fov::Y(fov), matrix, false)
             } else {
                 panic!("The camera is not set!");
             }
@@ -260,7 +260,7 @@ impl SceneLoader for PBRTSceneLoader {
                     pbrt_rs::Camera::Perspective(ref cam) => {
                         let mat = cam.world_to_camera.inverse_transform().unwrap();
                         info!("camera matrix: {:?}", mat);
-                        Camera::new(scene_info.image_size, cam.fov, mat)
+                        Camera::new(scene_info.image_size, Fov::Y(cam.fov), mat, false)
                     }
                 }
             } else {
@@ -290,16 +290,40 @@ impl SceneLoader for MTSSceneLoader {
         // Load the scene
         let mut mts = mitsuba_rs::parse(filename);
         let wk = std::path::Path::new(filename).parent().unwrap();
-        dbg!(&wk);
 
         // Load camera
         let camera = {
             assert_eq!(mts.sensors.len(), 1);
             let mts_sensor = mts.sensors.pop().unwrap();
-
             let img_size = Vector2::new(mts_sensor.film.width, mts_sensor.film.height);
-            let mat = mts_sensor.to_world;
-            Camera::new(img_size, mts_sensor.fov, mat.as_matrix())
+            let mat = mts_sensor.to_world.as_matrix();
+            let mat = mat.inverse_transform().unwrap();
+            // TODO: Revisit the sensor definition
+            let fov = match &mts_sensor.fov_axis[..] {
+                "x" => Fov::Y(mts_sensor.fov),
+                "y" => Fov::X(mts_sensor.fov),
+                _ => panic!("Unsupport Fov axis definition: {}", mts_sensor.fov_axis),
+            };
+            Camera::new(img_size, fov, mat, true)
+        };
+
+        // Helper to transform the mesh
+        let apply_transform = |m: &mut geometry::Mesh, trans: Option<mitsuba_rs::Transform>| {
+            // No transformation
+            if trans.is_none() {
+                return;
+            }
+
+            let mat = trans.unwrap().as_matrix();
+
+            if let Some(v) = m.normals.as_mut() {
+                for n in v.iter_mut() {
+                    *n = mat.transform_vector(*n);
+                }
+            }
+            for p in &mut m.vertices {
+                *p = mat.transform_vector(*p);
+            }
         };
 
         // Load meshes
@@ -311,12 +335,10 @@ impl SceneLoader for MTSSceneLoader {
         let meshes = mts_shapes
             .map(|s| {
                 match s {
-                    mitsuba_rs::Shape::Obj { filename, option, .. } => {
+                    mitsuba_rs::Shape::Obj {
+                        filename, option, ..
+                    } => {
                         let obj_path = wk.join(std::path::Path::new(&filename));
-
-                        // TODO: Apply transformation
-                        let to_world = option.to_world;
-                        assert!(to_world.is_none());
 
                         // Load the geometry
                         let mut meshes = geometry::load_obj(&obj_path).unwrap();
@@ -326,7 +348,9 @@ impl SceneLoader for MTSSceneLoader {
                             m.bsdf = match &option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
                                 None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
-                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
+                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(
+                                        0.8,
+                                    )),
                                 }),
                             };
                         }
@@ -342,15 +366,75 @@ impl SceneLoader for MTSSceneLoader {
                                 };
                             }
                         }
+
+                        // Apply transform
+                        for m in &mut meshes {
+                            apply_transform(m, option.to_world.clone());
+                        }
+
                         meshes
                     }
-                    mitsuba_rs::Shape::Serialized {
-                        ..
-                        //filename,
-                        //shape_index,
-                        //option,
-                    } => {
-                        todo!();
+                    mitsuba_rs::Shape::Serialized(shape) => {
+                        let mut mesh_mts = mitsuba_rs::serialized::read_serialized(&shape, &wk);
+
+                        // Build CDF
+                        let mut dist_const =
+                            crate::math::Distribution1DConstruct::new(mesh_mts.indices.len());
+                        for id in &mesh_mts.indices {
+                            let v0 = mesh_mts.vertices[id.x];
+                            let v1 = mesh_mts.vertices[id.y];
+                            let v2 = mesh_mts.vertices[id.z];
+
+                            let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
+                            dist_const.add(area);
+                        }
+
+                        // Normalize normals
+                        // Indeed, sometimes the normal are not properly normalized
+                        if let Some(ref mut ns) = mesh_mts.normals.as_mut() {
+                            for n in ns.iter_mut() {
+                                let l = n.dot(*n);
+                                assert_ne!(l, 0.0);
+                                if l != 1.0 {
+                                    *n /= l.sqrt();
+                                }
+                            }
+                        }
+
+                        let mut meshes = vec![geometry::Mesh {
+                            name: mesh_mts.name, // Does this is the name to use?
+                            vertices: mesh_mts.vertices,
+                            indices: mesh_mts.indices,
+                            normals: mesh_mts.normals,
+                            uv: mesh_mts.texcoords,
+                            bsdf: match &shape.option.bsdf {
+                                Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
+                                None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
+                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(
+                                        0.8,
+                                    )),
+                                }),
+                            },
+                            emission: match &shape.option.emitter {
+                                Some(emitter) => {
+                                    let rgb = emitter.radiance.clone().as_rgb();
+                                    Color {
+                                        r: rgb.r,
+                                        g: rgb.g,
+                                        b: rgb.b,
+                                    }
+                                }
+                                None => Color::zero(),
+                            },
+                            cdf: dist_const.normalize(),
+                        }];
+
+                        // Apply transform
+                        for m in &mut meshes {
+                            apply_transform(m, shape.option.to_world.clone());
+                        }
+
+                        meshes
                     }
                     _ => {
                         warn!("Ignoring shape {:?}", s);

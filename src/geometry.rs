@@ -153,8 +153,6 @@ impl Mesh {
 
     // FIXME: reuse random number
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
-        assert!(self.normals.is_some());
-
         // Select a triangle
         let id = self.indices[self.cdf.sample(s)];
 
@@ -162,17 +160,27 @@ impl Mesh {
         let v1 = self.vertices[id.y];
         let v2 = self.vertices[id.z];
 
-        let normals = self.normals.as_ref().unwrap();
-        let n0 = normals[id.x];
-        let n1 = normals[id.y];
-        let n2 = normals[id.z];
+
 
         // Select barycentric coordinate on a triangle
         let b = uniform_sample_triangle(v);
 
         // interpol the point
         let pos = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
-        let normal = n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1]);
+        let normal = match &self.normals {
+            Some(normals) => {
+                let n0 = normals[id.x];
+                let n1 = normals[id.y];
+                let n2 = normals[id.z];
+                n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1])
+            }
+            None => {
+                let u = v1 - v0;
+                let v = v2 - v0;
+                v.cross(u).normalize()
+            }
+        };
+
         SampledPosition {
             p: Point3::from_vec(pos),
             n: normal,

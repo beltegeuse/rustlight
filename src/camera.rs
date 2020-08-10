@@ -4,7 +4,6 @@ use std::f32;
 
 pub struct Camera {
     pub img: Vector2<u32>,
-    pub fov: f32, //< y
     // Internally
     camera_to_sample: Matrix4<f32>,
     sample_to_camera: Matrix4<f32>,
@@ -15,20 +14,40 @@ pub struct Camera {
     image_rect_max: Point2<f32>,
 }
 
+pub enum Fov {
+    Y(f32),
+    X(f32),
+}
+impl Fov {
+    pub fn value(&self) -> f32 {
+        match self {
+            Fov::Y(v) => *v,
+            Fov::X(v) => *v,
+        }
+    }
+}
+
 impl Camera {
-    pub fn new(img: Vector2<u32>, fov: f32, mat: Matrix4<f32>) -> Camera {
+    pub fn new(img: Vector2<u32>, fov: Fov, mat: Matrix4<f32>, flip: bool) -> Camera {
         let to_world = mat;
         let to_local = to_world.inverse_transform().unwrap();
 
-        // Compute camera informations
-        // fov: y
-        // TODO: Check this fov problem
+        // Control the flipping on the horizontal axis
+        let x_v = if flip { 1.0 } else { -1.0 };
+
+        // Adjust the fov variables
         let aspect_ratio = img.x as f32 / img.y as f32;
-        let fov_rad = Rad(fov * aspect_ratio * f32::consts::PI / 180.0); //2.0 * f32::tan((fov / 2.0) * f32::consts::PI / 180.0));//(fov * f32::consts::PI / 180.0);
+        //2.0 * f32::tan((fov / 2.0) * f32::consts::PI / 180.0));//(fov * f32::consts::PI / 180.0);
+        let fov_rad = match fov {
+            Fov::X(v) => Rad(v * (1.0 / aspect_ratio) * f32::consts::PI / 180.0),
+            Fov::Y(v) => Rad(v * aspect_ratio * f32::consts::PI / 180.0),
+        };
+
+        // Compute camera informations
         let camera_to_sample = Matrix4::from_nonuniform_scale(-0.5, -0.5 * aspect_ratio, 1.0)
             * Matrix4::from_translation(Vector3::new(-1.0, -1.0 / aspect_ratio, 0.0))
             * perspective(fov_rad, 1.0, 1e-2, 1000.0)
-            * Matrix4::from_nonuniform_scale(-1.0, 1.0, -1.0); // undo gluPerspective (z neg)
+            * Matrix4::from_nonuniform_scale(x_v, 1.0, -1.0); // undo gluPerspective (z neg)
         let sample_to_camera = camera_to_sample.inverse_transform().unwrap();
 
         // Compute the image plane inside the sample space.
@@ -38,7 +57,6 @@ impl Camera {
         let image_rect_max = Point2::new(p0.x.max(p1.x), p0.y.max(p1.y)) / p0.z.max(p1.z);
         Camera {
             img,
-            fov,
             camera_to_sample,
             sample_to_camera,
             to_world,

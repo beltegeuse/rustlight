@@ -330,6 +330,48 @@ fn bsdf_texture_match_mts(v: &mitsuba_rs::BSDFColorSpectrum, wk: &std::path::Pat
 }
 
 #[cfg(feature = "mitsuba")]
+fn bsdf_texture_f32_mts(v: &mitsuba_rs::BSDFColorFloat, _wk: &std::path::Path) -> f32 {
+    match v {
+        mitsuba_rs::BSDFColorFloat::Constant(v) => *v,
+        _ => panic!("Float texture are not supported yet!")
+    }
+}
+
+
+#[cfg(feature = "mitsuba")]
+fn distribution_mts(d: &Option<mitsuba_rs::Distribution>,  wk: &std::path::Path) -> Option<MicrofacetDistributionBSDF> {
+    match d {
+        None => None,
+        Some(d) => {
+            let (alpha_u, alpha_v) = match &d.alpha {
+                mitsuba_rs::Alpha::Isotropic(alpha) => {
+                    let alpha = bsdf_texture_f32_mts(&alpha, wk);
+                    (alpha, alpha)
+                }
+                mitsuba_rs::Alpha::Anisotropic {u ,v} => {
+                    let alpha_u = bsdf_texture_f32_mts(&u, wk);
+                    let alpha_v = bsdf_texture_f32_mts(&v, wk);
+                    assert_eq!(alpha_u, alpha_v); // No anisotropic material for now
+                    (alpha_u, alpha_v)
+                }
+            };
+
+            let microfacet_type = match &d.distribution[..] {
+                "beckmann" => MicrofacetType::Beckmann,
+                "ggx" => MicrofacetType::GGX,
+                _ => panic!("Unsupported microfacet type {}", d.distribution)
+            };
+
+            Some(MicrofacetDistributionBSDF {
+                microfacet_type,
+                alpha_u,
+                alpha_v
+            })
+        } 
+    }
+}
+
+#[cfg(feature = "mitsuba")]
 pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF + Sync + Send> {
     let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
         mitsuba_rs::BSDF::TwoSided { bsdf } => {
@@ -341,6 +383,7 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
             Some(Box::new(BSDFDiffuse { diffuse }))
         }
         // Thin material are ignored
+        // Impossible to do rough glass
         mitsuba_rs::BSDF::Dielectric {
             int_ior,
             ext_ior,
@@ -359,6 +402,24 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
                     inv_eta: 1.0,
                 }
                 .eta(*int_ior, *ext_ior),
+            ))
+        }
+        // TODO: Might be a mismatch between different BSDF
+        mitsuba_rs::BSDF::Plastic {
+            distribution,
+            specular_reflectance,
+            diffuse_reflectance,
+            .. // Ignoring nonlinear, int_ior and ext_ior
+        } => {
+            let specular = bsdf_texture_match_mts(specular_reflectance, wk);
+            let diffuse = bsdf_texture_match_mts(diffuse_reflectance, wk);
+
+            Some(Box::new(
+                BSDFSubstrate {
+                    specular,
+                    diffuse,
+                    distribution: distribution_mts(distribution, &wk)
+                }
             ))
         }
         _ => None,
