@@ -300,8 +300,8 @@ impl SceneLoader for MTSSceneLoader {
             let mat = mat.inverse_transform().unwrap();
             // TODO: Revisit the sensor definition
             let fov = match &mts_sensor.fov_axis[..] {
-                "x" => Fov::Y(mts_sensor.fov),
-                "y" => Fov::X(mts_sensor.fov),
+                "x" => Fov::X(mts_sensor.fov),
+                "y" => Fov::Y(mts_sensor.fov),
                 _ => panic!("Unsupport Fov axis definition: {}", mts_sensor.fov_axis),
             };
             Camera::new(img_size, fov, mat, true)
@@ -374,7 +374,7 @@ impl SceneLoader for MTSSceneLoader {
                             for m in &mut meshes {
                                 if let Some(uv) = m.uv.as_mut() {
                                     for e in uv {
-                                        e.x = 1.0 - e.x;
+                                        // Only v coordinate
                                         e.y = 1.0 - e.y;
                                     }
                                 }

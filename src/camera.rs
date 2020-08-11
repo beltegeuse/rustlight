@@ -36,10 +36,10 @@ impl Camera {
         let x_v = if flip { 1.0 } else { -1.0 };
 
         // Adjust the fov variables
-        let aspect_ratio = img.x as f32 / img.y as f32;
+        let aspect_ratio = dbg!(img.x as f32 / img.y as f32);
         //2.0 * f32::tan((fov / 2.0) * f32::consts::PI / 180.0));//(fov * f32::consts::PI / 180.0);
         let fov_rad = match fov {
-            Fov::X(v) => Rad(v * (1.0 / aspect_ratio) * f32::consts::PI / 180.0),
+            Fov::X(v) => Rad(v * f32::consts::PI / 180.0),
             Fov::Y(v) => Rad(v * aspect_ratio * f32::consts::PI / 180.0),
         };
 
