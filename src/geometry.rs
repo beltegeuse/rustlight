@@ -23,13 +23,13 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
         // Load vertex position
         let indices = mesh
             .indices
-            .chunks(3)
+            .chunks_exact(3)
             .map(|i| Vector3::new(i[0] as usize, i[1] as usize, i[2] as usize))
             .collect::<Vec<_>>();
         info!(" - triangles: {}", indices.len());
         let vertices = mesh
             .positions
-            .chunks(3)
+            .chunks_exact(3)
             .map(|i| Vector3::new(i[0], i[1], i[2]))
             .collect();
         // Load normal
@@ -38,7 +38,7 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
         } else {
             Some(
                 mesh.normals
-                    .chunks(3)
+                    .chunks_exact(3)
                     .map(|i| Vector3::new(i[0], i[1], i[2]))
                     .collect(),
             )
@@ -49,7 +49,7 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
         } else {
             Some(
                 mesh.texcoords
-                    .chunks(2)
+                    .chunks_exact(2)
                     .map(|i| Vector2::new(i[0], i[1]))
                     .collect(),
             )
@@ -126,8 +126,10 @@ impl Mesh {
         if let Some(ref mut ns) = normals.as_mut() {
             for n in ns.iter_mut() {
                 let l = n.dot(*n);
-                assert_ne!(l, 0.0);
-                if l != 1.0 {
+                if l == 0.0 {
+                    warn!("Wrong normal! {:?}", n);
+                // TODO: Need to do something...
+                } else if l != 1.0 {
                     *n /= l.sqrt();
                 }
             }
@@ -155,12 +157,9 @@ impl Mesh {
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
         // Select a triangle
         let id = self.indices[self.cdf.sample(s)];
-
         let v0 = self.vertices[id.x];
         let v1 = self.vertices[id.y];
         let v2 = self.vertices[id.z];
-
-
 
         // Select barycentric coordinate on a triangle
         let b = uniform_sample_triangle(v);
@@ -172,7 +171,7 @@ impl Mesh {
                 let n0 = normals[id.x];
                 let n1 = normals[id.y];
                 let n2 = normals[id.z];
-                n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1])
+                (n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1])).normalize()
             }
             None => {
                 let u = v1 - v0;

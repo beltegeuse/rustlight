@@ -373,6 +373,13 @@ impl Bitmap {
             }
         }
     }
+    pub fn gamma(&mut self, v: f32) {
+        for c in &mut self.colors {
+            c.r = c.r.powf(v);
+            c.g = c.g.powf(v);
+            c.b = c.b.powf(v);
+        }
+    }
     pub fn scale(&mut self, v: f32) {
         self.colors.iter_mut().for_each(|x| x.scale(v));
     }

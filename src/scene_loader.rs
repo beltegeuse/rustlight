@@ -336,7 +336,10 @@ impl SceneLoader for MTSSceneLoader {
             .map(|s| {
                 match s {
                     mitsuba_rs::Shape::Obj {
-                        filename, option, ..
+                        filename,
+                        option,
+                        flip_tex_coords,
+                        ..
                     } => {
                         let obj_path = wk.join(std::path::Path::new(&filename));
 
@@ -367,6 +370,17 @@ impl SceneLoader for MTSSceneLoader {
                             }
                         }
 
+                        if flip_tex_coords {
+                            for m in &mut meshes {
+                                if let Some(uv) = m.uv.as_mut() {
+                                    for e in uv {
+                                        e.x = 1.0 - e.x;
+                                        e.y = 1.0 - e.y;
+                                    }
+                                }
+                            }
+                        }
+
                         // Apply transform
                         for m in &mut meshes {
                             apply_transform(m, option.to_world.clone());
@@ -394,8 +408,10 @@ impl SceneLoader for MTSSceneLoader {
                         if let Some(ref mut ns) = mesh_mts.normals.as_mut() {
                             for n in ns.iter_mut() {
                                 let l = n.dot(*n);
-                                assert_ne!(l, 0.0);
-                                if l != 1.0 {
+                                if l == 0.0 {
+                                    warn!("Wrong normal! {:?}", n);
+                                // TODO: Need to do something...
+                                } else if l != 1.0 {
                                     *n /= l.sqrt();
                                 }
                             }

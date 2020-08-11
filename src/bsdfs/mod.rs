@@ -17,27 +17,33 @@ pub struct Texture {
     pub img: Bitmap,
 }
 
+#[cfg(feature = "image")]
 impl Texture {
     // With features
-    #[cfg(feature = "image")]
     pub fn load(path: &str) -> Texture {
         Texture {
             img: Bitmap::read(path),
         }
     }
-    #[cfg(feature = "image")]
     pub fn pixel(&self, uv: Vector2<f32>) -> Color {
         self.img.pixel_uv(uv)
     }
 
-    // Without
-    #[cfg(not(feature = "image"))]
+    pub fn avg(&self) -> Color {
+        self.img.average()
+    }
+}
+
+#[cfg(not(feature = "image"))]
+impl Texture {
     pub fn load(_path: &str) -> Texture {
         unimplemented!("No support of textures");
     }
-    #[cfg(not(feature = "image"))]
     pub fn pixel(&self, _uv: Vector2<f32>) -> Color {
-        unimplemented!("No support of images");
+        unimplemented!("No support of textures");
+    }
+    pub fn avg(&self) -> Color {
+        unimplemented!("No support of textures");
     }
 }
 
@@ -68,6 +74,13 @@ impl BSDFColor {
                     Color::zero()
                 }
             }
+        }
+    }
+
+    pub fn avg(&self) -> Color {
+        match self {
+            BSDFColor::UniformColor(c) => *c,
+            BSDFColor::TextureColor(c) => c.avg(),
         }
     }
 }
@@ -324,7 +337,11 @@ fn bsdf_texture_match_mts(v: &mitsuba_rs::BSDFColorSpectrum, wk: &std::path::Pat
             BSDFColor::UniformColor(v)
         }
         mitsuba_rs::BSDFColorSpectrum::Texture(v) => {
-            BSDFColor::TextureColor(Texture::load(wk.join(v.filename.clone()).to_str().unwrap()))
+            let mut texture = Texture::load(wk.join(v.filename.clone()).to_str().unwrap());
+            if v.gamma != 1.0 {
+                texture.img.gamma(1.0 / v.gamma);
+            }
+            BSDFColor::TextureColor(texture)
         }
     }
 }
@@ -333,13 +350,15 @@ fn bsdf_texture_match_mts(v: &mitsuba_rs::BSDFColorSpectrum, wk: &std::path::Pat
 fn bsdf_texture_f32_mts(v: &mitsuba_rs::BSDFColorFloat, _wk: &std::path::Path) -> f32 {
     match v {
         mitsuba_rs::BSDFColorFloat::Constant(v) => *v,
-        _ => panic!("Float texture are not supported yet!")
+        _ => panic!("Float texture are not supported yet!"),
     }
 }
 
-
 #[cfg(feature = "mitsuba")]
-fn distribution_mts(d: &Option<mitsuba_rs::Distribution>,  wk: &std::path::Path) -> Option<MicrofacetDistributionBSDF> {
+fn distribution_mts(
+    d: &Option<mitsuba_rs::Distribution>,
+    wk: &std::path::Path,
+) -> Option<MicrofacetDistributionBSDF> {
     match d {
         None => None,
         Some(d) => {
@@ -348,7 +367,7 @@ fn distribution_mts(d: &Option<mitsuba_rs::Distribution>,  wk: &std::path::Path)
                     let alpha = bsdf_texture_f32_mts(&alpha, wk);
                     (alpha, alpha)
                 }
-                mitsuba_rs::Alpha::Anisotropic {u ,v} => {
+                mitsuba_rs::Alpha::Anisotropic { u, v } => {
                     let alpha_u = bsdf_texture_f32_mts(&u, wk);
                     let alpha_v = bsdf_texture_f32_mts(&v, wk);
                     assert_eq!(alpha_u, alpha_v); // No anisotropic material for now
@@ -359,15 +378,15 @@ fn distribution_mts(d: &Option<mitsuba_rs::Distribution>,  wk: &std::path::Path)
             let microfacet_type = match &d.distribution[..] {
                 "beckmann" => MicrofacetType::Beckmann,
                 "ggx" => MicrofacetType::GGX,
-                _ => panic!("Unsupported microfacet type {}", d.distribution)
+                _ => panic!("Unsupported microfacet type {}", d.distribution),
             };
 
             Some(MicrofacetDistributionBSDF {
                 microfacet_type,
                 alpha_u,
-                alpha_v
+                alpha_v,
             })
-        } 
+        }
     }
 }
 
@@ -381,6 +400,29 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
         mitsuba_rs::BSDF::Diffuse { reflectance } => {
             let diffuse = bsdf_texture_match_mts(reflectance, wk);
             Some(Box::new(BSDFDiffuse { diffuse }))
+        }
+        mitsuba_rs::BSDF::Phong {
+            exponent,
+            specular_reflectance,
+            diffuse_reflectance
+        } => {
+            let specular = bsdf_texture_match_mts(specular_reflectance, wk);
+            let diffuse = bsdf_texture_match_mts(diffuse_reflectance, wk);
+            let exponent = bsdf_texture_f32_mts(exponent, &wk);
+
+            let weight_specular = {
+                let d_avg = diffuse.avg().luminance();
+                let s_avg = specular.avg().luminance();
+                assert!(d_avg + s_avg != 0.0);
+                s_avg / (d_avg + s_avg)
+            };
+
+            Some(Box::new(BSDFPhong {
+                diffuse,
+                specular,
+                exponent,
+                weight_specular
+            }))
         }
         // Thin material are ignored
         // Impossible to do rough glass
@@ -419,6 +461,36 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
                     specular,
                     diffuse,
                     distribution: distribution_mts(distribution, &wk)
+                }
+            ))
+        }
+        mitsuba_rs::BSDF::Conductor {
+            distribution, eta, k, ext_eta, specular_reflectance
+        } => {
+            let specular = bsdf_texture_match_mts(specular_reflectance, wk);
+            let eta = {
+                let eta = eta.clone().as_rgb();
+                BSDFColor::UniformColor( Color {
+                    r: eta.r / ext_eta,
+                    g: eta.g / ext_eta,
+                    b: eta.b / ext_eta,
+                })
+            };
+            let k = {
+                let k = k.clone().as_rgb();
+                BSDFColor::UniformColor( Color {
+                    r: k.r / ext_eta,
+                    g: k.g / ext_eta,
+                    b: k.b / ext_eta,
+                })
+            };
+
+            Some(Box::new(
+                BSDFMetal {
+                    specular,
+                    eta,
+                    k,
+                    distribution: distribution_mts(distribution, wk)
                 }
             ))
         }
