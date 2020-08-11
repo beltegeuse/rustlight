@@ -137,7 +137,7 @@ fn main() {
                         Arg::with_name("strategy")
                             .takes_value(true)
                             .short("s")
-                            .help("difefrent sampling strategy: [all, bsdf, emitter]")
+                            .help("different sampling strategy: [all, bsdf, emitter]")
                             .default_value("all"),
                     )
                     .arg(
@@ -154,6 +154,39 @@ fn main() {
                             .short("b")
                             .default_value("100000"),
                     ),
+            )
+            .subcommand(
+                SubCommand::with_name("smcmc")
+                    .about("Stratified MCMC")
+                    .arg(&max_arg)
+                    .arg(&min_arg)
+                    .arg(
+                        Arg::with_name("strategy")
+                            .takes_value(true)
+                            .short("s")
+                            .help("different sampling strategy: [all, bsdf, emitter]")
+                            .default_value("all"),
+                    )
+                    .arg(
+                        Arg::with_name("large_prob")
+                            .help("probability to perform a large step")
+                            .takes_value(true)
+                            .short("p")
+                            .default_value("0.3"),
+                    ).arg(
+                        Arg::with_name("recons")
+                            .takes_value(true)
+                            .short("r")
+                            .help("recons image: [naive,irls]")
+                            .default_value("irls"),
+                    )
+                    .arg(
+                        Arg::with_name("init")
+                            .takes_value(true)
+                            .short("i")
+                            .help("init algorithm: [independent,mcmc]")
+                            .default_value("mcmc"),
+                    )
             )
             .subcommand(
                 SubCommand::with_name("erpt")
@@ -692,6 +725,70 @@ fn main() {
                             single_scattering: false,
                         },
                     ),
+                },
+            ))
+        }
+        ("smcmc", Some(m)) => {
+            let min_depth = match_infinity(m.value_of("min").unwrap());
+            let max_depth = match_infinity(m.value_of("max").unwrap());
+            let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
+            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            let strategy = match strategy.as_ref() {
+                "all" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
+                }
+                "bsdf" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::BSDF
+                }
+                "emitter" => {
+                    rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::Emitter
+                }
+                _ => panic!("invalid strategy: {}", strategy),
+            };
+            assert!(large_prob > 0.0 && large_prob <= 1.0);
+            let recons = value_t_or_exit!(m.value_of("recons"), String);
+            let recons = recons.split(":").into_iter().map(|v| v).collect::<Vec<_>>();
+            let recons: Box<dyn rustlight::integrators::mcmc::smcmc::Reconstruction> = match &recons
+                [..]
+            {
+                ["naive"] => Box::new(rustlight::integrators::mcmc::smcmc::ReconstructionNaive {}),
+                ["irls"] => Box::new(rustlight::integrators::mcmc::smcmc::ReconstructionIRLS {
+                    irls_iter: 20,
+                    internal_iter: 20,
+                    alpha: 0.01,
+                }),
+                _ => panic!("invalid recons: {:?}", recons),
+            };
+
+            let init = value_t_or_exit!(m.value_of("init"), String);
+            let init = init.split(":").into_iter().map(|v| v).collect::<Vec<_>>();
+            let init: Box<dyn rustlight::integrators::mcmc::smcmc::Initialization> = match &init[..]
+            {
+                ["independent"] => {
+                    Box::new(rustlight::integrators::mcmc::smcmc::IndependentInit { nb_spp: 16 })
+                }
+                ["mcmc"] => Box::new(rustlight::integrators::mcmc::smcmc::MCMCInit {
+                    spp_mc: 1,
+                    spp_mcmc: 8,
+                    chain_length: 100,
+                }),
+                _ => panic!("invalid init: {:?}", init),
+            };
+
+            IntegratorType::Primal(Box::new(
+                rustlight::integrators::mcmc::smcmc::StratifiedMCMC {
+                    integrator: Box::new(
+                        rustlight::integrators::explicit::path::IntegratorPathTracing {
+                            min_depth,
+                            max_depth,
+                            strategy,
+                            single_scattering: false,
+                        },
+                    ),
+                    chains: None,
+                    large_prob,
+                    recons,
+                    init,
                 },
             ))
         }

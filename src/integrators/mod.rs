@@ -223,6 +223,10 @@ pub trait Integrator {
         let buffernames = vec!["primal".to_string()];
         BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames)
     }
+
+    fn averaging(&self) -> bool {
+        true
+    }
 }
 pub trait IntegratorGradient: Integrator {
     fn compute_gradients(

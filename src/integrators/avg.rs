@@ -39,9 +39,17 @@ impl Integrator for IntegratorAverage {
             if iteration == 1 {
                 bitmap = Some(new_bitmap);
             } else {
-                bitmap.as_mut().unwrap().scale(iteration as f32);
-                bitmap.as_mut().unwrap().accumulate_bitmap(&new_bitmap);
-                bitmap.as_mut().unwrap().scale(1.0 / (iteration + 1) as f32);
+                let averaging = match &self.integrator {
+                    IntegratorType::Primal(v) => v.averaging(),
+                    IntegratorType::Gradient(v) => v.averaging(),
+                };
+                if averaging {
+                    bitmap.as_mut().unwrap().scale(iteration as f32);
+                    bitmap.as_mut().unwrap().accumulate_bitmap(&new_bitmap);
+                    bitmap.as_mut().unwrap().scale(1.0 / (iteration + 1) as f32);
+                } else {
+                    bitmap = Some(new_bitmap);
+                }
             }
 
             // Save the bitmap for the current iteration

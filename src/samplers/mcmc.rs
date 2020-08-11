@@ -3,15 +3,15 @@ use cgmath::Point2;
 use rand::prelude::*;
 
 pub trait Mutator: Send {
-    fn mutate(&self, v: f32, r: f32) -> f32;
+    fn mutate(&self, v: f32, r: f32, i: usize) -> f32;
     fn clone_box(&self) -> Box<dyn Mutator>;
 }
 
 #[derive(Clone)]
-struct MutatorKelemen {
+pub struct MutatorKelemen {
     pub s1: f32,
     pub s2: f32,
-    log_ratio: f32,
+    pub log_ratio: f32,
 }
 
 impl MutatorKelemen {
@@ -31,7 +31,7 @@ impl Default for MutatorKelemen {
 }
 
 impl Mutator for MutatorKelemen {
-    fn mutate(&self, v: f32, r: f32) -> f32 {
+    fn mutate(&self, v: f32, r: f32, _: usize) -> f32 {
         let (add, r) = if r < 0.5 {
             (true, r * 2.0)
         } else {
@@ -190,7 +190,7 @@ impl IndependentSamplerReplay {
                 // Replay previous steps (up to time - 1)
                 while self.values[i].modify + 1 < self.time {
                     let random = self.rand();
-                    self.values[i].value = self.mutator.mutate(self.values[i].value, random);
+                    self.values[i].value = self.mutator.mutate(self.values[i].value, random, i);
                     self.values[i].modify += 1;
                 }
 
@@ -198,7 +198,7 @@ impl IndependentSamplerReplay {
                 // do one mutation
                 self.backup.push((i, self.values[i]));
                 let random = self.rand();
-                self.values[i].value = self.mutator.mutate(self.values[i].value, random);
+                self.values[i].value = self.mutator.mutate(self.values[i].value, random, i);
                 self.values[i].modify += 1;
                 assert_eq!(self.values[i].modify, self.time);
             }
@@ -210,5 +210,12 @@ impl IndependentSamplerReplay {
     // FIXME: Do not expose this function
     pub fn rand(&mut self) -> f32 {
         self.rnd.gen()
+    }
+
+    /// Much care need to be taken when calling this function
+    /// indeed, this will replay the random number sequence
+    /// and extend it if necessary
+    pub fn reset_index(&mut self) {
+        self.indice = 0;
     }
 }

@@ -118,3 +118,4 @@ where
 
 pub mod erpt;
 pub mod pssmlt;
+pub mod smcmc;
