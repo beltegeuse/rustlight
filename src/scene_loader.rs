@@ -173,30 +173,45 @@ impl SceneLoader for PBRTSceneLoader {
         let working_dir = std::path::Path::new(filename).parent().unwrap();
         pbrt_rs::read_pbrt_file(filename, Some(&working_dir), &mut scene_info, &mut state);
 
+        // Then do some transformation
+        // if it is necessary
+        for s in &mut scene_info.shapes {
+            match &mut s.data {
+                pbrt_rs::Shape::Ply { filename, .. } => {
+                    s.data = pbrt_rs::ply::read_ply(std::path::Path::new(filename)).to_trimesh();
+                }
+                _ => (),
+            }
+        }
+
         // Load the data
-        let mut meshes: Vec<geometry::Mesh> = scene_info
+        let materials = scene_info.materials;
+        let textures = scene_info.textures;
+        let meshes = scene_info
             .shapes
-            .iter()
+            .into_iter()
             .map(|m| match m.data {
-                pbrt_rs::Shape::TriMesh(ref data) => {
+                pbrt_rs::Shape::TriMesh {
+                    uv,
+                    normals,
+                    points,
+                    indices,
+                } => {
                     let mat = m.matrix;
-                    let uv = data.uv.clone();
-                    let normals = match data.normals {
+                    let normals = match normals {
                         Some(ref v) => {
                             Some(v.iter().map(|n| mat.transform_vector(n.clone())).collect())
                         }
                         None => None,
                     };
-                    let points = data
-                        .points
-                        .iter()
+                    let points = points
+                        .into_iter()
                         .map(|n| mat.transform_point(n.clone()).to_vec())
                         .collect();
-                    let indices = data.indices.clone();
 
                     let bsdf = if let Some(ref name) = m.material_name {
-                        if let Some(bsdf_name) = scene_info.materials.get(name) {
-                            bsdfs::bsdf_pbrt(bsdf_name, &scene_info)
+                        if let Some(bsdf_name) = materials.get(name) {
+                            bsdfs::bsdf_pbrt(bsdf_name, &textures)
                         } else {
                             Box::new(bsdfs::diffuse::BSDFDiffuse {
                                 diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
@@ -210,22 +225,21 @@ impl SceneLoader for PBRTSceneLoader {
                     let mut mesh =
                         geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
                     mesh.bsdf = bsdf;
+
+                    match m.emission {
+                        Some(pbrt_rs::Param::RGB(ref rgb)) => {
+                            info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
+                            mesh.emission = Color::new(rgb.r, rgb.g, rgb.b)
+                        }
+                        None => {}
+                        _ => warn!("unsupported emission profile: {:?}", m.emission),
+                    }
+
                     mesh
                 }
+                _ => panic!("All mesh should be converted to trimesh"),
             })
-            .collect();
-
-        // Assign materials and emissions
-        for (i, shape) in scene_info.shapes.iter().enumerate() {
-            match shape.emission {
-                Some(pbrt_rs::Param::RGB(ref rgb)) => {
-                    info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
-                    meshes[i].emission = Color::new(rgb.r, rgb.g, rgb.b)
-                }
-                None => {}
-                _ => warn!("unsupported emission profile: {:?}", shape.emission),
-            }
-        }
+            .collect::<Vec<_>>();
 
         // Check if there is other emitter type
         let mut emitter_environment = None;

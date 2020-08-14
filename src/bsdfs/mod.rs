@@ -8,6 +8,7 @@ use mitsuba_rs;
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
 use std;
+use std::collections::HashMap;
 
 // Texture or uniform color buffers
 #[derive(Deserialize)]
@@ -174,7 +175,10 @@ pub fn parse_bsdf(
 }
 
 #[cfg(feature = "pbrt")]
-fn bsdf_texture_match_pbrt(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> Option<BSDFColor> {
+fn bsdf_texture_match_pbrt(
+    v: &pbrt_rs::Param,
+    textures: &HashMap<String, pbrt_rs::Texture>,
+) -> Option<BSDFColor> {
     match v {
         pbrt_rs::Param::Float(ref v) => {
             if v.len() != 1 {
@@ -187,7 +191,7 @@ fn bsdf_texture_match_pbrt(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> O
             Some(BSDFColor::UniformColor(Color::new(rgb.r, rgb.g, rgb.b)))
         }
         pbrt_rs::Param::Name(ref name) => {
-            if let Some(texture) = scene_info.textures.get(name) {
+            if let Some(texture) = textures.get(name) {
                 Some(BSDFColor::TextureColor(Texture::load(&texture.filename)))
             } else {
                 warn!("Impossible to found an texture with name: {}", name);
@@ -199,10 +203,13 @@ fn bsdf_texture_match_pbrt(v: &pbrt_rs::Param, scene_info: &pbrt_rs::Scene) -> O
 }
 
 #[cfg(feature = "pbrt")]
-pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn BSDF + Sync + Send> {
+pub fn bsdf_pbrt(
+    bsdf: &pbrt_rs::BSDF,
+    textures: &HashMap<String, pbrt_rs::Texture>,
+) -> Box<dyn BSDF + Sync + Send> {
     let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
         pbrt_rs::BSDF::Matte(ref v) => {
-            if let Some(diffuse) = bsdf_texture_match_pbrt(&v.kd, scene_info) {
+            if let Some(diffuse) = bsdf_texture_match_pbrt(&v.kd, textures) {
                 Some(Box::new(BSDFDiffuse { diffuse }))
             } else {
                 None
@@ -210,12 +217,12 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
         }
         pbrt_rs::BSDF::Glass(ref v) => {
             // Get BSDF colors
-            let specular_reflectance = bsdf_texture_match_pbrt(&v.kr, scene_info).unwrap();
-            let specular_transmittance = bsdf_texture_match_pbrt(&v.kt, scene_info).unwrap();
+            let specular_reflectance = bsdf_texture_match_pbrt(&v.kr, textures).unwrap();
+            let specular_transmittance = bsdf_texture_match_pbrt(&v.kt, textures).unwrap();
 
             // Roughness
-            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, scene_info).unwrap();
-            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, scene_info).unwrap();
+            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, textures).unwrap();
+            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, textures).unwrap();
 
             // FIXME: be able to load float textures?
             let (u_roughness, v_roughness) =
@@ -227,7 +234,7 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
                 );
             }
 
-            let index = bsdf_texture_match_pbrt(&v.index, scene_info).unwrap();
+            let index = bsdf_texture_match_pbrt(&v.index, textures).unwrap();
             let eta = match index {
                 BSDFColor::UniformColor(v) => v.r,
                 _ => unimplemented!("Texture ETA is not supported"),
@@ -245,19 +252,19 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             ))
         }
         pbrt_rs::BSDF::Metal(ref v) => {
-            let eta = bsdf_texture_match_pbrt(&v.eta, scene_info).unwrap();
-            let k = bsdf_texture_match_pbrt(&v.k, scene_info).unwrap();
+            let eta = bsdf_texture_match_pbrt(&v.eta, textures).unwrap();
+            let k = bsdf_texture_match_pbrt(&v.k, textures).unwrap();
             let (u_roughness, v_roughness) = if let (Some(ref u_rough), Some(ref v_rough)) =
                 (v.u_roughness.as_ref(), v.v_roughness.as_ref())
             {
                 (
-                    bsdf_texture_match_pbrt(u_rough, scene_info).unwrap(),
-                    bsdf_texture_match_pbrt(v_rough, scene_info).unwrap(),
+                    bsdf_texture_match_pbrt(u_rough, textures).unwrap(),
+                    bsdf_texture_match_pbrt(v_rough, textures).unwrap(),
                 )
             } else {
                 (
-                    bsdf_texture_match_pbrt(&v.roughness, scene_info).unwrap(),
-                    bsdf_texture_match_pbrt(&v.roughness, scene_info).unwrap(),
+                    bsdf_texture_match_pbrt(&v.roughness, textures).unwrap(),
+                    bsdf_texture_match_pbrt(&v.roughness, textures).unwrap(),
                 )
             };
             // FIXME: be able to load float textures?
@@ -279,7 +286,7 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             }))
         }
         pbrt_rs::BSDF::Mirror(ref v) => {
-            let specular = bsdf_texture_match_pbrt(&v.kr, scene_info).unwrap();
+            let specular = bsdf_texture_match_pbrt(&v.kr, textures).unwrap();
             Some(Box::new(BSDFMetal {
                 specular,
                 eta: BSDFColor::UniformColor(Color::one()),
@@ -288,10 +295,10 @@ pub fn bsdf_pbrt(bsdf: &pbrt_rs::BSDF, scene_info: &pbrt_rs::Scene) -> Box<dyn B
             }))
         }
         pbrt_rs::BSDF::Substrate(ref v) => {
-            let kd = bsdf_texture_match_pbrt(&v.kd, scene_info).unwrap();
-            let ks = bsdf_texture_match_pbrt(&v.ks, scene_info).unwrap();
-            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, scene_info).unwrap();
-            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, scene_info).unwrap();
+            let kd = bsdf_texture_match_pbrt(&v.kd, textures).unwrap();
+            let ks = bsdf_texture_match_pbrt(&v.ks, textures).unwrap();
+            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, textures).unwrap();
+            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, textures).unwrap();
 
             // FIXME: be able to load float textures?
             let (u_roughness, v_roughness) =
