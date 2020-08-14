@@ -2,6 +2,7 @@ use crate::geometry::Mesh;
 use crate::math::{sample_uniform_sphere, Distribution1D};
 use crate::structure::*;
 use cgmath::*;
+use std::sync::Arc;
 
 pub struct LightSampling<'a> {
     pub emitter: &'a dyn Emitter,
@@ -135,16 +136,16 @@ impl Emitter for Mesh {
     }
 }
 
-pub struct EmitterSampler<'scene> {
-    pub emitters: Vec<&'scene dyn Emitter>,
+pub struct EmitterSampler {
+    pub emitters: Vec<Arc<dyn Emitter>>,
     pub emitters_cdf: Distribution1D,
 }
 
-impl<'scene> EmitterSampler<'scene> {
+impl EmitterSampler {
     pub fn pdf(&self, emitter: &dyn Emitter) -> f32 {
         let emitter_addr: [usize; 2] = unsafe { std::mem::transmute(emitter) };
         for (i, e) in self.emitters.iter().enumerate() {
-            let other_addr: [usize; 2] = unsafe { std::mem::transmute(*e) };
+            let other_addr: [usize; 2] = unsafe { std::mem::transmute(e.as_ref()) };
             if emitter_addr[0] == other_addr[0] {
                 //if std::ptr::eq(emitter, *e) {
                 // I need the index to retrive an info
@@ -182,7 +183,10 @@ impl<'scene> EmitterSampler<'scene> {
     }
     pub fn random_select_emitter(&self, v: f32) -> (f32, &dyn Emitter) {
         let id_light = self.emitters_cdf.sample(v);
-        (self.emitters_cdf.pdf(id_light), self.emitters[id_light])
+        (
+            self.emitters_cdf.pdf(id_light),
+            self.emitters[id_light].as_ref(),
+        )
     }
 
     pub fn random_sample_emitter_position(

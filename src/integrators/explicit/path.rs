@@ -32,13 +32,12 @@ impl Technique for TechniquePathTracing {
     }
 }
 impl TechniquePathTracing {
-    fn evalute_edge<'scene, 'emitter>(
+    fn evalute_edge<'scene>(
         &self,
         curr_depth: u32,
         min_depth: Option<u32>,
-        path: &Path<'scene, 'emitter>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         edge_id: EdgeID,
         strategy: &IntegratorPathTracingStrategies,
@@ -81,7 +80,7 @@ impl TechniquePathTracing {
                             .strategies(path.vertex(vertex_id))
                             .iter()
                             .map(|s| {
-                                if let Some(v) = s.pdf(path, scene, emitters, vertex_id, edge_id) {
+                                if let Some(v) = s.pdf(path, scene, vertex_id, edge_id) {
                                     v
                                 } else {
                                     0.0
@@ -103,13 +102,12 @@ impl TechniquePathTracing {
         }
     }
 
-    fn evaluate<'scene, 'emitter>(
+    fn evaluate<'scene>(
         &self,
         curr_depth: u32,
         min_depth: Option<u32>,
-        path: &Path<'scene, 'emitter>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         strategy: &IntegratorPathTracingStrategies,
     ) -> Color {
@@ -124,7 +122,7 @@ impl TechniquePathTracing {
                     // Compute the contribution along this edge
                     // this only cover the fact that some next vertices are on some light sources
                     l_i += self.evalute_edge(
-                        curr_depth, min_depth, path, scene, emitters, vertex_id, *edge_id, strategy,
+                        curr_depth, min_depth, path, scene, vertex_id, *edge_id, strategy,
                     );
 
                     // Continue on the edges if there is a vertex
@@ -137,7 +135,6 @@ impl TechniquePathTracing {
                                 min_depth,
                                 path,
                                 scene,
-                                emitters,
                                 vertex_next_id,
                                 strategy,
                             );
@@ -168,7 +165,6 @@ impl TechniquePathTracing {
                             min_depth,
                             path,
                             scene,
-                            emitters,
                             vertex_next_id,
                             strategy,
                         );
@@ -197,7 +193,6 @@ impl IntegratorMC for IntegratorPathTracing {
         accel: &dyn Acceleration,
         scene: &Scene,
         sampler: &mut dyn Sampler,
-        emitters: &EmitterSampler,
     ) -> Color {
         // Initialize the technique
         let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
@@ -223,24 +218,8 @@ impl IntegratorMC for IntegratorPathTracing {
         // the generator give back the root nodes
         let mut path = Path::default();
         let root = path.from_sensor(Point2::new(ix, iy), scene, sampler);
-        generate(
-            &mut path,
-            root.0,
-            accel,
-            scene,
-            emitters,
-            sampler,
-            &mut technique,
-        );
+        generate(&mut path, root.0, accel, scene, sampler, &mut technique);
         // Evaluate the sampling graph
-        technique.evaluate(
-            0,
-            self.min_depth,
-            &path,
-            scene,
-            emitters,
-            root.0,
-            &self.strategy,
-        )
+        technique.evaluate(0, self.min_depth, &path, scene, root.0, &self.strategy)
     }
 }

@@ -34,7 +34,7 @@ impl TechniqueLightTracing {
     fn evaluate<'scene>(
         &self,
         depth: u32,
-        path: &Path<'scene, '_>,
+        path: &Path<'scene>,
         accel: &dyn Acceleration,
         scene: &'scene Scene,
         vertex_id: VertexID,
@@ -228,7 +228,6 @@ impl Integrator for IntegratorLightTracing {
             samplers.par_iter_mut().for_each(|s| {
                 let mut my_img =
                     BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffer_names);
-                let emitters = scene.emitters_sampler();
 
                 // Initialize the strategy and the path
                 // the path will be reused for each samples generated
@@ -249,16 +248,8 @@ impl Integrator for IntegratorLightTracing {
 
                 (0..nb_samples).for_each(|_| {
                     path.clear();
-                    let root = path.from_light(s.as_mut(), &emitters);
-                    generate(
-                        &mut path,
-                        root.0,
-                        accel,
-                        scene,
-                        &emitters,
-                        s.as_mut(),
-                        &mut technique,
-                    );
+                    let root = path.from_light(scene, s.as_mut());
+                    generate(&mut path, root.0, accel, scene, s.as_mut(), &mut technique);
                     // Evaluate the path generated using camera splatting operation
                     technique.evaluate(0, &path, accel, scene, root.0, &mut my_img, root.1);
                 });

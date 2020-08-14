@@ -59,7 +59,7 @@ impl Edge {
     }
 
     pub fn from_ray<'scene>(
-        path: &mut Path<'scene, '_>,
+        path: &mut Path<'scene>,
         ray: &Ray,
         org_vertex_id: VertexID,
         pdf_direction: PDF,

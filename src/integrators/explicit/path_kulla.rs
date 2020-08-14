@@ -150,7 +150,6 @@ impl IntegratorMC for IntegratorPathKulla {
         accel: &dyn Acceleration,
         scene: &Scene,
         sampler: &mut dyn Sampler,
-        emitters: &EmitterSampler,
     ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
@@ -179,7 +178,7 @@ impl IntegratorMC for IntegratorPathKulla {
             }
 
             // Sampling a point on the light source
-            let (_emitter, sampled_pos, flux) = emitters.random_sample_emitter_position(
+            let (_emitter, sampled_pos, flux) = scene.emitters().random_sample_emitter_position(
                 sampler.next(),
                 sampler.next(),
                 sampler.next2d(),
@@ -250,7 +249,7 @@ impl IntegratorMC for IntegratorPathKulla {
             }
 
             // Configuration
-            let pdf_emitter = emitters.pdf(its.mesh);
+            let pdf_emitter = scene.emitters().pdf(its.mesh);
             let light_w = its.p - p;
             let light_dist = light_w.magnitude();
 

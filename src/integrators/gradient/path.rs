@@ -115,7 +115,6 @@ impl IntegratorGradient for IntegratorGradientPath {
             image_blocks
                 .par_iter_mut()
                 .for_each(|(info, im_block, sampler)| {
-                    let emitters = scene.emitters_sampler();
                     for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
                         for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
                             for n in 0..scene.nb_samples {
@@ -123,7 +122,6 @@ impl IntegratorGradient for IntegratorGradientPath {
                                     (ix + im_block.pos.x, iy + im_block.pos.y),
                                     accel,
                                     scene,
-                                    &emitters,
                                     sampler.as_mut(),
                                 );
                                 // Accumulate the values inside the buffer
@@ -222,7 +220,6 @@ impl IntegratorGradientPath {
         (ix, iy): (u32, u32),
         accel: &dyn Acceleration,
         scene: &Scene,
-        emitters: &EmitterSampler,
         sampler: &mut dyn Sampler,
     ) -> ColorGradient {
         let mut l_i = ColorGradient::default();
@@ -264,7 +261,9 @@ impl IntegratorGradientPath {
                 let (r_sel_rand, r_rand, uv_rand) =
                     (sampler.next(), sampler.next(), sampler.next2d());
                 let main_light_record =
-                    emitters.sample_light(&main.its.p, r_sel_rand, r_rand, uv_rand);
+                    scene
+                        .emitters()
+                        .sample_light(&main.its.p, r_sel_rand, r_rand, uv_rand);
                 let main_light_visible = accel.visible(&main.its.p, &main_light_record.p);
                 let main_emitter_rad = if main_light_visible {
                     main_light_record.weight
@@ -373,7 +372,8 @@ impl IntegratorGradientPath {
 
                                 if !intersectable_light || (main_bsdf_rought && shift_bsdf_rought) {
                                     // Sample the light from the point
-                                    let shift_light_record = emitters
+                                    let shift_light_record = scene
+                                        .emitters()
                                         .sample_light(&s.its.p, r_sel_rand, r_rand, uv_rand);
                                     let shift_light_visible =
                                         accel.visible(&s.its.p, &shift_light_record.p);
@@ -483,7 +483,8 @@ impl IntegratorGradientPath {
             let (main_light_pdf, main_emitter_rad) = {
                 if main_next_mesh.is_light() && main.its.cos_theta() > 0.0 {
                     let light_pdf = f64::from(
-                        emitters
+                        scene
+                            .emitters()
                             .direct_pdf(main.its.mesh, &LightSamplingPDF::new(&main.ray, &main.its))
                             .value(),
                     );
@@ -655,7 +656,8 @@ impl IntegratorGradientPath {
                                             // FIXME: Do not use the trick of 0 PDF
                                             (Color::zero(), 0.0)
                                         } else {
-                                            let shift_emitter_pdf = emitters
+                                            let shift_emitter_pdf = scene
+                                                .emitters()
                                                 .direct_pdf(
                                                     main_next_mesh,
                                                     &LightSamplingPDF {

@@ -937,9 +937,8 @@ impl Initialization for IndependentInit {
             chains
                 .par_chunks_mut(img_size.y as usize)
                 .for_each(|tiles| {
-                    let emitters = scene.emitters_sampler();
                     let technique = |p: (u32, u32), s: &mut dyn Sampler| -> Color {
-                        int.compute_pixel((p.0, p.1), accel, scene, s, &emitters)
+                        int.compute_pixel((p.0, p.1), accel, scene, s)
                     };
                     let mut nb_initialized = 0;
                     for tile in &mut tiles[..] {
@@ -1006,9 +1005,8 @@ impl Initialization for MCMCInit {
             let seeds: Vec<(rand::rngs::SmallRng, f32, Point2<u32>)> = entries
                 .par_chunks_mut(img_size.y as usize)
                 .map(|entries| {
-                    let emitters = scene.emitters_sampler();
                     let technique = |p: (u32, u32), s: &mut dyn Sampler| -> Color {
-                        int.compute_pixel((p.0, p.1), accel, scene, s, &emitters)
+                        int.compute_pixel((p.0, p.1), accel, scene, s)
                     };
                     let mut seeds = vec![];
                     for entry in &mut entries[..] {
@@ -1059,9 +1057,8 @@ impl Initialization for MCMCInit {
                 .into_par_iter()
                 .for_each(|(chain_id, mut dumy_tile)| {
                     let img_mut = MutatorKelemen::default();
-                    let emitters = scene.emitters_sampler();
                     let technique = |p: (u32, u32), s: &mut dyn Sampler| -> Color {
-                        int.compute_pixel((p.0, p.1), accel, scene, s, &emitters)
+                        int.compute_pixel((p.0, p.1), accel, scene, s)
                     };
 
                     // Pick one with stratified sampling
@@ -1240,10 +1237,8 @@ impl Integrator for StratifiedMCMC {
             // TODO: Should change the state to random [0, 3]
             // (this will be important if the number of SPP is not 8 multiple)
             let mut state = State::MCMC(0);
-
-            let emitters = scene.emitters_sampler();
             let technique = |p: (u32, u32), s: &mut dyn Sampler| -> Color {
-                int.compute_pixel((p.0, p.1), accel, scene, s, &emitters)
+                int.compute_pixel((p.0, p.1), accel, scene, s)
             };
 
             // For now, it is good assumptions

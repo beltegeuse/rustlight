@@ -1,5 +1,4 @@
 use crate::accel::*;
-use crate::emitter::*;
 use crate::math::*;
 use crate::paths::edge::*;
 use crate::paths::path::*;
@@ -18,7 +17,7 @@ pub struct DirectionalSamplingStrategy {
 impl DirectionalSamplingStrategy {
     pub fn bounce<'scene>(
         &self,
-        path: &mut Path<'scene, '_>,
+        path: &mut Path<'scene>,
         vertex_id: VertexID,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
@@ -175,13 +174,12 @@ impl DirectionalSamplingStrategy {
     }
 }
 impl SamplingStrategy for DirectionalSamplingStrategy {
-    fn sample<'scene, 'emitter>(
+    fn sample<'scene>(
         &self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         vertex_id: VertexID,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        _emitters: &'emitter EmitterSampler,
         mut throughput: Color,
         sampler: &mut dyn Sampler,
         medium: Option<&HomogenousVolume>,
@@ -220,11 +218,10 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
             None
         }
     }
-    fn pdf<'scene, 'emitter>(
+    fn pdf<'scene>(
         &self,
-        path: &Path<'scene, 'emitter>,
+        path: &Path<'scene>,
         _scene: &'scene Scene,
-        _emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {

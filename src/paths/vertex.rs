@@ -6,7 +6,7 @@ use crate::volume::*;
 use cgmath::*;
 
 #[derive(Clone)]
-pub enum Vertex<'scene, 'emitter> {
+pub enum Vertex<'scene> {
     Sensor {
         uv: Point2<f32>,
         pos: Point3<f32>,
@@ -22,7 +22,7 @@ pub enum Vertex<'scene, 'emitter> {
     Light {
         pos: Point3<f32>,
         n: Vector3<f32>,
-        emitter: &'emitter dyn Emitter,
+        emitter: &'scene dyn Emitter,
         edge_in: Option<EdgeID>,
         edge_out: Option<EdgeID>,
     },
@@ -35,7 +35,7 @@ pub enum Vertex<'scene, 'emitter> {
         edge_out: Vec<EdgeID>,
     },
 }
-impl<'scene, 'emitter> Vertex<'scene, 'emitter> {
+impl<'scene> Vertex<'scene> {
     pub fn pixel_pos(&self) -> Point2<f32> {
         match *self {
             Vertex::Sensor { uv, .. } => uv,

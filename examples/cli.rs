@@ -463,6 +463,9 @@ fn main() {
         }
     }
 
+    // Build internal
+    scene.build_emitters();
+
     ///////////////// Get the reconstruction algorithm
     let recons = match matches.subcommand() {
         ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {

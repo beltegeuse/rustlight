@@ -12,10 +12,10 @@ use cgmath::InnerSpace;
 
 pub struct LightSamplingStrategy {}
 impl LightSamplingStrategy {
-    fn pdf_emitter<'scene, 'emitter>(
+    fn pdf_emitter<'scene>(
         &self,
-        path: &Path<'scene, 'emitter>,
-        emitters: &'emitter EmitterSampler,
+        path: &Path<'scene>,
+        scene: &'scene Scene,
         ray: Ray,
         next_vertex_id: VertexID,
     ) -> Option<f32> {
@@ -23,8 +23,9 @@ impl LightSamplingStrategy {
             Vertex::Surface { its, .. } => {
                 // We could create a emitter sampling
                 // if we have intersected the light source randomly
-                if let PDF::SolidAngle(light_pdf) =
-                    emitters.direct_pdf(its.mesh, &LightSamplingPDF::new(&ray, its))
+                if let PDF::SolidAngle(light_pdf) = scene
+                    .emitters()
+                    .direct_pdf(its.mesh, &LightSamplingPDF::new(&ray, its))
                 {
                     Some(light_pdf)
                 } else {
@@ -34,7 +35,7 @@ impl LightSamplingStrategy {
             Vertex::Light {
                 emitter, pos, n, ..
             } => {
-                if let PDF::SolidAngle(light_pdf) = emitters.direct_pdf(
+                if let PDF::SolidAngle(light_pdf) = scene.emitters().direct_pdf(
                     *emitter,
                     &LightSamplingPDF {
                         o: ray.o,
@@ -53,13 +54,12 @@ impl LightSamplingStrategy {
     }
 }
 impl SamplingStrategy for LightSamplingStrategy {
-    fn sample<'scene, 'emitter>(
+    fn sample<'scene>(
         &self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         vertex_id: VertexID,
         accel: &'scene dyn Acceleration,
-        _scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
+        scene: &'scene Scene,
         _throughput: Color,
         sampler: &mut dyn Sampler,
         medium: Option<&HomogenousVolume>,
@@ -75,8 +75,12 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Note that during this procedure, we did not evaluate the product of the path throughput
                 // and the incomming direct light. This evaluation will be done later when MIS
                 // will be computed.
-                let light_record =
-                    emitters.sample_light(&its.p, sampler.next(), sampler.next(), sampler.next2d());
+                let light_record = scene.emitters().sample_light(
+                    &its.p,
+                    sampler.next(),
+                    sampler.next(),
+                    sampler.next2d(),
+                );
                 let visible = accel.visible(&its.p, &light_record.p);
                 if light_record.is_valid() && visible {
                     // We create a new vertex as it is a light
@@ -144,8 +148,12 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Note that during this procedure, we did not evaluate the product of the path throughput
                 // and the incomming direct light. This evaluation will be done later when MIS
                 // will be computed.
-                let light_record =
-                    emitters.sample_light(&pos, sampler.next(), sampler.next(), sampler.next2d());
+                let light_record = scene.emitters().sample_light(
+                    &pos,
+                    sampler.next(),
+                    sampler.next(),
+                    sampler.next2d(),
+                );
                 let visible = accel.visible(&pos, &light_record.p);
                 if light_record.is_valid() && visible {
                     let next_vertex = Vertex::Light {
@@ -210,11 +218,10 @@ impl SamplingStrategy for LightSamplingStrategy {
         None // Finish the sampling here
     }
 
-    fn pdf<'scene, 'emitter>(
+    fn pdf<'scene>(
         &self,
-        path: &Path<'scene, 'emitter>,
-        _scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
+        path: &Path<'scene>,
+        scene: &'scene Scene,
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {
@@ -231,7 +238,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Always ok for have sampling a light source
                 let ray = Ray::new(vertex.position(), edge.d);
                 if let Some(next_vertex_id) = edge.vertices.1 {
-                    self.pdf_emitter(path, emitters, ray, next_vertex_id)
+                    self.pdf_emitter(path, scene, ray, next_vertex_id)
                 } else {
                     None
                 }
@@ -244,7 +251,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // Know the the light is intersectable so have a solid angle PDF
                 let ray = Ray::new(vertex.position(), edge.d);
                 if let Some(next_vertex_id) = edge.vertices.1 {
-                    self.pdf_emitter(path, emitters, ray, next_vertex_id)
+                    self.pdf_emitter(path, scene, ray, next_vertex_id)
                 } else {
                     None
                 }

@@ -57,14 +57,13 @@ impl Default for RandomReplay {
     }
 }
 impl ShiftMapping for RandomReplay {
-    fn base<'scene, 'emitter>(
+    fn base<'scene>(
         &mut self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         sampler: &mut dyn Sampler,
     ) -> (Color, VertexID) {
         // Capture the random numbers
@@ -76,26 +75,17 @@ impl ShiftMapping for RandomReplay {
         // Call the generator on this technique
         // the generator give back the root nodes
         let root = path.from_sensor(pos, scene, &mut capture_sampler);
-        generate(
-            path,
-            root.0,
-            accel,
-            scene,
-            emitters,
-            &mut capture_sampler,
-            technique,
-        );
-        self.base_value = technique.evaluate(path, scene, emitters, root.0);
+        generate(path, root.0, accel, scene, &mut capture_sampler, technique);
+        self.base_value = technique.evaluate(path, scene, root.0);
         (self.base_value, root.0)
     }
-    fn shift<'scene, 'emitter>(
+    fn shift<'scene>(
         &mut self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         sampler: &mut dyn Sampler,
         _base: VertexID,
     ) -> ShiftValue {
@@ -110,11 +100,10 @@ impl ShiftMapping for RandomReplay {
             offset.0,
             accel,
             scene,
-            emitters,
             &mut capture_sampler,
             technique,
         );
-        let offset_contrib = technique.evaluate(path, scene, emitters, offset.0);
+        let offset_contrib = technique.evaluate(path, scene, offset.0);
         ShiftValue {
             base: 0.5 * self.base_value,
             offset: 0.5 * offset_contrib,

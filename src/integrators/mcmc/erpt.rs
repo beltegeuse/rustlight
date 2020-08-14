@@ -35,16 +35,13 @@ impl Integrator for IntegratorERPT {
         assert!(self.nb_mc < scene.nb_samples);
 
         ///////////// Define the closure
-        let sample = |s: &mut dyn Sampler, emitters: &EmitterSampler| {
+        let sample = |s: &mut dyn Sampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
             let y = (s.next() * scene.camera.size().y as f32) as u32;
 
             // State
             let mut state = MCMCState::empty();
-            let c = {
-                self.integrator
-                    .compute_pixel((x, y), accel, scene, s, emitters)
-            };
+            let c = { self.integrator.compute_pixel((x, y), accel, scene, s) };
             state.append(c, Point2::new(x, y));
             state
         };
@@ -66,11 +63,7 @@ impl Integrator for IntegratorERPT {
 
         // Compute the normalization factor
         // This factor is used to decide how many chains we need to spawn
-        let b = {
-            let emitters = scene.emitters_sampler();
-            let sampling = |s: &mut dyn Sampler| -> MCMCState { sample(s, &emitters) };
-            average_lum(1_000_000, sampling)
-        };
+        let b = average_lum(1_000_000, sample);
 
         // Create the full image
         let buffer_names = if ERPT_DEBUG {
@@ -117,8 +110,6 @@ impl Integrator for IntegratorERPT {
             image_blocks
                 .par_iter_mut()
                 .for_each(|(im_block, current_sampler)| {
-                    let emitters = scene.emitters_sampler();
-
                     // Create the full image
                     let mut my_img: BufferCollection = BufferCollection::new(
                         Point2::new(0, 0),
@@ -134,7 +125,7 @@ impl Integrator for IntegratorERPT {
                          s: &mut IndependentSamplerReplay| {
                             s.large_step = false; // No large steps
                             (0..nb_samples_per_chains).for_each(|_| {
-                                let mut proposed_state = sample(s, &emitters);
+                                let mut proposed_state = sample(s);
                                 let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
                                 // Do waste reclycling
                                 current_state.weight += 1.0 - accept_prob;
@@ -174,7 +165,6 @@ impl Integrator for IntegratorERPT {
                                             accel,
                                             scene,
                                             current_sampler,
-                                            &emitters,
                                         )
                                     };
                                     state.append(
@@ -184,7 +174,7 @@ impl Integrator for IntegratorERPT {
                                     state
                                 } else {
                                     // If no stratification, do same as PSSMLT
-                                    sample(current_sampler, &emitters)
+                                    sample(current_sampler)
                                 };
                                 // current.tf / b (gives the scaled between the average tf and the current tf)
                                 // nb_chains_per_pixel / self.nb_mc (gives the number of chains we want to starts per pixels)

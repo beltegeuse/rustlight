@@ -1,4 +1,3 @@
-use crate::emitter::EmitterSampler;
 use crate::paths::edge::*;
 use crate::paths::vertex::*;
 use crate::samplers::Sampler;
@@ -13,11 +12,11 @@ pub struct EdgeID(usize);
 
 /// Path structure
 /// This looks like a pool
-pub struct Path<'scene, 'emitter> {
-    vertices: Vec<Vertex<'scene, 'emitter>>,
+pub struct Path<'scene> {
+    vertices: Vec<Vertex<'scene>>,
     edges: Vec<Edge>,
 }
-impl<'scene, 'emitter> Default for Path<'scene, 'emitter> {
+impl<'scene, 'emitter> Default for Path<'scene> {
     fn default() -> Self {
         Path {
             vertices: vec![],
@@ -25,7 +24,7 @@ impl<'scene, 'emitter> Default for Path<'scene, 'emitter> {
         }
     }
 }
-impl<'scene, 'emitter> Path<'scene, 'emitter> {
+impl<'scene, 'emitter> Path<'scene> {
     /// Clear path (to be able to reuse it)
     pub fn clear(&mut self) {
         self.vertices.clear();
@@ -35,10 +34,10 @@ impl<'scene, 'emitter> Path<'scene, 'emitter> {
     /// Generate a root path from a light
     pub fn from_light(
         &mut self,
+        scene: &'scene Scene,
         sampler: &mut dyn Sampler,
-        emitters: &'emitter EmitterSampler,
     ) -> (VertexID, Color) {
-        let (emitter, sampled_point, flux) = emitters.random_sample_emitter_position(
+        let (emitter, sampled_point, flux) = scene.emitters().random_sample_emitter_position(
             sampler.next(),
             sampler.next(),
             sampler.next2d(),
@@ -76,18 +75,18 @@ impl<'scene, 'emitter> Path<'scene, 'emitter> {
         self.edges.push(e);
         EdgeID(id)
     }
-    pub fn register_vertex(&mut self, v: Vertex<'scene, 'emitter>) -> VertexID {
+    pub fn register_vertex(&mut self, v: Vertex<'scene>) -> VertexID {
         let id = self.vertices.len();
         self.vertices.push(v);
         VertexID(id)
     }
-    pub fn vertex(&self, id: VertexID) -> &Vertex<'scene, 'emitter> {
+    pub fn vertex(&self, id: VertexID) -> &Vertex<'scene> {
         &self.vertices[id.0]
     }
     pub fn edge(&self, id: EdgeID) -> &Edge {
         &self.edges[id.0]
     }
-    pub fn vertex_mut(&mut self, id: VertexID) -> &mut Vertex<'scene, 'emitter> {
+    pub fn vertex_mut(&mut self, id: VertexID) -> &mut Vertex<'scene> {
         &mut self.vertices[id.0]
     }
     pub fn edge_mut(&mut self, id: EdgeID) -> &mut Edge {

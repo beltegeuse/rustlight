@@ -1,5 +1,4 @@
 use crate::accel::*;
-use crate::emitter::*;
 use crate::samplers::*;
 use crate::scene::*;
 use crate::structure::*;
@@ -342,7 +341,6 @@ pub trait IntegratorMC: Sync + Send {
         accel: &dyn Acceleration,
         scene: &Scene,
         sampler: &mut dyn Sampler,
-        emitters: &EmitterSampler,
     ) -> Color;
 }
 
@@ -389,7 +387,6 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
     let pool = generate_pool(scene);
     pool.install(|| {
         image_blocks.par_iter_mut().for_each(|(im_block, sampler)| {
-            let light_sampling = scene.emitters_sampler();
             for iy in 0..im_block.size.y {
                 for ix in 0..im_block.size.x {
                     sampler.next_pixel(Point2::new(ix, iy));
@@ -399,7 +396,6 @@ pub fn compute_mc<T: IntegratorMC + Integrator>(
                             accel,
                             scene,
                             sampler.as_mut(),
-                            &light_sampling,
                         );
                         im_block.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
                         sampler.next_sample();

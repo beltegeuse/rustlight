@@ -374,7 +374,7 @@ impl PhotonPlane {
 impl TechniqueVolPrimitives {
     fn convert_planes<'scene>(
         &self,
-        path: &Path<'scene, '_>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
         vertex_id: VertexID,
         planes: &mut Vec<PhotonPlane>,
@@ -435,7 +435,7 @@ impl TechniqueVolPrimitives {
     fn convert_beams<'scene>(
         &self,
         only_from_surface: bool,
-        path: &Path<'scene, '_>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
         vertex_id: VertexID,
         beams: &mut Vec<PhotonBeam>,
@@ -522,7 +522,7 @@ impl TechniqueVolPrimitives {
 
     fn convert_photons<'scene>(
         &self,
-        path: &Path<'scene, '_>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
         vertex_id: VertexID,
         photons: &mut Vec<Photon>,
@@ -591,9 +591,7 @@ impl Integrator for IntegratorVolPrimitives {
         let mut beams = vec![];
         let mut planes = vec![];
 
-        let emitters = scene.emitters_sampler();
         let mut still_shoot = true;
-
         let samplings: Vec<Box<dyn SamplingStrategy>> =
             vec![Box::new(DirectionalSamplingStrategy {
                 transport: Transport::Radiance,
@@ -605,16 +603,8 @@ impl Integrator for IntegratorVolPrimitives {
         let mut path = Path::default();
         while still_shoot {
             path.clear();
-            let root = path.from_light(sampler, &emitters);
-            generate(
-                &mut path,
-                root.0,
-                accel,
-                scene,
-                &emitters,
-                sampler,
-                &mut technique,
-            );
+            let root = path.from_light(scene, sampler);
+            generate(&mut path, root.0, accel, scene, sampler, &mut technique);
             match self.primitives {
                 VolPrimitivies::Beams | VolPrimitivies::VRL => {
                     technique.convert_beams(false, &path, scene, root.0, &mut beams, 0.001, root.1);

@@ -1,5 +1,4 @@
 use crate::accel::*;
-use crate::emitter::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers::*;
@@ -10,13 +9,12 @@ use std;
 use std::mem;
 
 pub trait SamplingStrategy {
-    fn sample<'scene, 'emitter>(
+    fn sample<'scene>(
         &self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         vertex_id: VertexID,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         throughput: Color,
         sampler: &mut dyn Sampler,
         medium: Option<&HomogenousVolume>,
@@ -24,22 +22,20 @@ pub trait SamplingStrategy {
     ) -> Option<(VertexID, Color)>;
 
     // All PDF have to be inside the same domain
-    fn pdf<'scene, 'emitter>(
+    fn pdf<'scene>(
         &self,
-        path: &Path<'scene, 'emitter>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32>;
 }
 
-pub fn generate<'scene, 'emitter, T: Technique>(
-    path: &mut Path<'scene, 'emitter>,
+pub fn generate<'scene, T: Technique>(
+    path: &mut Path<'scene>,
     root: VertexID,
     accel: &'scene dyn Acceleration,
     scene: &'scene Scene,
-    emitters: &'emitter EmitterSampler,
     sampler: &mut dyn Sampler,
     technique: &mut T,
 ) {
@@ -65,7 +61,6 @@ pub fn generate<'scene, 'emitter, T: Technique>(
                         *curr_vertex_id,
                         accel,
                         scene,
-                        emitters,
                         *throughput,
                         sampler,
                         scene.volume.as_ref(), // TODO: For now volume is global

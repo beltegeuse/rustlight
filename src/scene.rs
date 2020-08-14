@@ -5,6 +5,7 @@ use crate::math::Distribution1DConstruct;
 use crate::structure::*;
 use crate::volume;
 use cgmath::*;
+use std::sync::Arc;
 
 /// Scene representation
 pub struct Scene {
@@ -14,9 +15,11 @@ pub struct Scene {
     pub nb_threads: Option<usize>,
     pub output_img_path: String,
     // Geometry information
-    pub meshes: Vec<geometry::Mesh>,
-    pub emitter_environment: Option<EnvironmentLight>,
+    pub meshes: Vec<Arc<geometry::Mesh>>,
+    pub emitter_environment: Option<Arc<EnvironmentLight>>,
     pub volume: Option<volume::HomogenousVolume>,
+    // Internal building
+    pub emitters: Option<EmitterSampler>,
 }
 
 impl Scene {
@@ -33,12 +36,16 @@ impl Scene {
         self
     }
 
-    pub fn emitters_sampler(&self) -> EmitterSampler {
+    pub fn emitters(&self) -> &EmitterSampler {
+        self.emitters.as_ref().unwrap()
+    }
+
+    pub fn build_emitters(&mut self) {
         // Append emission mesh to the emitter list
-        let mut emitters: Vec<&dyn Emitter> = vec![];
+        let mut emitters: Vec<Arc<dyn Emitter>> = vec![];
         for e in &self.meshes {
             if !e.emission.is_zero() {
-                emitters.push(e)
+                emitters.push(e.clone())
             }
         }
         // Construct the CDF for all the emitters
@@ -51,10 +58,10 @@ impl Scene {
             cdf_construct.normalize()
         };
 
-        EmitterSampler {
+        self.emitters = Some(EmitterSampler {
             emitters,
             emitters_cdf,
-        }
+        });
     }
 
     pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {

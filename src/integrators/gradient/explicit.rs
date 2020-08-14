@@ -27,11 +27,10 @@ impl Technique for TechniqueGradientPathTracing {
     }
 }
 impl TechniqueGradientPathTracing {
-    pub fn evaluate<'scene, 'emitter>(
+    pub fn evaluate<'scene>(
         &self,
-        path: &Path<'scene, '_>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         vertex_id: VertexID,
     ) -> Color {
         let mut l_i = Color::zero();
@@ -46,9 +45,7 @@ impl TechniqueGradientPathTracing {
                                 .strategies(path.vertex(vertex_id))
                                 .iter()
                                 .map(|s| {
-                                    if let Some(v) =
-                                        s.pdf(path, scene, emitters, vertex_id, *edge_id)
-                                    {
+                                    if let Some(v) = s.pdf(path, scene, vertex_id, *edge_id) {
                                         v
                                     } else {
                                         0.0
@@ -65,7 +62,7 @@ impl TechniqueGradientPathTracing {
                     if let Some(vertex_next_id) = edge.vertices.1 {
                         l_i += edge.weight
                             * edge.rr_weight
-                            * self.evaluate(path, scene, emitters, vertex_next_id);
+                            * self.evaluate(path, scene, vertex_next_id);
                     }
                 }
             }
@@ -81,7 +78,7 @@ impl TechniqueGradientPathTracing {
 
                 // Do the reccursive call
                 if let Some(vertex_next_id) = edge.vertices.1 {
-                    l_i += edge.weight * self.evaluate(path, scene, emitters, vertex_next_id);
+                    l_i += edge.weight * self.evaluate(path, scene, vertex_next_id);
                 }
             }
             _ => {}
@@ -111,7 +108,6 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
                 .par_iter_mut()
                 .for_each(|(info, im_block, sampler)| {
                     let mut shiftmapping = RandomReplay::default();
-                    let emitters = scene.emitters_sampler();
                     for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
                         for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
                             for n in 0..scene.nb_samples {
@@ -120,7 +116,6 @@ impl IntegratorGradient for IntegratorGradientPathTracing {
                                     (ix + im_block.pos.x, iy + im_block.pos.y),
                                     accel,
                                     scene,
-                                    &emitters,
                                     sampler.as_mut(),
                                     &mut shiftmapping,
                                 );
@@ -220,7 +215,6 @@ impl IntegratorGradientPathTracing {
         (ix, iy): (u32, u32),
         accel: &dyn Acceleration,
         scene: &Scene,
-        emitters: &EmitterSampler,
         sampler: &mut dyn Sampler,
         shiftmapping: &mut T,
     ) -> ColorGradient {
@@ -241,7 +235,6 @@ impl IntegratorGradientPathTracing {
             Point2::new(ix, iy),
             accel,
             scene,
-            emitters,
             sampler,
         );
         let weight_survival = if let Some(min_survival) = self.min_survival {
@@ -281,7 +274,6 @@ impl IntegratorGradientPathTracing {
                         Point2::new(pix.x as u32, pix.y as u32),
                         accel,
                         scene,
-                        emitters,
                         sampler,
                         base_path,
                     );

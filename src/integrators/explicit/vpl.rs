@@ -59,7 +59,7 @@ impl Technique for TechniqueVPL {
 impl TechniqueVPL {
     fn convert_vpl<'scene>(
         &self,
-        path: &Path<'scene, '_>,
+        path: &Path<'scene>,
         scene: &'scene Scene,
         vertex_id: VertexID,
         options: IntegratorVPLOption,
@@ -163,7 +163,6 @@ impl Integrator for IntegratorVPL {
         let buffernames = vec![String::from("primal")];
         let mut nb_path_shot = 0;
         let mut vpls = vec![];
-        let emitters = scene.emitters_sampler();
 
         // Samplings
         let samplings: Vec<Box<dyn SamplingStrategy>> =
@@ -177,16 +176,8 @@ impl Integrator for IntegratorVPL {
         let mut path = Path::default();
         while vpls.len() < self.nb_vpl as usize {
             path.clear();
-            let root = path.from_light(sampler, &emitters);
-            generate(
-                &mut path,
-                root.0,
-                accel,
-                scene,
-                &emitters,
-                sampler,
-                &mut technique,
-            );
+            let root = path.from_light(scene, sampler);
+            generate(&mut path, root.0, accel, scene, sampler, &mut technique);
             technique.convert_vpl(&path, scene, root.0, self.option_vpl, &mut vpls, root.1);
             nb_path_shot += 1;
         }

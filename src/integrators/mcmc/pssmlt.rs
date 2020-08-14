@@ -17,24 +17,16 @@ impl Integrator for IntegratorPSSMLT {
         scene: &Scene,
     ) -> BufferCollection {
         ///////////// Define the closure
-        let sample = |s: &mut dyn Sampler, emitters: &EmitterSampler| {
+        let sample = |s: &mut dyn Sampler| {
             let x = (s.next() * scene.camera.size().x as f32) as u32;
             let y = (s.next() * scene.camera.size().y as f32) as u32;
-            let c = {
-                self.integrator
-                    .compute_pixel((x, y), accel, scene, s, emitters)
-            };
+            let c = { self.integrator.compute_pixel((x, y), accel, scene, s) };
             MCMCState::new(c, Point2::new(x, y))
         };
 
         ///////////// Compute the normalization factor
         info!("Computing normalization factor...");
-        let (b, seeds, cdf) = {
-            let emitters = scene.emitters_sampler();
-            let sample_uni = |s: &mut dyn Sampler| -> MCMCState { sample(s, &emitters) };
-
-            compute_normalization(self.nb_samples_norm, sample_uni)
-        };
+        let (b, seeds, cdf) = compute_normalization(self.nb_samples_norm, sample);
         info!("Normalisation factor: {:?}", b);
         info!("Number of *potential* seeds: {}", seeds.len());
 
@@ -64,8 +56,6 @@ impl Integrator for IntegratorPSSMLT {
         let pool = generate_pool(scene);
         pool.install(|| {
             samplers.par_iter_mut().enumerate().for_each(|(id, s)| {
-                let emitters = scene.emitters_sampler();
-
                 // Initialize the sampler
                 s.large_step = true;
                 let previous_rnd = s.rnd.clone(); // We save the RNG (to recover it later)
@@ -74,7 +64,7 @@ impl Integrator for IntegratorPSSMLT {
                 let seed = &seeds[cdf.sample(id_v)];
                 // Replace the seed, check that the target function values matches
                 s.rnd = seed.1.clone();
-                let mut current_state = sample(s, &emitters);
+                let mut current_state = sample(s);
                 if current_state.tf != seed.0 {
                     error!(
                         "Unconsitency found when seeding the chain {} ({})",
@@ -92,7 +82,7 @@ impl Integrator for IntegratorPSSMLT {
                 (0..nb_samples_per_chains).for_each(|_| {
                     // Choose randomly between large and small perturbation
                     s.large_step = s.rand() < self.large_prob;
-                    let mut proposed_state = sample(s, &emitters);
+                    let mut proposed_state = sample(s);
                     let accept_prob = (proposed_state.tf / current_state.tf).min(1.0);
                     // Do waste reclycling
                     current_state.weight += 1.0 - accept_prob;

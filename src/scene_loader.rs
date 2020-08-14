@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io::Read;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub trait SceneLoader {
     fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>>;
@@ -146,6 +147,8 @@ impl SceneLoader for JSONSceneLoader {
         };
         camera.print_info();
 
+        let meshes = meshes.into_iter().map(|v| Arc::new(v)).collect();
+
         // Define a default scene
         Ok(Scene {
             camera,
@@ -155,6 +158,7 @@ impl SceneLoader for JSONSceneLoader {
             output_img_path: "out.pfm".to_string(),
             emitter_environment: None,
             volume: None,
+            emitters: None,
         })
     }
 }
@@ -235,11 +239,11 @@ impl SceneLoader for PBRTSceneLoader {
                                 if have_env {
                                     panic!("Multiple env map is NOT supported");
                                 }
-                                emitter_environment = Some(EnvironmentLight {
+                                emitter_environment = Some(Arc::new(EnvironmentLight {
                                     luminance: Color::new(rgb.r, rgb.g, rgb.b),
                                     world_radius: 1.0, // TODO: Add the correct radius
                                     world_position: Point3::new(0.0, 0.0, 0.0), // TODO:
-                                });
+                                }));
                                 have_env = true;
                             }
                             _ => {
@@ -269,6 +273,8 @@ impl SceneLoader for PBRTSceneLoader {
         };
         camera.print_info();
 
+        let meshes = meshes.into_iter().map(|v| Arc::new(v)).collect();
+
         info!("image size: {:?}", scene_info.image_size);
         Ok(Scene {
             camera,
@@ -278,6 +284,7 @@ impl SceneLoader for PBRTSceneLoader {
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
             volume: None,
+            emitters: None,
         })
     }
 }
@@ -332,7 +339,7 @@ impl SceneLoader for MTSSceneLoader {
             .into_iter()
             .map(|(_, v)| v)
             .chain(mts.shapes_unamed.into_iter());
-        let meshes = mts_shapes
+        let meshes: Vec<geometry::Mesh> = mts_shapes
             .map(|s| {
                 match s {
                     mitsuba_rs::Shape::Obj {
@@ -464,6 +471,8 @@ impl SceneLoader for MTSSceneLoader {
         // Other
         let emitter_environment = None;
 
+        let meshes = meshes.into_iter().map(|v| Arc::new(v)).collect();
+
         Ok(Scene {
             camera,
             meshes,
@@ -472,6 +481,7 @@ impl SceneLoader for MTSSceneLoader {
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
             volume: None,
+            emitters: None,
         })
     }
 }
