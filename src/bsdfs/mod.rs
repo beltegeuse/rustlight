@@ -176,21 +176,14 @@ pub fn parse_bsdf(
 
 #[cfg(feature = "pbrt")]
 fn bsdf_texture_match_pbrt(
-    v: &pbrt_rs::Param,
+    v: &pbrt_rs::parser::Spectrum,
     textures: &HashMap<String, pbrt_rs::Texture>,
 ) -> Option<BSDFColor> {
     match v {
-        pbrt_rs::Param::Float(ref v) => {
-            if v.len() != 1 {
-                panic!("Impossible to build textureColor with: {:?}", v);
-            }
-            let v = v[0];
-            Some(BSDFColor::UniformColor(Color::new(v, v, v)))
-        }
-        pbrt_rs::Param::RGB(ref rgb) => {
+        pbrt_rs::parser::Spectrum::RGB(rgb) => {
             Some(BSDFColor::UniformColor(Color::new(rgb.r, rgb.g, rgb.b)))
         }
-        pbrt_rs::Param::Name(ref name) => {
+        pbrt_rs::parser::Spectrum::Texture(name) => {
             if let Some(texture) = textures.get(name) {
                 Some(BSDFColor::TextureColor(Texture::load(&texture.filename)))
             } else {
@@ -203,42 +196,73 @@ fn bsdf_texture_match_pbrt(
 }
 
 #[cfg(feature = "pbrt")]
+fn bsdf_texture_f32_match_pbrt(
+    v: &pbrt_rs::parser::BSDFFloat,
+    _textures: &HashMap<String, pbrt_rs::Texture>,
+) -> f32 {
+    match v {
+        pbrt_rs::parser::BSDFFloat::Float(v) => *v,
+        pbrt_rs::parser::BSDFFloat::Texture(_name) => panic!("Float texture are not suppoerted"),
+    }
+}
+
+#[cfg(feature = "pbrt")]
+fn distribution_pbrt(
+    d: &pbrt_rs::Distribution,
+    textures: &HashMap<String, pbrt_rs::Texture>,
+) -> MicrofacetDistributionBSDF {
+    warn!("Remap roughness is ignored!");
+    match &d.roughness {
+        pbrt_rs::Roughness::Isotropic(v) => {
+            let alpha = bsdf_texture_f32_match_pbrt(v, textures);
+            MicrofacetDistributionBSDF {
+                microfacet_type: MicrofacetType::GGX,
+                alpha_u: alpha,
+                alpha_v: alpha,
+            }
+        }
+        pbrt_rs::Roughness::Anisotropic { u, v } => {
+            let alpha_u = bsdf_texture_f32_match_pbrt(u, textures);
+            let alpha_v = bsdf_texture_f32_match_pbrt(v, textures);
+            MicrofacetDistributionBSDF {
+                microfacet_type: MicrofacetType::GGX,
+                alpha_u,
+                alpha_v,
+            }
+        }
+    }
+}
+
+#[cfg(feature = "pbrt")]
 pub fn bsdf_pbrt(
     bsdf: &pbrt_rs::BSDF,
     textures: &HashMap<String, pbrt_rs::Texture>,
 ) -> Box<dyn BSDF + Sync + Send> {
     let bsdf: Option<Box<dyn BSDF + Sync + Send>> = match bsdf {
-        pbrt_rs::BSDF::Matte(ref v) => {
-            if let Some(diffuse) = bsdf_texture_match_pbrt(&v.kd, textures) {
+        pbrt_rs::BSDF::Matte { kd, .. } => {
+            if let Some(diffuse) = bsdf_texture_match_pbrt(kd, textures) {
                 Some(Box::new(BSDFDiffuse { diffuse }))
             } else {
                 None
             }
         }
-        pbrt_rs::BSDF::Glass(ref v) => {
+        pbrt_rs::BSDF::Glass {
+            kr,
+            kt,
+            distribution,
+            eta,
+            ..
+        } => {
             // Get BSDF colors
-            let specular_reflectance = bsdf_texture_match_pbrt(&v.kr, textures).unwrap();
-            let specular_transmittance = bsdf_texture_match_pbrt(&v.kt, textures).unwrap();
+            let specular_reflectance = bsdf_texture_match_pbrt(kr, textures).unwrap();
+            let specular_transmittance = bsdf_texture_match_pbrt(kt, textures).unwrap();
 
-            // Roughness
-            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, textures).unwrap();
-            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, textures).unwrap();
-
-            // FIXME: be able to load float textures?
-            let (u_roughness, v_roughness) =
-                (u_roughness.color(&None).r, v_roughness.color(&None).r);
-            if u_roughness != 0.0 || v_roughness != 0.0 {
-                warn!(
-                    "roughness found for glass material ({}, {})",
-                    u_roughness, v_roughness
-                );
+            // TODO
+            if distribution.is_some() {
+                warn!("Glass distribution is ignored. Pure glass instead");
             }
 
-            let index = bsdf_texture_match_pbrt(&v.index, textures).unwrap();
-            let eta = match index {
-                BSDFColor::UniformColor(v) => v.r,
-                _ => unimplemented!("Texture ETA is not supported"),
-            };
+            let eta = bsdf_texture_f32_match_pbrt(eta, textures);
 
             // FIXME: Bumpmapping is not supported!
             Some(Box::new(
@@ -251,42 +275,24 @@ pub fn bsdf_pbrt(
                 .eta(eta, 1.0),
             ))
         }
-        pbrt_rs::BSDF::Metal(ref v) => {
-            let eta = bsdf_texture_match_pbrt(&v.eta, textures).unwrap();
-            let k = bsdf_texture_match_pbrt(&v.k, textures).unwrap();
-            let (u_roughness, v_roughness) = if let (Some(ref u_rough), Some(ref v_rough)) =
-                (v.u_roughness.as_ref(), v.v_roughness.as_ref())
-            {
-                (
-                    bsdf_texture_match_pbrt(u_rough, textures).unwrap(),
-                    bsdf_texture_match_pbrt(v_rough, textures).unwrap(),
-                )
-            } else {
-                (
-                    bsdf_texture_match_pbrt(&v.roughness, textures).unwrap(),
-                    bsdf_texture_match_pbrt(&v.roughness, textures).unwrap(),
-                )
-            };
-            // FIXME: be able to load float textures?
-            let (u_roughness, v_roughness) =
-                (u_roughness.color(&None).r, v_roughness.color(&None).r);
-
-            // FIXME: Do we need to remap???
-            assert_eq!(u_roughness, v_roughness);
-
+        pbrt_rs::BSDF::Metal {
+            eta,
+            k,
+            distribution,
+            ..
+        } => {
+            let eta = bsdf_texture_match_pbrt(eta, textures).unwrap();
+            let k = bsdf_texture_match_pbrt(k, textures).unwrap();
+            let distribution = Some(distribution_pbrt(distribution, textures));
             Some(Box::new(BSDFMetal {
                 specular: BSDFColor::UniformColor(Color::one()),
                 eta,
                 k,
-                distribution: Some(MicrofacetDistributionBSDF {
-                    microfacet_type: MicrofacetType::GGX,
-                    alpha_u: u_roughness,
-                    alpha_v: v_roughness,
-                }),
+                distribution,
             }))
         }
-        pbrt_rs::BSDF::Mirror(ref v) => {
-            let specular = bsdf_texture_match_pbrt(&v.kr, textures).unwrap();
+        pbrt_rs::BSDF::Mirror { kr, .. } => {
+            let specular = bsdf_texture_match_pbrt(kr, textures).unwrap();
             Some(Box::new(BSDFMetal {
                 specular,
                 eta: BSDFColor::UniformColor(Color::one()),
@@ -294,26 +300,15 @@ pub fn bsdf_pbrt(
                 distribution: None,
             }))
         }
-        pbrt_rs::BSDF::Substrate(ref v) => {
-            let kd = bsdf_texture_match_pbrt(&v.kd, textures).unwrap();
-            let ks = bsdf_texture_match_pbrt(&v.ks, textures).unwrap();
-            let u_roughness = bsdf_texture_match_pbrt(&v.u_roughness, textures).unwrap();
-            let v_roughness = bsdf_texture_match_pbrt(&v.v_roughness, textures).unwrap();
-
-            // FIXME: be able to load float textures?
-            let (u_roughness, v_roughness) =
-                (u_roughness.color(&None).r, v_roughness.color(&None).r);
-            assert_eq!(u_roughness, v_roughness);
-            let distribution = if u_roughness != 0.0 {
-                Some(MicrofacetDistributionBSDF {
-                    microfacet_type: MicrofacetType::GGX,
-                    alpha_u: u_roughness,
-                    alpha_v: v_roughness,
-                })
-            } else {
-                None
-            };
-
+        pbrt_rs::BSDF::Substrate {
+            kd,
+            ks,
+            distribution,
+            ..
+        } => {
+            let kd = bsdf_texture_match_pbrt(kd, textures).unwrap();
+            let ks = bsdf_texture_match_pbrt(ks, textures).unwrap();
+            let distribution = Some(distribution_pbrt(distribution, textures));
             Some(Box::new(BSDFSubstrate {
                 specular: ks,
                 diffuse: kd,

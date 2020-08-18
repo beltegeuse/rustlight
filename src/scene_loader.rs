@@ -170,8 +170,7 @@ impl SceneLoader for PBRTSceneLoader {
     fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
-        let working_dir = std::path::Path::new(filename).parent().unwrap();
-        pbrt_rs::read_pbrt_file(filename, Some(&working_dir), &mut scene_info, &mut state);
+        pbrt_rs::read_pbrt_file(filename, &mut scene_info, &mut state);
 
         // Then do some transformation
         // if it is necessary
@@ -226,8 +225,8 @@ impl SceneLoader for PBRTSceneLoader {
                         geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
                     mesh.bsdf = bsdf;
 
-                    match m.emission {
-                        Some(pbrt_rs::Param::RGB(ref rgb)) => {
+                    match &m.emission {
+                        Some(pbrt_rs::parser::Spectrum::RGB(rgb)) => {
                             info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
                             mesh.emission = Color::new(rgb.r, rgb.g, rgb.b)
                         }
@@ -247,9 +246,9 @@ impl SceneLoader for PBRTSceneLoader {
             let mut have_env = false;
             for l in scene_info.lights {
                 match l {
-                    pbrt_rs::Light::Infinite(ref infinite) => {
-                        match infinite.luminance {
-                            pbrt_rs::Param::RGB(ref rgb) => {
+                    pbrt_rs::Light::Infinite { luminance, .. } => {
+                        match &luminance {
+                            pbrt_rs::parser::Spectrum::RGB(rgb) => {
                                 if have_env {
                                     panic!("Multiple env map is NOT supported");
                                 }
@@ -261,7 +260,7 @@ impl SceneLoader for PBRTSceneLoader {
                                 have_env = true;
                             }
                             _ => {
-                                warn!("Unsupported luminance field: {:?}", infinite.luminance);
+                                warn!("Unsupported luminance field: {:?}", luminance);
                             }
                         }
                     }
@@ -275,10 +274,13 @@ impl SceneLoader for PBRTSceneLoader {
         let camera = {
             if let Some(camera) = scene_info.cameras.get(0) {
                 match camera {
-                    pbrt_rs::Camera::Perspective(ref cam) => {
-                        let mat = cam.world_to_camera.inverse_transform().unwrap();
+                    pbrt_rs::Camera::Perspective {
+                        world_to_camera,
+                        fov,
+                    } => {
+                        let mat = world_to_camera.inverse_transform().unwrap();
                         info!("camera matrix: {:?}", mat);
-                        Camera::new(scene_info.image_size, Fov::Y(cam.fov), mat, false)
+                        Camera::new(scene_info.image_size, Fov::Y(*fov), mat, false)
                     }
                 }
             } else {

@@ -48,6 +48,13 @@ impl Scene {
                 emitters.push(e.clone())
             }
         }
+
+        // Stop early if necessary
+        if emitters.is_empty() {
+            warn!("No emitter detected, if NEE is called, rustlight will certainly crashing");
+            return;
+        }
+
         // Construct the CDF for all the emitters
         let emitters_cdf = {
             let mut cdf_construct = Distribution1DConstruct::new(emitters.len());
