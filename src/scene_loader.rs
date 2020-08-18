@@ -1,5 +1,4 @@
 use crate::bsdfs;
-use crate::bsdfs::*;
 use crate::camera::{Camera, Fov};
 use crate::emitter::*;
 use crate::geometry;
@@ -11,10 +10,8 @@ use cgmath::*;
 use mitsuba_rs;
 #[cfg(feature = "pbrt")]
 use pbrt_rs;
-use serde_json;
 use std::collections::HashMap;
 use std::error::Error;
-use std::io::Read;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -48,118 +45,11 @@ impl Default for SceneLoaderManager {
         let mut loaders = SceneLoaderManager {
             loader: HashMap::default(),
         };
-        loaders.register("json", Rc::new(JSONSceneLoader {}));
         #[cfg(feature = "pbrt")]
         loaders.register("pbrt", Rc::new(PBRTSceneLoader {}));
         #[cfg(feature = "mitsuba")]
         loaders.register("xml", Rc::new(MTSSceneLoader {}));
         loaders
-    }
-}
-
-pub struct JSONSceneLoader {}
-impl SceneLoader for JSONSceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
-        // Reading the scene
-        let scene_path = std::path::Path::new(filename);
-        let mut fscene = std::fs::File::open(scene_path).expect("scene file not found");
-        let mut data = String::new();
-        fscene
-            .read_to_string(&mut data)
-            .expect("impossible to read the file");
-        let wk = scene_path
-            .parent()
-            .expect("impossible to extract parent directory for OBJ loading");
-
-        // Read json string
-        let v: serde_json::Value = serde_json::from_str(&data)?;
-
-        // Read the object
-        let obj_path_str: String = v["meshes"].as_str().unwrap().to_string();
-        let obj_path = wk.join(obj_path_str);
-        let mut meshes = geometry::load_obj(obj_path.as_path())?;
-
-        // Update meshes information
-        //  - which are light?
-        info!("Emitters:");
-        if let Some(emitters_json) = v.get("emitters") {
-            for e in emitters_json.as_array().unwrap() {
-                let name: String = e["mesh"].as_str().unwrap().to_string();
-                let emission: Color = serde_json::from_value(e["emission"].clone())?;
-                info!(" - emission: {}", name);
-                // Get the set of matched meshes
-                let mut matched_meshes = meshes
-                    .iter_mut()
-                    .filter(|m| m.name == name)
-                    .collect::<Vec<_>>();
-                match matched_meshes.len() {
-                    0 => panic!("Not found {} in the obj list", name),
-                    1 => {
-                        matched_meshes[0].emission = emission;
-                        info!("   * flux: {:?}", matched_meshes[0].flux());
-                    }
-                    _ => panic!("Several {} in the obj list", name),
-                };
-            }
-        }
-        // - BSDF
-        info!("BSDFS:");
-        if let Some(bsdfs_json) = v.get("bsdfs") {
-            for b in bsdfs_json.as_array().unwrap() {
-                let name: String = serde_json::from_value(b["mesh"].clone())?;
-                info!(" - replace bsdf: {}", name);
-                let new_bsdf = parse_bsdf(&b)?;
-                let mut matched_meshes = meshes
-                    .iter_mut()
-                    .filter(|m| m.name == name)
-                    .collect::<Vec<_>>();
-                match matched_meshes.len() {
-                    0 => panic!("Not found {} in the obj list", name),
-                    1 => {
-                        matched_meshes[0].bsdf = new_bsdf;
-                    }
-                    _ => panic!("Several {} in the obj list", name),
-                };
-            }
-        }
-
-        // Read the camera config
-        let camera = {
-            if let Some(camera_json) = v.get("camera") {
-                let fov: f32 = serde_json::from_value(camera_json["fov"].clone())?;
-                let img: Vector2<u32> = serde_json::from_value(camera_json["img"].clone())?;
-                let m: Vec<f32> = serde_json::from_value(camera_json["matrix"].clone())?;
-
-                //let matrix = Matrix4::new(
-                //    m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14],
-                //    m[3], m[7], m[11], m[15],
-                //);
-                let matrix = Matrix4::new(
-                    m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11],
-                    m[12], m[13], m[14], m[15],
-                );
-
-                info!("m: {:?}", matrix);
-                Camera::new(img, Fov::Y(fov), matrix, false)
-            } else {
-                panic!("The camera is not set!");
-            }
-        };
-        camera.print_info();
-
-        let meshes = meshes.into_iter().map(|v| Arc::new(v)).collect();
-
-        // Define a default scene
-        Ok(Scene {
-            camera,
-            meshes,
-            nb_samples: 1,
-            nb_threads: None,
-            output_img_path: "out.pfm".to_string(),
-            emitter_environment: None,
-            volume: None,
-            emitters: None,
-        })
     }
 }
 

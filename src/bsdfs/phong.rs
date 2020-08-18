@@ -3,7 +3,6 @@ use crate::math::{cosine_sample_hemisphere, Frame};
 use cgmath::{InnerSpace, Vector3};
 use std;
 
-#[derive(Deserialize)]
 pub struct BSDFPhong {
     pub diffuse: BSDFColor,
     pub specular: BSDFColor,

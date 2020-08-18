@@ -3,7 +3,6 @@ use crate::bsdfs::utils::*;
 use crate::bsdfs::*;
 use cgmath::InnerSpace;
 
-#[derive(Deserialize)]
 pub struct BSDFMetal {
     pub specular: BSDFColor,
     /// Real and imaginary material component

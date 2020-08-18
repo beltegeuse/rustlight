@@ -124,7 +124,7 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
         accel
     }
 
-    pub fn gather(&self, r: Ray) -> Vec<(D, usize)> {
+    pub fn gather(&self, r: &Ray) -> Vec<(D, usize)> {
         let mut res = vec![];
         if self.root.is_none() {
             return res;
@@ -137,7 +137,7 @@ impl<D, T: BVHElement<D>> BHVAccel<D, T> {
 
         while let Some(curr_id) = stack.pop() {
             let n = &self.nodes[curr_id];
-            let t_aabb = n.aabb.intersect(&r);
+            let t_aabb = n.aabb.intersect(r);
             match (n.is_leaf(), t_aabb) {
                 (_, None) => {
                     // Nothing to do as we miss the node

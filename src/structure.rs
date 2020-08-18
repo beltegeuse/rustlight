@@ -66,7 +66,7 @@ pub struct SampledPosition {
 }
 
 /// Pixel color representation
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
+#[derive(Clone, PartialEq, Debug, Copy)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
@@ -635,7 +635,7 @@ impl Default for Bitmap {
 }
 
 /// Ray representation
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Ray {
     pub o: Point3<f32>,
     pub d: Vector3<f32>,
@@ -853,7 +853,7 @@ impl<'a> Intersection<'a> {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub struct VarianceEstimator {
     pub mean: f32,
     pub mean_sqr: f32,

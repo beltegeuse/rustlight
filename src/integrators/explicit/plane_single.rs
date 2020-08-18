@@ -455,7 +455,7 @@ impl Integrator for IntegratorSinglePlane {
 
                                 // Now gather all planes
                                 let mut c = Color::value(0.0);
-                                for (plane_its, b_id) in bvh_plane.gather(ray) {
+                                for (plane_its, b_id) in bvh_plane.gather(&ray) {
                                     let plane = &bvh_plane.elements[b_id];
                                     // This code is if we do not use BVH
                                     // for plane in &planes {

@@ -3,14 +3,13 @@ use crate::bsdfs::*;
 use cgmath::{InnerSpace, Point2, Vector3};
 
 // TODO: Allow float textures for alphas
-#[derive(Deserialize)]
 pub struct MicrofacetDistributionBSDF {
     pub microfacet_type: MicrofacetType,
     pub alpha_u: f32,
     pub alpha_v: f32,
 }
 
-#[derive(Deserialize, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub enum MicrofacetType {
     Beckmann,
     GGX,

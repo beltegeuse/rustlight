@@ -103,7 +103,7 @@ impl<'a> TransmittanceSampling<'a> {
     fn pdf(&self, ray: &Ray, distance: f32) -> f32 {
         match self.max_dist {
             None => {
-                let mut ray = *ray;
+                let mut ray = ray.clone();
                 ray.tfar = distance;
                 self.m.pdf(ray, false)
             }
@@ -220,13 +220,13 @@ impl IntegratorMC for IntegratorPathKulla {
 
             //////////////////////////
             // Compute contribution
-            let cam_trans = transmittance(m, t_kulla, ray);
-            let light_trans = transmittance(m, light_dist, ray); // FIXME: Why PI factor here?
+            let cam_trans = transmittance(m, t_kulla, ray.clone());
+            let light_trans = transmittance(m, light_dist, ray.clone()); // FIXME: Why PI factor here?
             w * flux * cam_trans * light_trans * m.sigma_s * phase.eval(&-ray.d, &light_w)
                 / (pdf_kulla * std::f32::consts::PI)
         };
 
-        let contrib_phase = |sampler: &mut dyn Sampler| -> Color {
+        let contrib_phase = |sampler: &mut dyn Sampler, ray: &Ray| -> Color {
             if self.strategy == IntegratorPathKullaStrategies::KullaPosition {
                 return Color::zero();
             }
@@ -268,12 +268,12 @@ impl IntegratorMC for IntegratorPathKulla {
 
             //////////////////////////
             // Compute contribution
-            let cam_trans = transmittance(m, t_dist, ray);
+            let cam_trans = transmittance(m, t_dist, ray.clone());
             let light_trans = transmittance(m, light_dist, new_ray);
             w * its.mesh.emission * cam_trans * m.sigma_s * light_trans * sample_phase.weight
                 / pdf_dist
         };
 
-        kulla_contrib(sampler) + contrib_phase(sampler)
+        kulla_contrib(sampler) + contrib_phase(sampler, &ray)
     }
 }

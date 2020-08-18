@@ -33,7 +33,6 @@ lazy_static! {
     };
 }
 
-#[derive(Deserialize)]
 pub struct BSDFGlass {
     pub specular_transmittance: BSDFColor,
     pub specular_reflectance: BSDFColor,

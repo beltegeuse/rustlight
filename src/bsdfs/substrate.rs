@@ -5,7 +5,6 @@ use crate::math::cosine_sample_hemisphere;
 use cgmath::InnerSpace;
 
 // Uses the simpler model (FresnelBlend)
-#[derive(Deserialize)]
 pub struct BSDFSubstrate {
     pub specular: BSDFColor,
     pub diffuse: BSDFColor,

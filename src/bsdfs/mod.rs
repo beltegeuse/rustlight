@@ -1,6 +1,4 @@
 use crate::structure::*;
-use serde::{Deserialize, Deserializer};
-use serde_json;
 
 use cgmath::{Point2, Vector2, Vector3};
 #[cfg(feature = "mitsuba")]
@@ -11,56 +9,22 @@ use std;
 use std::collections::HashMap;
 
 // Texture or uniform color buffers
-#[derive(Deserialize)]
 pub struct Texture {
-    #[cfg(feature = "image")]
-    #[serde(deserialize_with = "deserialize_from_str")]
     pub img: Bitmap,
 }
 
-#[cfg(feature = "image")]
 impl Texture {
-    // With features
+    // Load from a file
     pub fn load(path: &str) -> Texture {
         Texture {
             img: Bitmap::read(path),
         }
     }
-    pub fn pixel(&self, uv: Vector2<f32>) -> Color {
-        self.img.pixel_uv(uv)
-    }
-
-    pub fn avg(&self) -> Color {
-        self.img.average()
-    }
 }
 
-#[cfg(not(feature = "image"))]
-impl Texture {
-    pub fn load(_path: &str) -> Texture {
-        unimplemented!("No support of textures");
-    }
-    pub fn pixel(&self, _uv: Vector2<f32>) -> Color {
-        unimplemented!("No support of textures");
-    }
-    pub fn avg(&self) -> Color {
-        unimplemented!("No support of textures");
-    }
-}
-
-#[cfg(feature = "image")]
-fn deserialize_from_str<'de, D>(deserializer: D) -> Result<Bitmap, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let _s: String = Deserialize::deserialize(deserializer)?;
-    unimplemented!();
-}
-
-#[derive(Deserialize)]
 pub enum BSDFColor {
     UniformColor(Color),
-    TextureColor(Texture), // FIXME
+    TextureColor(Texture),
 }
 
 impl BSDFColor {
@@ -69,7 +33,7 @@ impl BSDFColor {
             BSDFColor::UniformColor(ref c) => *c,
             BSDFColor::TextureColor(ref t) => {
                 if let Some(uv_coords) = uv {
-                    t.pixel(*uv_coords)
+                    t.img.pixel_uv(*uv_coords)
                 } else {
                     warn!("Found a texture but no uv coordinate given");
                     Color::zero()
@@ -81,7 +45,7 @@ impl BSDFColor {
     pub fn avg(&self) -> Color {
         match self {
             BSDFColor::UniformColor(c) => *c,
-            BSDFColor::TextureColor(c) => c.avg(),
+            BSDFColor::TextureColor(c) => c.img.average(),
         }
     }
 }
@@ -159,20 +123,6 @@ use crate::bsdfs::glass::BSDFGlass;
 use crate::bsdfs::metal::BSDFMetal;
 use crate::bsdfs::phong::BSDFPhong;
 use crate::bsdfs::substrate::BSDFSubstrate;
-
-/// Dispatch coded BSDF
-pub fn parse_bsdf(
-    b: &serde_json::Value,
-) -> Result<Box<dyn BSDF + Send + Sync>, Box<dyn std::error::Error>> {
-    let new_bsdf_type: String = serde_json::from_value(b["type"].clone())?;
-    let new_bsdf: Box<dyn BSDF + Send + Sync> = match new_bsdf_type.as_ref() {
-        "phong" => Box::<BSDFPhong>::new(serde_json::from_value(b["data"].clone())?),
-        "diffuse" => Box::<BSDFDiffuse>::new(serde_json::from_value(b["data"].clone())?),
-        "metal" => Box::<BSDFMetal>::new(serde_json::from_value(b["data"].clone())?),
-        _ => panic!("Unknown BSDF type {}", new_bsdf_type),
-    };
-    Ok(new_bsdf)
-}
 
 #[cfg(feature = "pbrt")]
 fn bsdf_texture_match_pbrt(

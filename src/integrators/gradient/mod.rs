@@ -5,7 +5,7 @@ use crate::tools::StepRangeInt;
 use cgmath::{Point2, Vector2};
 use std::cmp;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub struct ColorGradient {
     pub very_direct: Color,
     pub main: Color,

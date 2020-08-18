@@ -27,11 +27,6 @@ extern crate log;
 extern crate rand;
 // For easy parallelism
 extern crate rayon;
-// For serialization support
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
 // For loading the obj files
 extern crate tobj;
 // For print a progress bar

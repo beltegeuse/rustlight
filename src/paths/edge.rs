@@ -125,7 +125,7 @@ impl Edge {
             // Sample the participating media
             // Need to create a new ray as tfar need to store
             // the distance to the surface
-            let mut ray_med = *ray;
+            let mut ray_med = ray.clone();
             ray_med.tfar = intersection_distance;
             let mrec = m.sample(&ray_med, sampler.next2d());
             let new_vertex = if !mrec.exited {

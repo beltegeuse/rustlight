@@ -729,7 +729,7 @@ impl Integrator for IntegratorVolPrimitives {
                             match self.primitives {
                                 VolPrimitivies::Beams => {
                                     let bvh = bvh_beams.as_ref().unwrap();
-                                    for (beam_its, b_id) in bvh.gather(ray) {
+                                    for (beam_its, b_id) in bvh.gather(&ray) {
                                         c += bvh.elements[b_id].contribute(&ray, m, beam_its)
                                             * norm_photon;
                                     }
@@ -737,7 +737,7 @@ impl Integrator for IntegratorVolPrimitives {
                                 VolPrimitivies::VRL => {
                                     // Form surfaces only
                                     let bvh = bvh_beams.as_ref().unwrap();
-                                    for (beam_its, b_id) in bvh.gather(ray) {
+                                    for (beam_its, b_id) in bvh.gather(&ray) {
                                         c += bvh.elements[b_id].contribute(&ray, m, beam_its)
                                             * norm_photon;
                                     }
@@ -760,19 +760,19 @@ impl Integrator for IntegratorVolPrimitives {
                                 }
                                 VolPrimitivies::BRE => {
                                     let bvh = bvh_photon.as_ref().unwrap();
-                                    for (dist, p_id) in bvh.gather(ray) {
+                                    for (dist, p_id) in bvh.gather(&ray) {
                                         c += bvh.elements[p_id].contribute(&ray, m, dist)
                                             * norm_photon;
                                     }
                                 }
                                 VolPrimitivies::Planes => {
                                     let bvh = bvh_beams.as_ref().unwrap();
-                                    for (beam_its, b_id) in bvh.gather(ray) {
+                                    for (beam_its, b_id) in bvh.gather(&ray) {
                                         c += bvh.elements[b_id].contribute(&ray, m, beam_its)
                                             * norm_photon;
                                     }
                                     let bvh = bvh_planes.as_ref().unwrap();
-                                    for (plane_its, b_id) in bvh.gather(ray) {
+                                    for (plane_its, b_id) in bvh.gather(&ray) {
                                         c += bvh.elements[b_id]
                                             .contribute(accel, &ray, m, plane_its)
                                             * norm_photon;

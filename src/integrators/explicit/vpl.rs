@@ -4,7 +4,7 @@ use crate::paths::{strategy::*, strategy_dir::*, vertex::*};
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone)]
 pub enum IntegratorVPLOption {
     Volume,
     Surface,
@@ -62,14 +62,14 @@ impl TechniqueVPL {
         path: &Path<'scene>,
         scene: &'scene Scene,
         vertex_id: VertexID,
-        options: IntegratorVPLOption,
+        options: &IntegratorVPLOption,
         vpls: &mut Vec<VPL<'scene>>,
         flux: Color,
     ) {
         match path.vertex(vertex_id) {
             Vertex::Surface { its, edge_out, .. } => {
                 let bsdf_smooth = its.mesh.bsdf.is_smooth();
-                if options != IntegratorVPLOption::Volume && !bsdf_smooth {
+                if *options != IntegratorVPLOption::Volume && !bsdf_smooth {
                     vpls.push(VPL::Surface(VPLSurface {
                         its: its.clone(),
                         radiance: flux,
@@ -98,7 +98,7 @@ impl TechniqueVPL {
                 edge_out,
                 ..
             } => {
-                if options != IntegratorVPLOption::Surface {
+                if *options != IntegratorVPLOption::Surface {
                     vpls.push(VPL::Volume(VPLVolume {
                         pos: *pos,
                         d_in: *d_in,
@@ -125,7 +125,7 @@ impl TechniqueVPL {
             Vertex::Light {
                 edge_out, pos, n, ..
             } => {
-                if options != IntegratorVPLOption::Volume {
+                if *options != IntegratorVPLOption::Volume {
                     vpls.push(VPL::Emitter(VPLEmitter {
                         pos: *pos,
                         n: *n,
@@ -178,7 +178,7 @@ impl Integrator for IntegratorVPL {
             path.clear();
             let root = path.from_light(scene, sampler);
             generate(&mut path, root.0, accel, scene, sampler, &mut technique);
-            technique.convert_vpl(&path, scene, root.0, self.option_vpl, &mut vpls, root.1);
+            technique.convert_vpl(&path, scene, root.0, &self.option_vpl, &mut vpls, root.1);
             nb_path_shot += 1;
         }
         let vpls = vpls;
@@ -436,7 +436,7 @@ impl IntegratorVPL {
         };
 
         if let Some(m) = &scene.volume {
-            let mut ray_med = ray;
+            let mut ray_med = ray.clone();
             ray_med.tfar = its.dist;
             let mrec = m.sample(&ray_med, sampler.next2d());
             if !mrec.exited {
