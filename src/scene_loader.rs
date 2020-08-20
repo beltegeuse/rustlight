@@ -111,24 +111,29 @@ impl SceneLoader for PBRTSceneLoader {
                             diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
                         })
                     };
-                    let mut mesh =
+                    let mesh =
                         geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
-                    mesh.bsdf = bsdf;
+                    
+                    if let Some(mut mesh) = mesh {
+                        mesh.bsdf = bsdf;
 
-                    match &m.emission {
-                        Some(pbrt_rs::parser::Spectrum::RGB(rgb)) => {
-                            info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
-                            mesh.emission = Color::new(rgb.r, rgb.g, rgb.b)
+                        match &m.emission {
+                            Some(pbrt_rs::parser::Spectrum::RGB(rgb)) => {
+                                info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
+                                mesh.emission = Color::new(rgb.r, rgb.g, rgb.b)
+                            }
+                            None => {}
+                            _ => warn!("unsupported emission profile: {:?}", m.emission),
                         }
-                        None => {}
-                        _ => warn!("unsupported emission profile: {:?}", m.emission),
+                        
+                        Some(mesh)
+                    } else {
+                        None
                     }
-
-                    mesh
                 }
                 _ => panic!("All mesh should be converted to trimesh"),
             })
-            .collect::<Vec<_>>();
+            .filter(|x| x.is_some()).map(|m| m.unwrap()).collect::<Vec<_>>();
 
         // Check if there is other emitter type
         let mut emitter_environment = None;
@@ -211,7 +216,6 @@ impl SceneLoader for MTSSceneLoader {
             let img_size = Vector2::new(mts_sensor.film.width, mts_sensor.film.height);
             let mat = mts_sensor.to_world.as_matrix();
             let mat = mat.inverse_transform().unwrap();
-            // TODO: Revisit the sensor definition
             let fov = match &mts_sensor.fov_axis[..] {
                 "x" => Fov::X(mts_sensor.fov),
                 "y" => Fov::Y(mts_sensor.fov),
@@ -248,6 +252,80 @@ impl SceneLoader for MTSSceneLoader {
         let meshes: Vec<geometry::Mesh> = mts_shapes
             .map(|s| {
                 match s {
+                    mitsuba_rs::Shape::Ply {
+                        filename,
+                        option,
+                        ..
+                    } => {
+                        let ply_path = std::path::Path::new(&filename);
+                        // if ply_path.is_absolute() {
+                        //     ply_path = wk.join(ply_path);
+                        // }
+
+                        let mut mesh_mts = mitsuba_rs::ply::read_ply(&ply_path);
+                        
+                        // Build CDF
+                        let mut dist_const =
+                            crate::math::Distribution1DConstruct::new(mesh_mts.indices.len());
+                        for id in &mesh_mts.indices {
+                            let v0 = mesh_mts.points[id.x];
+                            let v1 = mesh_mts.points[id.y];
+                            let v2 = mesh_mts.points[id.z];
+
+                            let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
+                            dist_const.add(area);
+                        }
+                        let vertices = mesh_mts.points.into_iter().map(|p| p.to_vec()).collect();
+
+                        // Normalize normals
+                        // Indeed, sometimes the normal are not properly normalized
+                        if let Some(ref mut ns) = mesh_mts.normals.as_mut() {
+                            for n in ns.iter_mut() {
+                                let l = n.dot(*n);
+                                if l == 0.0 {
+                                    warn!("Wrong normal! {:?}", n);
+                                // TODO: Need to do something...
+                                } else if l != 1.0 {
+                                    *n /= l.sqrt();
+                                }
+                            }
+                        }
+
+                        let mut meshes = vec![geometry::Mesh {
+                            name: "".to_owned(), // Does this is the name to use?
+                            vertices,
+                            indices: mesh_mts.indices,
+                            normals: mesh_mts.normals,
+                            uv: mesh_mts.uv,
+                            bsdf: match &option.bsdf {
+                                Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
+                                None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
+                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(
+                                        0.8,
+                                    )),
+                                }),
+                            },
+                            emission: match &option.emitter {
+                                Some(emitter) => {
+                                    let rgb = emitter.radiance.clone().as_rgb();
+                                    Color {
+                                        r: rgb.r,
+                                        g: rgb.g,
+                                        b: rgb.b,
+                                    }
+                                }
+                                None => Color::zero(),
+                            },
+                            cdf: dist_const.normalize(),
+                        }];
+
+                        // Apply transform
+                        for m in &mut meshes {
+                            apply_transform(m, option.to_world.clone());
+                        }
+
+                        meshes
+                    }
                     mitsuba_rs::Shape::Obj {
                         filename,
                         option,

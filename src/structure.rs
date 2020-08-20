@@ -791,7 +791,7 @@ impl<'a> Intersection<'a> {
         let mesh = &scene.meshes[mesh_id];
         let index = mesh.indices[tri_id];
 
-        let n_s = if let Some(ref normals) = mesh.normals {
+        let n_s = if let Some(normals) = &mesh.normals {
             let d0 = &normals[index.x];
             let d1 = &normals[index.y];
             let d2 = &normals[index.z];
@@ -829,7 +829,7 @@ impl<'a> Intersection<'a> {
             };
 
         // UV interpolation
-        let uv = if let Some(ref uv_data) = mesh.uv {
+        let uv = if let Some(uv_data) = &mesh.uv {
             let d0 = &uv_data[index.x];
             let d1 = &uv_data[index.y];
             let d2 = &uv_data[index.z];

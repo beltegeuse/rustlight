@@ -56,7 +56,7 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
         };
 
         // Read materials and push the mesh
-        let mut tri_mesh = Mesh::new(m.name, vertices, indices, normals, uv);
+        let mut tri_mesh = Mesh::new(m.name, vertices, indices, normals, uv).unwrap();
 
         // Load the BSDF informations
         tri_mesh.bsdf = {
@@ -109,7 +109,7 @@ impl Mesh {
         indices: Vec<Vector3<usize>>,
         mut normals: Option<Vec<Vector3<f32>>>,
         uv: Option<Vec<Vector2<f32>>>,
-    ) -> Mesh {
+    ) -> Option<Mesh> {
         // Construct the mesh CDF
         let mut dist_const = Distribution1DConstruct::new(indices.len());
         for id in &indices {
@@ -135,17 +135,22 @@ impl Mesh {
             }
         }
 
-        Mesh {
-            name,
-            vertices,
-            indices,
-            normals,
-            uv,
-            bsdf: Box::new(bsdfs::diffuse::BSDFDiffuse {
-                diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
-            }),
-            emission: Color::zero(),
-            cdf: dist_const.normalize(),
+        if dist_const.elements.is_empty() {
+            warn!("Empty meshs, abording the creating of this mesh");
+            None 
+        } else {
+            Some(Mesh {
+                name,
+                vertices,
+                indices,
+                normals,
+                uv,
+                bsdf: Box::new(bsdfs::diffuse::BSDFDiffuse {
+                    diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
+                }),
+                emission: Color::zero(),
+                cdf: dist_const.normalize(),
+            })
         }
     }
 
