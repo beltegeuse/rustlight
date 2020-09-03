@@ -137,7 +137,7 @@ impl Mesh {
 
         if dist_const.elements.is_empty() {
             warn!("Empty meshs, abording the creating of this mesh");
-            None 
+            None
         } else {
             Some(Mesh {
                 name,

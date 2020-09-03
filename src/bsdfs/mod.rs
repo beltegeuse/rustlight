@@ -280,7 +280,7 @@ pub fn bsdf_pbrt(
 fn bsdf_texture_match_mts(v: &mitsuba_rs::BSDFColorSpectrum, wk: &std::path::Path) -> BSDFColor {
     match v {
         mitsuba_rs::BSDFColorSpectrum::Constant(v) => {
-            let v = v.clone().as_rgb();
+            let v = v.clone().as_rgb().unwrap();
             let v = Color {
                 r: v.r,
                 g: v.g,
@@ -288,13 +288,18 @@ fn bsdf_texture_match_mts(v: &mitsuba_rs::BSDFColorSpectrum, wk: &std::path::Pat
             };
             BSDFColor::UniformColor(v)
         }
-        mitsuba_rs::BSDFColorSpectrum::Texture(v) => {
-            let mut texture = Texture::load(wk.join(v.filename.clone()).to_str().unwrap());
-            if v.gamma != 1.0 {
-                texture.img.gamma(1.0 / v.gamma);
+        mitsuba_rs::BSDFColorSpectrum::Texture(tex) => match tex {
+            mitsuba_rs::Texture::Bitmap {
+                filename, gamma, ..
+            } => {
+                let mut texture = Texture::load(wk.join(filename.clone()).to_str().unwrap());
+                if *gamma != 1.0 {
+                    texture.img.gamma(1.0 / gamma);
+                }
+                BSDFColor::TextureColor(texture)
             }
-            BSDFColor::TextureColor(texture)
-        }
+            _ => panic!("Mitsuba texture type not supported: {:?}", tex),
+        },
     }
 }
 
@@ -421,7 +426,7 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
         } => {
             let specular = bsdf_texture_match_mts(specular_reflectance, wk);
             let eta = {
-                let eta = eta.clone().as_rgb();
+                let eta = eta.clone().as_rgb().unwrap();
                 BSDFColor::UniformColor( Color {
                     r: eta.r / ext_eta,
                     g: eta.g / ext_eta,
@@ -429,7 +434,7 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
                 })
             };
             let k = {
-                let k = k.clone().as_rgb();
+                let k = k.clone().as_rgb().unwrap();
                 BSDFColor::UniformColor( Color {
                     r: k.r / ext_eta,
                     g: k.g / ext_eta,

@@ -96,9 +96,15 @@ impl SamplingStrategy for LightSamplingStrategy {
                     // FIXME: Check the direction of hte light
                     let mut weight = light_record.weight;
                     let emission = light_record.emitter.emitted_luminance(light_record.d);
-                    if emission.r != 0.0 { weight.r /= emission.r; }
-                    if emission.g != 0.0 { weight.g /= emission.g; }
-                    if emission.b != 0.0 { weight.b /= emission.b; }
+                    if emission.r != 0.0 {
+                        weight.r /= emission.r;
+                    }
+                    if emission.g != 0.0 {
+                        weight.g /= emission.g;
+                    }
+                    if emission.b != 0.0 {
+                        weight.b /= emission.b;
+                    }
 
                     // Need to evaluate the BSDF
                     weight *= &its.mesh.bsdf.eval(

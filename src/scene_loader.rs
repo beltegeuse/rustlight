@@ -113,7 +113,7 @@ impl SceneLoader for PBRTSceneLoader {
                     };
                     let mesh =
                         geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
-                    
+
                     if let Some(mut mesh) = mesh {
                         mesh.bsdf = bsdf;
 
@@ -125,7 +125,7 @@ impl SceneLoader for PBRTSceneLoader {
                             None => {}
                             _ => warn!("unsupported emission profile: {:?}", m.emission),
                         }
-                        
+
                         Some(mesh)
                     } else {
                         None
@@ -133,7 +133,9 @@ impl SceneLoader for PBRTSceneLoader {
                 }
                 _ => panic!("All mesh should be converted to trimesh"),
             })
-            .filter(|x| x.is_some()).map(|m| m.unwrap()).collect::<Vec<_>>();
+            .filter(|x| x.is_some())
+            .map(|m| m.unwrap())
+            .collect::<Vec<_>>();
 
         // Check if there is other emitter type
         let mut emitter_environment = None;
@@ -253,9 +255,7 @@ impl SceneLoader for MTSSceneLoader {
             .map(|s| {
                 match s {
                     mitsuba_rs::Shape::Ply {
-                        filename,
-                        option,
-                        ..
+                        filename, option, ..
                     } => {
                         let ply_path = std::path::Path::new(&filename);
                         // if ply_path.is_absolute() {
@@ -263,7 +263,7 @@ impl SceneLoader for MTSSceneLoader {
                         // }
 
                         let mut mesh_mts = mitsuba_rs::ply::read_ply(&ply_path);
-                        
+
                         // Build CDF
                         let mut dist_const =
                             crate::math::Distribution1DConstruct::new(mesh_mts.indices.len());
@@ -307,7 +307,7 @@ impl SceneLoader for MTSSceneLoader {
                             },
                             emission: match &option.emitter {
                                 Some(emitter) => {
-                                    let rgb = emitter.radiance.clone().as_rgb();
+                                    let rgb = emitter.radiance.clone().as_rgb().unwrap();
                                     Color {
                                         r: rgb.r,
                                         g: rgb.g,
@@ -352,7 +352,7 @@ impl SceneLoader for MTSSceneLoader {
                         // Check if a emitter is attached
                         if let Some(v) = option.emitter {
                             for m in &mut meshes {
-                                let rgb = v.radiance.clone().as_rgb();
+                                let rgb = v.radiance.clone().as_rgb().unwrap();
                                 m.emission = Color {
                                     r: rgb.r,
                                     g: rgb.g,
@@ -424,7 +424,7 @@ impl SceneLoader for MTSSceneLoader {
                             },
                             emission: match &shape.option.emitter {
                                 Some(emitter) => {
-                                    let rgb = emitter.radiance.clone().as_rgb();
+                                    let rgb = emitter.radiance.clone().as_rgb().unwrap();
                                     Color {
                                         r: rgb.r,
                                         g: rgb.g,
