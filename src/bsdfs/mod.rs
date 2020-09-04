@@ -8,50 +8,126 @@ use pbrt_rs;
 use std;
 use std::collections::HashMap;
 
-// Texture or uniform color buffers
-pub struct Texture {
-    pub img: Bitmap,
-}
-
-impl Texture {
-    // Load from a file
-    pub fn load(path: &str) -> Texture {
-        Texture {
-            img: Bitmap::read(path),
-        }
-    }
-}
-
 pub enum BSDFColor {
-    UniformColor(Color),
-    TextureColor(Texture),
+    Constant(Color),
+    Bitmap {
+        img: Bitmap,
+    },
+    Checkerbord {
+        color0: Color,
+        color1: Color,
+        offset: Vector2<f32>,
+        scale: Vector2<f32>,
+    },
+    Grid {
+        color0: Color,
+        color1: Color,
+        line_width: f32,
+        offset: Vector2<f32>,
+        scale: Vector2<f32>,
+    },
 }
 
 impl BSDFColor {
     pub fn color(&self, uv: &Option<Vector2<f32>>) -> Color {
         match self {
-            BSDFColor::UniformColor(ref c) => *c,
-            BSDFColor::TextureColor(ref t) => {
-                if let Some(uv_coords) = uv {
-                    t.img.pixel_uv(*uv_coords)
-                } else {
-                    warn!("Found a texture but no uv coordinate given");
+            BSDFColor::Constant(ref c) => *c,
+            BSDFColor::Bitmap { img } => match uv {
+                None => {
+                    error!("Found a texture but no uv coordinate given");
                     Color::zero()
                 }
+                Some(uv) => img.pixel_uv(*uv),
+            },
+            BSDFColor::Checkerbord {
+                color0,
+                color1,
+                offset,
+                scale,
+            } => {
+                match uv {
+                    None => {
+                        error!("Found a texture but no uv coordinate given");
+                        Color::zero()
+                    }
+                    Some(uv) => {
+                        // Rescale the coordinates
+                        let uv = Vector2::new(uv.x * scale.x, uv.y + scale.y) + offset;
+                        // Get the squared coordinates
+                        let x = 2 * (((uv.x * 2.0) as i32) % 2) - 1;
+                        let y = 2 * (((uv.y * 2.0) as i32) % 2) - 1;
+                        if x * y == 1 {
+                            *color0
+                        } else {
+                            *color1
+                        }
+                    }
+                }
             }
+            BSDFColor::Grid {
+                color0,
+                color1,
+                line_width,
+                offset,
+                scale,
+            } => {
+                match uv {
+                    None => {
+                        error!("Found a texture but no uv coordinate given");
+                        Color::zero()
+                    }
+                    Some(uv) => {
+                        // Rescale the coordinates
+                        let uv = Vector2::new(uv.x * scale.x, uv.y + scale.y) + offset;
+                        // Go to [0, 1]
+                        let mut x = uv.x - uv.x.floor();
+                        let mut y = uv.y - uv.y.floor();
+                        // Go to [-0.5, 0.5]
+                        if x > 0.5 {
+                            x -= 1.0;
+                        }
+                        if y > 0.5 {
+                            y -= 1.0;
+                        }
+                        if x.abs() < *line_width || y.abs() < *line_width {
+                            *color0
+                        } else {
+                            *color1
+                        }
+                    }
+                }
+            } /*  Float x = uv.x - math::floorToInt(uv.x);
+              Float y = uv.y - math::floorToInt(uv.y);
+
+              if (x > .5)
+                  x -= 1;
+              if (y > .5)
+                  y -= 1;
+
+              if (std::abs(x) < m_lineWidth || std::abs(y) < m_lineWidth)
+                  return m_color1;
+              else
+                  return m_color0;*/
         }
     }
 
     pub fn avg(&self) -> Color {
         match self {
-            BSDFColor::UniformColor(c) => *c,
-            BSDFColor::TextureColor(c) => c.img.average(),
+            BSDFColor::Constant(c) => *c,
+            BSDFColor::Bitmap { img } => img.average(),
+            BSDFColor::Checkerbord { color0, color1, .. } => 0.5 * (*color0 + *color1),
+            BSDFColor::Grid {
+                color0,
+                color1,
+                line_width,
+                ..
+            } => *line_width * (*color0) + (1.0 - line_width) * (*color1),
         }
     }
 }
 impl Default for BSDFColor {
     fn default() -> Self {
-        BSDFColor::UniformColor(Color::one())
+        BSDFColor::Constant(Color::one())
     }
 }
 
@@ -131,11 +207,13 @@ fn bsdf_texture_match_pbrt(
 ) -> Option<BSDFColor> {
     match v {
         pbrt_rs::parser::Spectrum::RGB(rgb) => {
-            Some(BSDFColor::UniformColor(Color::new(rgb.r, rgb.g, rgb.b)))
+            Some(BSDFColor::Constant(Color::new(rgb.r, rgb.g, rgb.b)))
         }
         pbrt_rs::parser::Spectrum::Texture(name) => {
             if let Some(texture) = textures.get(name) {
-                Some(BSDFColor::TextureColor(Texture::load(&texture.filename)))
+                Some(BSDFColor::Bitmap {
+                    img: Bitmap::read(&texture.filename),
+                })
             } else {
                 warn!("Impossible to found an texture with name: {}", name);
                 None
@@ -235,7 +313,7 @@ pub fn bsdf_pbrt(
             let k = bsdf_texture_match_pbrt(k, textures).unwrap();
             let distribution = Some(distribution_pbrt(distribution, textures));
             Some(Box::new(BSDFMetal {
-                specular: BSDFColor::UniformColor(Color::one()),
+                specular: BSDFColor::Constant(Color::one()),
                 eta,
                 k,
                 distribution,
@@ -245,8 +323,8 @@ pub fn bsdf_pbrt(
             let specular = bsdf_texture_match_pbrt(kr, textures).unwrap();
             Some(Box::new(BSDFMetal {
                 specular,
-                eta: BSDFColor::UniformColor(Color::one()),
-                k: BSDFColor::UniformColor(Color::zero()),
+                eta: BSDFColor::Constant(Color::one()),
+                k: BSDFColor::Constant(Color::zero()),
                 distribution: None,
             }))
         }
@@ -271,8 +349,17 @@ pub fn bsdf_pbrt(
         bsdf
     } else {
         Box::new(BSDFDiffuse {
-            diffuse: BSDFColor::UniformColor(Color::value(0.8)),
+            diffuse: BSDFColor::Constant(Color::value(0.8)),
         })
+    }
+}
+
+#[cfg(feature = "mitsuba")]
+fn convert_rgb_color(rgb: mitsuba_rs::RGB) -> Color {
+    Color {
+        r: rgb.r,
+        g: rgb.g,
+        b: rgb.b,
     }
 }
 
@@ -280,23 +367,50 @@ pub fn bsdf_pbrt(
 fn bsdf_texture_match_mts(v: &mitsuba_rs::BSDFColorSpectrum, wk: &std::path::Path) -> BSDFColor {
     match v {
         mitsuba_rs::BSDFColorSpectrum::Constant(v) => {
-            let v = v.clone().as_rgb().unwrap();
-            let v = Color {
-                r: v.r,
-                g: v.g,
-                b: v.b,
-            };
-            BSDFColor::UniformColor(v)
+            let v = convert_rgb_color(v.clone().as_rgb().unwrap());
+            BSDFColor::Constant(v)
         }
         mitsuba_rs::BSDFColorSpectrum::Texture(tex) => match tex {
             mitsuba_rs::Texture::Bitmap {
                 filename, gamma, ..
             } => {
-                let mut texture = Texture::load(wk.join(filename.clone()).to_str().unwrap());
+                let mut img = Bitmap::read(&wk.join(filename.clone()).to_str().unwrap());
                 if *gamma != 1.0 {
-                    texture.img.gamma(1.0 / gamma);
+                    img.gamma(1.0 / gamma);
                 }
-                BSDFColor::TextureColor(texture)
+                BSDFColor::Bitmap { img }
+            }
+            mitsuba_rs::Texture::Checkerboard {
+                color0,
+                color1,
+                offset,
+                scale,
+            } => {
+                let color0 = convert_rgb_color(color0.clone().as_rgb().unwrap());
+                let color1 = convert_rgb_color(color1.clone().as_rgb().unwrap());
+                BSDFColor::Checkerbord {
+                    color0,
+                    color1,
+                    offset: *offset,
+                    scale: *scale,
+                }
+            }
+            mitsuba_rs::Texture::GridTexture {
+                color0,
+                color1,
+                line_width,
+                offset,
+                scale,
+            } => {
+                let color0 = convert_rgb_color(color0.clone().as_rgb().unwrap());
+                let color1 = convert_rgb_color(color1.clone().as_rgb().unwrap());
+                BSDFColor::Grid {
+                    color0,
+                    color1,
+                    line_width: *line_width,
+                    offset: *offset,
+                    scale: *scale,
+                }
             }
             _ => panic!("Mitsuba texture type not supported: {:?}", tex),
         },
@@ -427,7 +541,7 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
             let specular = bsdf_texture_match_mts(specular_reflectance, wk);
             let eta = {
                 let eta = eta.clone().as_rgb().unwrap();
-                BSDFColor::UniformColor( Color {
+                BSDFColor::Constant( Color {
                     r: eta.r / ext_eta,
                     g: eta.g / ext_eta,
                     b: eta.b / ext_eta,
@@ -435,7 +549,7 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
             };
             let k = {
                 let k = k.clone().as_rgb().unwrap();
-                BSDFColor::UniformColor( Color {
+                BSDFColor::Constant( Color {
                     r: k.r / ext_eta,
                     g: k.g / ext_eta,
                     b: k.b / ext_eta,
@@ -458,7 +572,7 @@ pub fn bsdf_mts(bsdf: &mitsuba_rs::BSDF, wk: &std::path::Path) -> Box<dyn BSDF +
         bsdf
     } else {
         Box::new(BSDFDiffuse {
-            diffuse: BSDFColor::UniformColor(Color::value(0.8)),
+            diffuse: BSDFColor::Constant(Color::value(0.8)),
         })
     }
 }

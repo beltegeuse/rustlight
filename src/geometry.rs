@@ -66,19 +66,19 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
                 if !mat.diffuse_texture.is_empty() {
                     let path_texture = wk.join(&mat.diffuse_texture);
                     Box::new(bsdfs::diffuse::BSDFDiffuse {
-                        diffuse: bsdfs::BSDFColor::TextureColor(bsdfs::Texture::load(
-                            path_texture.to_str().unwrap(),
-                        )),
+                        diffuse: bsdfs::BSDFColor::Bitmap {
+                            img: Bitmap::read(&path_texture.to_str().unwrap()),
+                        },
                     })
                 } else {
                     let diffuse_color = Color::new(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
                     Box::new(bsdfs::diffuse::BSDFDiffuse {
-                        diffuse: bsdfs::BSDFColor::UniformColor(diffuse_color),
+                        diffuse: bsdfs::BSDFColor::Constant(diffuse_color),
                     })
                 }
             } else {
                 Box::new(bsdfs::diffuse::BSDFDiffuse {
-                    diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
+                    diffuse: bsdfs::BSDFColor::Constant(Color::zero()),
                 })
             }
         };
@@ -146,7 +146,7 @@ impl Mesh {
                 normals,
                 uv,
                 bsdf: Box::new(bsdfs::diffuse::BSDFDiffuse {
-                    diffuse: bsdfs::BSDFColor::UniformColor(Color::zero()),
+                    diffuse: bsdfs::BSDFColor::Constant(Color::zero()),
                 }),
                 emission: Color::zero(),
                 cdf: dist_const.normalize(),

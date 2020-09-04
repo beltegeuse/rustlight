@@ -103,12 +103,12 @@ impl SceneLoader for PBRTSceneLoader {
                             bsdfs::bsdf_pbrt(bsdf_name, &textures)
                         } else {
                             Box::new(bsdfs::diffuse::BSDFDiffuse {
-                                diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
+                                diffuse: bsdfs::BSDFColor::Constant(Color::value(0.8)),
                             })
                         }
                     } else {
                         Box::new(bsdfs::diffuse::BSDFDiffuse {
-                            diffuse: bsdfs::BSDFColor::UniformColor(Color::value(0.8)),
+                            diffuse: bsdfs::BSDFColor::Constant(Color::value(0.8)),
                         })
                     };
                     let mesh =
@@ -300,9 +300,7 @@ impl SceneLoader for MTSSceneLoader {
                             bsdf: match &option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
                                 None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
-                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(
-                                        0.8,
-                                    )),
+                                    diffuse: crate::bsdfs::BSDFColor::Constant(Color::value(0.8)),
                                 }),
                             },
                             emission: match &option.emitter {
@@ -342,9 +340,7 @@ impl SceneLoader for MTSSceneLoader {
                             m.bsdf = match &option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
                                 None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
-                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(
-                                        0.8,
-                                    )),
+                                    diffuse: crate::bsdfs::BSDFColor::Constant(Color::value(0.8)),
                                 }),
                             };
                         }
@@ -417,9 +413,7 @@ impl SceneLoader for MTSSceneLoader {
                             bsdf: match &shape.option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
                                 None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
-                                    diffuse: crate::bsdfs::BSDFColor::UniformColor(Color::value(
-                                        0.8,
-                                    )),
+                                    diffuse: crate::bsdfs::BSDFColor::Constant(Color::value(0.8)),
                                 }),
                             },
                             emission: match &shape.option.emitter {
@@ -439,6 +433,67 @@ impl SceneLoader for MTSSceneLoader {
                         // Apply transform
                         for m in &mut meshes {
                             apply_transform(m, shape.option.to_world.clone());
+                        }
+
+                        meshes
+                    }
+                    mitsuba_rs::Shape::Rectangle { option } => {
+                        // Temporary support of rectangular shape:
+                        //  - Convert to triangle soup
+                        // This prevent for now uses of special sampling techniques.
+                        let vertices = vec![
+                            Vector3::new(-1.0, -1.0, 0.0),
+                            Vector3::new(1.0, -1.0, 0.0),
+                            Vector3::new(1.0, 1.0, 0.0),
+                            Vector3::new(-1.0, 1.0, 0.0),
+                        ];
+                        let uv = Some(vec![
+                            Vector2::new(0.0, 0.0),
+                            Vector2::new(1.0, 0.0),
+                            Vector2::new(1.0, 1.0),
+                            Vector2::new(0.0, 1.0),
+                        ]);
+                        let normals = Some(vec![
+                            Vector3::new(0.0, 0.0, 1.0),
+                            Vector3::new(0.0, 0.0, 1.0),
+                            Vector3::new(0.0, 0.0, 1.0),
+                            Vector3::new(0.0, 0.0, 1.0),
+                        ]);
+                        let indices = vec![Vector3::new(0, 1, 2), Vector3::new(2, 3, 0)];
+
+                        let mut dist_const = crate::math::Distribution1DConstruct::new(2);
+                        dist_const.add(0.5);
+                        dist_const.add(0.5);
+
+                        let mut meshes = vec![geometry::Mesh {
+                            name: "rectangle".to_string(), // Does this is the name to use?
+                            vertices,
+                            indices,
+                            normals,
+                            uv,
+                            bsdf: match &option.bsdf {
+                                Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
+                                None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
+                                    diffuse: crate::bsdfs::BSDFColor::Constant(Color::value(0.8)),
+                                }),
+                            },
+                            emission: match &option.emitter {
+                                Some(emitter) => {
+                                    let rgb = emitter.radiance.clone().as_rgb().unwrap();
+                                    Color {
+                                        r: rgb.r,
+                                        g: rgb.g,
+                                        b: rgb.b,
+                                    }
+                                }
+                                None => Color::zero(),
+                            },
+                            cdf: dist_const.normalize(),
+                        }];
+
+                        // Apply transform
+                        for m in &mut meshes {
+                            apply_transform(m, option.to_world.clone());
                         }
 
                         meshes
