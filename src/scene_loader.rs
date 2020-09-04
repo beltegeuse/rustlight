@@ -233,15 +233,15 @@ impl SceneLoader for MTSSceneLoader {
                 return;
             }
 
+            // Apply transform
             let mat = trans.unwrap().as_matrix();
-
             if let Some(v) = m.normals.as_mut() {
                 for n in v.iter_mut() {
                     *n = mat.transform_vector(*n);
                 }
             }
             for p in &mut m.vertices {
-                *p = mat.transform_vector(*p);
+                *p = mat.transform_point(Point3::new(p.x, p.y, p.z)).to_vec();
             }
         };
 
