@@ -217,7 +217,6 @@ impl SceneLoader for MTSSceneLoader {
             let mts_sensor = mts.sensors.pop().unwrap();
             let img_size = Vector2::new(mts_sensor.film.width, mts_sensor.film.height);
             let mat = mts_sensor.to_world.as_matrix();
-            let mat = mat.inverse_transform().unwrap();
             let fov = match &mts_sensor.fov_axis[..] {
                 "x" => Fov::X(mts_sensor.fov),
                 "y" => Fov::Y(mts_sensor.fov),

@@ -52,7 +52,7 @@ impl BSDFColor {
                     }
                     Some(uv) => {
                         // Rescale the coordinates
-                        let uv = Vector2::new(uv.x * scale.x, uv.y + scale.y) + offset;
+                        let uv = Vector2::new(uv.x * scale.x, uv.y * scale.y) + offset;
                         // Get the squared coordinates
                         let x = 2 * (((uv.x * 2.0) as i32) % 2) - 1;
                         let y = 2 * (((uv.y * 2.0) as i32) % 2) - 1;
