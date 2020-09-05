@@ -208,7 +208,7 @@ pub struct MTSSceneLoader {}
 impl SceneLoader for MTSSceneLoader {
     fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
         // Load the scene
-        let mut mts = mitsuba_rs::parse(filename);
+        let mut mts = mitsuba_rs::parse(filename)?;
         let wk = std::path::Path::new(filename).parent().unwrap();
 
         // Load camera
