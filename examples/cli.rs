@@ -8,7 +8,7 @@ extern crate cgmath;
 extern crate num_cpus;
 #[macro_use]
 extern crate clap;
-extern crate env_logger;
+extern crate log4rs;
 #[macro_use]
 extern crate log;
 extern crate rand;
@@ -16,6 +16,16 @@ extern crate rayon;
 extern crate rustlight;
 
 use clap::{App, Arg, SubCommand};
+use log::LevelFilter;
+use log4rs::{
+    append::{
+        console::{ConsoleAppender, Target},
+        file::FileAppender,
+    },
+    config::{Appender, Config, Root},
+    encode::pattern::PatternEncoder,
+    filter::threshold::ThresholdFilter,
+};
 use rand::SeedableRng;
 use rustlight::integrators::IntegratorType;
 fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
@@ -99,7 +109,7 @@ fn main() {
                     .default_value("0.0")
                     .help("add medium with defined density"),
             )
-            .arg(Arg::with_name("debug").short("d").help("debug output"))
+            .arg(Arg::with_name("log").short("l").takes_value(true))
             .arg(
                 Arg::with_name("nbsamples")
                     .short("n")
@@ -386,17 +396,46 @@ fn main() {
             .get_matches();
 
     /////////////// Setup logging system
-    if matches.is_present("debug") {
-        // FIXME: add debug flag?
-        env_logger::Builder::from_default_env()
-            .format_timestamp(None)
-            .init();
-    } else {
-        env_logger::Builder::from_default_env()
-            .format_timestamp(None)
-            .parse_filters("info")
-            .init();
-    }
+    let _handle = {
+        let level = log::LevelFilter::Info;
+        let stderr = ConsoleAppender::builder()
+            .target(Target::Stderr)
+            .encoder(Box::new(PatternEncoder::new("{l} {M} - {m}\n")))
+            .build();
+        let config = if matches.is_present("log") {
+            let logfile = FileAppender::builder()
+                // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
+                .encoder(Box::new(PatternEncoder::new("{l} {M} - {m}\n")))
+                .build(matches.value_of("log").unwrap())
+                .unwrap();
+
+            Config::builder()
+                .appender(Appender::builder().build("logfile", Box::new(logfile)))
+                .appender(
+                    Appender::builder()
+                        .filter(Box::new(ThresholdFilter::new(level)))
+                        .build("stderr", Box::new(stderr)),
+                )
+                .build(
+                    Root::builder()
+                        .appender("logfile")
+                        .appender("stderr")
+                        .build(level),
+                )
+                .unwrap()
+        } else {
+            Config::builder()
+                .appender(
+                    Appender::builder()
+                        .filter(Box::new(ThresholdFilter::new(level)))
+                        .build("stderr", Box::new(stderr)),
+                )
+                .build(Root::builder().appender("stderr").build(LevelFilter::Trace))
+                .unwrap()
+        };
+
+        log4rs::init_config(config).unwrap()
+    };
     /////////////// Check output extension
     let imgout_path_str = matches.value_of("output").unwrap_or("test.pfm");
 
