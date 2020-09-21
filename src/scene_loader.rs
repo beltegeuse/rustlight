@@ -256,10 +256,10 @@ impl SceneLoader for MTSSceneLoader {
                     mitsuba_rs::Shape::Ply {
                         filename, option, ..
                     } => {
-                        let ply_path = std::path::Path::new(&filename);
-                        // if ply_path.is_absolute() {
-                        //     ply_path = wk.join(ply_path);
-                        // }
+                        let mut ply_path = std::path::Path::new(&filename).to_owned();
+                        if !ply_path.is_absolute() {
+                            ply_path = wk.join(ply_path);
+                        }
 
                         let mut mesh_mts = mitsuba_rs::ply::read_ply(&ply_path);
 
