@@ -555,6 +555,7 @@ dependencies = [
 [[package]]
 name = "mitsuba_rs"
 version = "0.1.0"
+source = "git+https://github.com/beltegeuse/mitsuba_rs#3a2e1eb055328ab4e6bc2114313e8483592da97b"
 dependencies = [
  "bitflags",
  "byteorder",
