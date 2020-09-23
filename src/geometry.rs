@@ -272,4 +272,8 @@ impl Mesh {
     pub fn is_light(&self) -> bool {
         !self.emission.is_zero()
     }
+
+    pub fn discard_normals(&mut self) {
+        self.normals = None;
+    }
 }

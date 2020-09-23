@@ -461,7 +461,10 @@ fn distribution_mts(
             let microfacet_type = match &d.distribution[..] {
                 "beckmann" => MicrofacetType::Beckmann,
                 "ggx" => MicrofacetType::GGX,
-                _ => panic!("Unsupported microfacet type {}", d.distribution),
+                _ => {
+                    warn!("Unsupported microfacet type {}", d.distribution);
+                    MicrofacetType::Beckmann
+                }
             };
 
             Some(MicrofacetDistributionBSDF {

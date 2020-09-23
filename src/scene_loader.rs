@@ -275,7 +275,10 @@ impl SceneLoader for MTSSceneLoader {
             .map(|s| {
                 match s {
                     mitsuba_rs::Shape::Ply {
-                        filename, option, ..
+                        filename,
+                        face_normal,
+                        option,
+                        ..
                     } => {
                         let mut ply_path = std::path::Path::new(&filename).to_owned();
                         if !ply_path.is_absolute() {
@@ -288,7 +291,7 @@ impl SceneLoader for MTSSceneLoader {
                             name: "".to_owned(), // Does this is the name to use?
                             vertices,
                             indices: mesh_mts.indices,
-                            normals: mesh_mts.normals,
+                            normals: if face_normal { None } else { mesh_mts.normals },
                             uv: mesh_mts.uv,
                             bsdf: match &option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
@@ -320,6 +323,7 @@ impl SceneLoader for MTSSceneLoader {
                     mitsuba_rs::Shape::Obj {
                         filename,
                         option,
+                        face_normal,
                         flip_tex_coords,
                         ..
                     } => {
@@ -328,8 +332,12 @@ impl SceneLoader for MTSSceneLoader {
                         // Load the geometry
                         let mut meshes = geometry::load_obj(&obj_path).unwrap();
 
-                        // apply BSDF
+                        // apply BSDF & face_normal is needed
                         for m in &mut meshes {
+                            if face_normal {
+                                m.discard_normals();
+                            }
+
                             m.bsdf = match &option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
                                 None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
@@ -374,7 +382,11 @@ impl SceneLoader for MTSSceneLoader {
                             name: mesh_mts.name, // Does this is the name to use?
                             vertices: mesh_mts.vertices,
                             indices: mesh_mts.indices,
-                            normals: mesh_mts.normals,
+                            normals: if shape.face_normal {
+                                None
+                            } else {
+                                mesh_mts.normals
+                            },
                             uv: mesh_mts.texcoords,
                             bsdf: match &shape.option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),

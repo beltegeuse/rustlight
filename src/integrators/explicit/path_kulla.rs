@@ -189,10 +189,7 @@ impl IntegratorMC for IntegratorPathKulla {
         };
 
         // Sampling the distance with Kulla et al.'s scheme
-        let (t_cam, t_pdf, option) = if self
-            .strategy
-            .intersects(Strategies::KULLA)
-        {
+        let (t_cam, t_pdf, option) = if self.strategy.intersects(Strategies::KULLA) {
             // Sampling a point on the light source
             // This point might be reuse if we are in Kulla + Explicit sampling
             let (_, sampled_pos, flux) = scene.emitters().random_sample_emitter_position(
@@ -203,7 +200,7 @@ impl IntegratorMC for IntegratorPathKulla {
 
             // Sampling the distance over the sensor ray using Kulla's strategy
             let kulla_sampling = KullaSampling::new(max_dist, &ray, sampled_pos.p);
-            
+
             let (t_kulla, pdf_kulla) = kulla_sampling.sample(sampler.next2d());
             if pdf_kulla == 0.0 {
                 return Color::zero();
@@ -258,10 +255,7 @@ impl IntegratorMC for IntegratorPathKulla {
             };
 
             // Reuse or not the sampling from KULLA
-            let res = if self
-                .strategy
-                .intersects(Strategies::KULLA)
-            {
+            let res = if self.strategy.intersects(Strategies::KULLA) {
                 let (sampled_pos, flux) = option.unwrap();
                 let d_light = sampled_pos.p - p;
                 let t_light = d_light.magnitude();
