@@ -90,6 +90,8 @@ impl BSDF for BSDFGlass {
                 d: reflect(d_in),
                 pdf: PDF::Discrete(fresnel),
                 eta: 1.0,
+                event: BSDFEvent::REFLECTION,
+                event_type: BSDFType::DELTA,
             })
         } else {
             // Radiance must be scaled to account for the solid angle compression
@@ -113,6 +115,8 @@ impl BSDF for BSDFGlass {
                 } else {
                     self.inv_eta
                 },
+                event: BSDFEvent::TRANSMISSION,
+                event_type: BSDFType::DELTA,
             })
         }
     }
@@ -175,10 +179,14 @@ impl BSDF for BSDFGlass {
         0.0
     }
 
-    fn is_smooth(&self) -> bool {
-        true
-    }
     fn is_twosided(&self) -> bool {
         false
+    }
+
+    fn bsdf_type(&self) -> BSDFType {
+        BSDFType::DELTA
+    }
+    fn bsdf_event(&self) -> BSDFEvent {
+        BSDFEvent::TRANSMISSION | BSDFEvent::REFLECTION
     }
 }

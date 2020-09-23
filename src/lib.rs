@@ -40,8 +40,12 @@ extern crate pbrt_rs;
 // For building hashmap in build time
 #[macro_use]
 extern crate lazy_static;
+// For making assertion over floats
 #[macro_use]
 extern crate assert_approx_eq;
+// For flag bit implementation (C++)
+#[macro_use]
+extern crate bitflags;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;

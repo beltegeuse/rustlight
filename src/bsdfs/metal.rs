@@ -31,6 +31,8 @@ impl BSDF for BSDFMetal {
                         d: reflect(d_in),
                         pdf: PDF::Discrete(1.0),
                         eta: 1.0,
+                        event: BSDFEvent::REFLECTION,
+                        event_type: BSDFType::DELTA,
                     })
                 }
                 Some(ref d) => {
@@ -63,6 +65,8 @@ impl BSDF for BSDFMetal {
                         d: wo,
                         pdf: PDF::SolidAngle(pdf),
                         eta: 1.0,
+                        event: BSDFEvent::REFLECTION,
+                        event_type: BSDFType::GLOSSY,
                     })
                 }
             }
@@ -157,10 +161,17 @@ impl BSDF for BSDFMetal {
         unimplemented!()
     }
 
-    fn is_smooth(&self) -> bool {
-        self.distribution.is_none()
-    }
     fn is_twosided(&self) -> bool {
         true
+    }
+
+    fn bsdf_type(&self) -> BSDFType {
+        match self.distribution {
+            Some(_) => BSDFType::GLOSSY,
+            None => BSDFType::DELTA,
+        }
+    }
+    fn bsdf_event(&self) -> BSDFEvent {
+        BSDFEvent::REFLECTION
     }
 }

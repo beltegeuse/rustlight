@@ -1,5 +1,5 @@
 use crate::integrators::gradient::shiftmapping::*;
-use crate::paths::strategy::*;
+use crate::paths::strategies::*;
 use crate::samplers::Sampler;
 use crate::scene::Scene;
 use crate::structure::Color;

@@ -229,6 +229,18 @@ impl SceneLoader for MTSSceneLoader {
         let apply_transform = |m: &mut geometry::Mesh, trans: Option<mitsuba_rs::Transform>| {
             // No transformation
             if trans.is_none() {
+                if let Some(v) = m.normals.as_mut() {
+                    for n in v.iter_mut() {
+                        let l = n.dot(*n);
+                        if l == 0.0 {
+                            warn!("Wrong normal! {:?}", n);
+                        } else if l != 1.0 {
+                            *n /= l.sqrt();
+                        }
+                    }
+                }
+                // Build CDF for be able to sample the mesh
+                m.build_cdf();
                 return;
             }
 
@@ -237,11 +249,20 @@ impl SceneLoader for MTSSceneLoader {
             if let Some(v) = m.normals.as_mut() {
                 for n in v.iter_mut() {
                     *n = mat.transform_vector(*n);
+                    let l = n.dot(*n);
+                    if l == 0.0 {
+                        warn!("Wrong normal! {:?}", n);
+                    } else if l != 1.0 {
+                        *n /= l.sqrt();
+                    }
                 }
             }
             for p in &mut m.vertices {
                 *p = mat.transform_point(Point3::new(p.x, p.y, p.z)).to_vec();
             }
+
+            // Build CDF for be able to sample the mesh
+            m.build_cdf();
         };
 
         // Load meshes
@@ -261,35 +282,8 @@ impl SceneLoader for MTSSceneLoader {
                             ply_path = wk.join(ply_path);
                         }
 
-                        let mut mesh_mts = mitsuba_rs::ply::read_ply(&ply_path);
-
-                        // Build CDF
-                        let mut dist_const =
-                            crate::math::Distribution1DConstruct::new(mesh_mts.indices.len());
-                        for id in &mesh_mts.indices {
-                            let v0 = mesh_mts.points[id.x];
-                            let v1 = mesh_mts.points[id.y];
-                            let v2 = mesh_mts.points[id.z];
-
-                            let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
-                            dist_const.add(area);
-                        }
+                        let mesh_mts = mitsuba_rs::ply::read_ply(&ply_path);
                         let vertices = mesh_mts.points.into_iter().map(|p| p.to_vec()).collect();
-
-                        // Normalize normals
-                        // Indeed, sometimes the normal are not properly normalized
-                        if let Some(ref mut ns) = mesh_mts.normals.as_mut() {
-                            for n in ns.iter_mut() {
-                                let l = n.dot(*n);
-                                if l == 0.0 {
-                                    warn!("Wrong normal! {:?}", n);
-                                // TODO: Need to do something...
-                                } else if l != 1.0 {
-                                    *n /= l.sqrt();
-                                }
-                            }
-                        }
-
                         let mut meshes = vec![geometry::Mesh {
                             name: "".to_owned(), // Does this is the name to use?
                             vertices,
@@ -313,7 +307,7 @@ impl SceneLoader for MTSSceneLoader {
                                 }
                                 None => Color::zero(),
                             },
-                            cdf: dist_const.normalize(),
+                            cdf: None,
                         }];
 
                         // Apply transform
@@ -375,34 +369,7 @@ impl SceneLoader for MTSSceneLoader {
                         meshes
                     }
                     mitsuba_rs::Shape::Serialized(shape) => {
-                        let mut mesh_mts = mitsuba_rs::serialized::read_serialized(&shape, &wk);
-
-                        // Build CDF
-                        let mut dist_const =
-                            crate::math::Distribution1DConstruct::new(mesh_mts.indices.len());
-                        for id in &mesh_mts.indices {
-                            let v0 = mesh_mts.vertices[id.x];
-                            let v1 = mesh_mts.vertices[id.y];
-                            let v2 = mesh_mts.vertices[id.z];
-
-                            let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
-                            dist_const.add(area);
-                        }
-
-                        // Normalize normals
-                        // Indeed, sometimes the normal are not properly normalized
-                        if let Some(ref mut ns) = mesh_mts.normals.as_mut() {
-                            for n in ns.iter_mut() {
-                                let l = n.dot(*n);
-                                if l == 0.0 {
-                                    warn!("Wrong normal! {:?}", n);
-                                // TODO: Need to do something...
-                                } else if l != 1.0 {
-                                    *n /= l.sqrt();
-                                }
-                            }
-                        }
-
+                        let mesh_mts = mitsuba_rs::serialized::read_serialized(&shape, &wk);
                         let mut meshes = vec![geometry::Mesh {
                             name: mesh_mts.name, // Does this is the name to use?
                             vertices: mesh_mts.vertices,
@@ -426,7 +393,7 @@ impl SceneLoader for MTSSceneLoader {
                                 }
                                 None => Color::zero(),
                             },
-                            cdf: dist_const.normalize(),
+                            cdf: None,
                         }];
 
                         // Apply transform
@@ -459,11 +426,6 @@ impl SceneLoader for MTSSceneLoader {
                             Vector3::new(0.0, 0.0, 1.0),
                         ]);
                         let indices = vec![Vector3::new(0, 1, 2), Vector3::new(2, 3, 0)];
-
-                        let mut dist_const = crate::math::Distribution1DConstruct::new(2);
-                        dist_const.add(0.5);
-                        dist_const.add(0.5);
-
                         let mut meshes = vec![geometry::Mesh {
                             name: "rectangle".to_string(), // Does this is the name to use?
                             vertices,
@@ -487,7 +449,7 @@ impl SceneLoader for MTSSceneLoader {
                                 }
                                 None => Color::zero(),
                             },
-                            cdf: dist_const.normalize(),
+                            cdf: None,
                         }];
 
                         // Apply transform
@@ -510,6 +472,44 @@ impl SceneLoader for MTSSceneLoader {
         let emitter_environment = None;
 
         let meshes = meshes.into_iter().map(|v| Arc::new(v)).collect();
+        let volume = if mts.medium.is_empty() {
+            None
+        } else {
+            let (medium_name, medium) = mts.medium.iter().nth(0).unwrap();
+            info!("Add {} as main medium", medium_name);
+            match medium {
+                mitsuba_rs::Medium::Homogenous {
+                    sigma_s,
+                    sigma_a,
+                    scale,
+                    ..
+                } => {
+                    let sigma_a = sigma_a.clone().as_rgb().unwrap();
+                    let sigma_a = Color {
+                        r: sigma_a.r * scale,
+                        g: sigma_a.g * scale,
+                        b: sigma_a.b * scale,
+                    };
+                    let sigma_s = sigma_s.clone().as_rgb().unwrap();
+                    let sigma_s = Color {
+                        r: sigma_s.r * scale,
+                        g: sigma_s.g * scale,
+                        b: sigma_s.b * scale,
+                    };
+                    info!(
+                        "Create homogenous PM with sigma_a = {:?} and sigma_s = {:?}",
+                        sigma_a, sigma_s
+                    );
+
+                    let sigma_t = sigma_a + sigma_s;
+                    Some(crate::volume::HomogenousVolume {
+                        sigma_a,
+                        sigma_s,
+                        sigma_t,
+                    })
+                }
+            }
+        };
 
         Ok(Scene {
             camera,
@@ -518,7 +518,7 @@ impl SceneLoader for MTSSceneLoader {
             nb_threads: None,
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
-            volume: None,
+            volume,
             emitters: None,
         })
     }

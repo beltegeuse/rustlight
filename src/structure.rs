@@ -22,6 +22,40 @@ pub enum PDF {
     Area(f32),
     Discrete(f32),
 }
+impl PDF {
+    // g_ad = cos(x) / d^2
+    pub fn as_solid_angle_geom(self, g_ad: f32) -> Self {
+        match self {
+            PDF::SolidAngle(v) => PDF::SolidAngle(v),
+            PDF::Area(v) => {
+                if g_ad == 0.0 {
+                    PDF::SolidAngle(0.0)
+                } else {
+                    PDF::SolidAngle(v / g_ad)
+                }
+            }
+            PDF::Discrete(_) => panic!("Try to convert discrete to SA"),
+        }
+    }
+    pub fn as_solid_angle(self, p: &Point3<f32>, x: &Point3<f32>, n_x: &Vector3<f32>) -> Self {
+        match self {
+            PDF::SolidAngle(v) => PDF::SolidAngle(v),
+            PDF::Area(v) => {
+                let d = x - p;
+                let l = d.magnitude();
+                assert_ne!(l, 0.0);
+                let d = d / l;
+                let cos = n_x.dot(d).max(0.0);
+                if cos == 0.0 {
+                    PDF::SolidAngle(0.0)
+                } else {
+                    PDF::SolidAngle(v * l * l / cos)
+                }
+            }
+            PDF::Discrete(_) => panic!("Try to convert discrete to SA"),
+        }
+    }
+}
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Domain {

@@ -24,6 +24,8 @@ impl BSDF for BSDFDiffuse {
                 d: d_out,
                 pdf: PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
                 eta: 1.0,
+                event: BSDFEvent::REFLECTION,
+                event_type: BSDFType::DIFFUSE,
             })
         }
     }
@@ -72,10 +74,14 @@ impl BSDF for BSDFDiffuse {
         std::f32::INFINITY
     }
 
-    fn is_smooth(&self) -> bool {
-        false
-    }
     fn is_twosided(&self) -> bool {
         true
+    }
+
+    fn bsdf_type(&self) -> BSDFType {
+        BSDFType::DIFFUSE
+    }
+    fn bsdf_event(&self) -> BSDFEvent {
+        BSDFEvent::REFLECTION
     }
 }

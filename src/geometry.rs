@@ -99,7 +99,7 @@ pub struct Mesh {
     // Other informations
     pub bsdf: Box<dyn bsdfs::BSDF>,
     pub emission: Color,
-    pub cdf: Distribution1D,
+    pub cdf: Option<Distribution1D>,
 }
 
 impl Mesh {
@@ -149,19 +149,34 @@ impl Mesh {
                     diffuse: bsdfs::BSDFColor::Constant(Color::zero()),
                 }),
                 emission: Color::zero(),
-                cdf: dist_const.normalize(),
+                cdf: Some(dist_const.normalize()),
             })
         }
     }
 
+    pub fn build_cdf(&mut self) {
+        warn!("Build CDF have been already done.");
+        //assert!(self.cdf.is_none());
+        let mut dist_const = Distribution1DConstruct::new(self.indices.len());
+        for id in &self.indices {
+            let v0 = self.vertices[id.x];
+            let v1 = self.vertices[id.y];
+            let v2 = self.vertices[id.z];
+
+            let area = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
+            dist_const.add(area);
+        }
+        self.cdf = Some(dist_const.normalize());
+    }
+
     pub fn pdf(&self) -> f32 {
-        1.0 / (self.cdf.normalization)
+        1.0 / (self.cdf.as_ref().unwrap().normalization)
     }
 
     // FIXME: reuse random number
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
         // Select a triangle
-        let id = self.indices[self.cdf.sample(s)];
+        let id = self.indices[self.cdf.as_ref().unwrap().sample(s)];
         let v0 = self.vertices[id.x];
         let v1 = self.vertices[id.y];
         let v2 = self.vertices[id.z];
@@ -188,7 +203,7 @@ impl Mesh {
         SampledPosition {
             p: Point3::from_vec(pos),
             n: normal,
-            pdf: PDF::Area(1.0 / (self.cdf.normalization)),
+            pdf: PDF::Area(1.0 / (self.cdf.as_ref().unwrap().normalization)),
         }
     }
 

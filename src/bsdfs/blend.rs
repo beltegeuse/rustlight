@@ -14,7 +14,7 @@ impl BSDF for BSDFBlend {
         sample: Point2<f32>,
         transport: Transport,
     ) -> Option<SampledDirection> {
-        assert!(!self.bsdf1.is_smooth() && !self.bsdf2.is_smooth());
+        assert!(!self.bsdf1.bsdf_type().is_smooth() && !self.bsdf2.bsdf_type().is_smooth());
 
         // Select the BSDF proportional to their respective weights
         let sampled_dir = if sample.x < self.weight {
@@ -79,17 +79,17 @@ impl BSDF for BSDFBlend {
         self.bsdf1.roughness(uv).min(self.bsdf2.roughness(uv))
     }
 
-    fn is_smooth(&self) -> bool {
-        if self.bsdf1.is_smooth() || self.bsdf2.is_smooth() {
-            panic!("is smooth on blend material");
-        }
-        false
-    }
-
     fn is_twosided(&self) -> bool {
         if !self.bsdf1.is_twosided() || !self.bsdf2.is_twosided() {
             panic!("is twosided on blend material");
         }
         true
+    }
+
+    fn bsdf_type(&self) -> BSDFType {
+        self.bsdf1.bsdf_type() | self.bsdf2.bsdf_type()
+    }
+    fn bsdf_event(&self) -> BSDFEvent {
+        self.bsdf1.bsdf_event() | self.bsdf2.bsdf_event()
     }
 }

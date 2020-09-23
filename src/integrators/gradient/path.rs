@@ -257,7 +257,7 @@ impl IntegratorGradientPath {
             // Light sampling
             /////////////////////////////////
             // Explict connect to the light source
-            if !main.its.mesh.bsdf.is_smooth() {
+            if !main.its.mesh.bsdf.bsdf_type().is_smooth() {
                 let (r_sel_rand, r_rand, uv_rand) =
                     (sampler.next(), sampler.next(), sampler.next2d());
                 let main_light_record =
@@ -331,7 +331,7 @@ impl IntegratorGradientPath {
                                 if shift_d_in_local.z <= 0.0 || (!main_light_visible) {
                                     (0.0, Color::zero())
                                 } else {
-                                    assert!(!main.its.mesh.bsdf.is_smooth());
+                                    assert!(!main.its.mesh.bsdf.bsdf_type().is_smooth());
 
                                     // BSDF
                                     let shift_bsdf_pdf = f64::from(
@@ -368,7 +368,7 @@ impl IntegratorGradientPath {
                                 let shift_hit_mesh = &s.its.mesh;
                                 let intersectable_light = true;
                                 let main_bsdf_rought = true;
-                                let shift_bsdf_rought = !s.its.mesh.bsdf.is_smooth();
+                                let shift_bsdf_rought = !s.its.mesh.bsdf.bsdf_type().is_smooth();
 
                                 if !intersectable_light || (main_bsdf_rought && shift_bsdf_rought) {
                                     // Sample the light from the point
@@ -547,7 +547,7 @@ impl IntegratorGradientPath {
                             }
                         }
                         RayState::RecentlyConnected(mut s) => {
-                            if main_pred_its.mesh.bsdf.is_smooth() {
+                            if main_pred_its.mesh.bsdf.bsdf_type().is_smooth() {
                                 ShiftResult::default()
                             } else {
                                 let shift_d_in_global = (s.its.p - main.ray.o).normalize();
@@ -598,9 +598,10 @@ impl IntegratorGradientPath {
                             }
                         }
                         RayState::NotConnected(mut s) => {
-                            let main_bsdf_rought = !main_pred_its.mesh.bsdf.is_smooth();
-                            let main_next_bsdf_rought = !main_next_mesh.bsdf.is_smooth();
-                            let shift_bsdf_rought = !s.its.mesh.bsdf.is_smooth();
+                            let main_bsdf_rought = !main_pred_its.mesh.bsdf.bsdf_type().is_smooth();
+                            let main_next_bsdf_rought =
+                                !main_next_mesh.bsdf.bsdf_type().is_smooth();
+                            let shift_bsdf_rought = !s.its.mesh.bsdf.bsdf_type().is_smooth();
                             if main_bsdf_rought && main_next_bsdf_rought && shift_bsdf_rought {
                                 // In this case, we can do the reconnection
                                 if !accel.visible(&s.its.p, &main.its.p) {

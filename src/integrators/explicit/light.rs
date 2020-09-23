@@ -1,6 +1,6 @@
 use crate::integrators::*;
-use crate::paths::path::*;
-use crate::paths::{strategy::*, strategy_dir::*, vertex::*};
+use crate::paths::strategies::*;
+use crate::paths::{path::*, vertex::*};
 use cgmath::InnerSpace;
 use cgmath::Point2;
 
@@ -89,7 +89,8 @@ impl TechniqueLightTracing {
                     // a succesful connection
                     let pos_sensor = scene.camera.position();
                     let d = (pos_sensor - its.p).normalize();
-                    if !its.mesh.bsdf.is_smooth() && accel.visible(&its.p, &pos_sensor) {
+                    if !its.mesh.bsdf.bsdf_type().is_smooth() && accel.visible(&its.p, &pos_sensor)
+                    {
                         // Splat the contribution
                         if let Some((importance, uv)) = scene.camera.sample_direct(&its.p) {
                             // Compute BSDF for the splatting
@@ -232,10 +233,11 @@ impl Integrator for IntegratorLightTracing {
                 // Initialize the strategy and the path
                 // the path will be reused for each samples generated
                 // The sampling strategies
-                let samplings: Vec<Box<dyn SamplingStrategy>> =
-                    vec![Box::new(DirectionalSamplingStrategy {
+                let samplings: Vec<Box<dyn SamplingStrategy>> = vec![Box::new(
+                    crate::paths::strategies::directional::DirectionalSamplingStrategy {
                         transport: Transport::Importance,
-                    })];
+                    },
+                )];
                 // Do the sampling here
                 let mut technique = TechniqueLightTracing {
                     max_depth: self.max_depth,

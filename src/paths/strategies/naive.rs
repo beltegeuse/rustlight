@@ -2,19 +2,14 @@ use crate::accel::*;
 use crate::math::*;
 use crate::paths::edge::*;
 use crate::paths::path::*;
-use crate::paths::strategy::*;
-use crate::paths::vertex::*;
-use crate::samplers::*;
-use crate::scene::*;
-use crate::structure::*;
-use crate::volume::*;
+use crate::paths::strategies::*;
 use crate::Scale;
 use cgmath::InnerSpace;
 
-pub struct DirectionalSamplingStrategy {
+pub struct NaiveSamplingStrategy {
     pub transport: Transport,
 }
-impl DirectionalSamplingStrategy {
+impl NaiveSamplingStrategy {
     pub fn bounce<'scene>(
         &self,
         path: &mut Path<'scene>,
@@ -45,70 +40,37 @@ impl DirectionalSamplingStrategy {
                 (Some(edge), new_vertex)
             }
             Vertex::Surface { its, .. } => {
-                if let Some(sampled_bsdf) =
-                    its.mesh
-                        .bsdf
-                        .sample(&its.uv, &its.wi, sampler.next2d(), self.transport)
-                {
-                    let d_out_global = its.frame.to_world(sampled_bsdf.d);
-
-                    // TODO: This is fine with debug, but might be too costly for production
-                    // Make sure that we get a valid outgoing direction
-                    assert_approx_eq!(d_out_global.dot(d_out_global), 1.0, 0.0001);
-
-                    // Update the throughput
-                    *throughput *= &sampled_bsdf.weight;
-
-                    // TODO: Need to further test this part
-                    // TODO: This might be problematic for BDPT implementation
-                    if self.transport == Transport::Radiance {
-                        let wi_global = its.frame.to_world(its.wi);
-                        let correction = (its.wi.z * d_out_global.dot(its.n_g))
-                            / (sampled_bsdf.d.z * wi_global.dot(its.n_g));
-                        *throughput *= correction.abs();
-                    }
-
-                    if throughput.is_zero() {
-                        return (None, None);
-                    }
-
-                    // Check RR
-                    let rr_weight = throughput.channel_max().min(0.95);
-                    if rr_weight < sampler.next() {
-                        return (None, None);
-                    }
-                    let rr_weight = 1.0 / rr_weight;
-                    throughput.scale(rr_weight);
-
-                    // Generate the new ray and do the intersection
-                    let ray = Ray::new(its.p, d_out_global);
-                    let (edge, new_vertex) = Edge::from_ray(
-                        path,
-                        &ray,
-                        vertex_id,
-                        sampled_bsdf.pdf.clone(),
-                        sampled_bsdf.weight,
-                        rr_weight,
-                        sampler,
-                        accel,
-                        medium,
-                        id_strategy,
-                    );
-                    return (Some(edge), new_vertex);
-                }
-
-                (None, None)
-            }
-            Vertex::Volume {
-                phase_function,
-                d_in,
-                pos,
-                ..
-            } => {
-                let sampled_phase = phase_function.sample(&d_in, sampler.next2d());
+                // TODO: Should depends of the domain...
+                let d = crate::math::cosine_sample_hemisphere(sampler.next2d());
+                let d_out_global = its.frame.to_world(d);
+                let pdf = d.z.abs() / std::f32::consts::PI;
+                // TODO: This is fine with debug, but might be too costly for production
+                // Make sure that we get a valid outgoing direction
+                assert_approx_eq!(d_out_global.dot(d_out_global), 1.0, 0.0001);
 
                 // Update the throughput
-                *throughput *= &sampled_phase.weight;
+                let (domain, pdf) = if its.mesh.bsdf.bsdf_type().is_smooth() {
+                    unimplemented!();
+                // (Domain::Discrete, PDF::Discrete(pdf))
+                } else {
+                    (Domain::SolidAngle, PDF::SolidAngle(pdf))
+                };
+                let bsdf_weight = its
+                    .mesh
+                    .bsdf
+                    .eval(&its.uv, &its.wi, &d, domain, self.transport)
+                    / pdf.value();
+                *throughput *= &bsdf_weight;
+
+                // TODO: Need to further test this part
+                // TODO: This might be problematic for BDPT implementation
+                if self.transport == Transport::Radiance {
+                    let wi_global = its.frame.to_world(its.wi);
+                    let correction =
+                        (its.wi.z * d_out_global.dot(its.n_g)) / (d.z * wi_global.dot(its.n_g));
+                    *throughput *= correction.abs();
+                }
+
                 if throughput.is_zero() {
                     return (None, None);
                 }
@@ -122,13 +84,53 @@ impl DirectionalSamplingStrategy {
                 throughput.scale(rr_weight);
 
                 // Generate the new ray and do the intersection
-                let ray = Ray::new(*pos, sampled_phase.d);
+                let ray = Ray::new(its.p, d_out_global);
                 let (edge, new_vertex) = Edge::from_ray(
                     path,
                     &ray,
                     vertex_id,
-                    PDF::SolidAngle(sampled_phase.pdf),
-                    sampled_phase.weight,
+                    pdf,
+                    bsdf_weight,
+                    rr_weight,
+                    sampler,
+                    accel,
+                    medium,
+                    id_strategy,
+                );
+                return (Some(edge), new_vertex);
+            }
+            Vertex::Volume {
+                phase_function,
+                d_in,
+                pos,
+                ..
+            } => {
+                let d = sample_uniform_sphere(sampler.next2d());
+                let pdf = PDF::SolidAngle(1.0 / (std::f32::consts::PI * 2.0));
+                let weight = phase_function.eval(&d_in, &d) / pdf.value();
+
+                // Update the throughput
+                *throughput *= &weight;
+                if throughput.is_zero() {
+                    return (None, None);
+                }
+
+                // Check RR
+                let rr_weight = throughput.channel_max().min(0.95);
+                if rr_weight < sampler.next() {
+                    return (None, None);
+                }
+                let rr_weight = 1.0 / rr_weight;
+                throughput.scale(rr_weight);
+
+                // Generate the new ray and do the intersection
+                let ray = Ray::new(*pos, d);
+                let (edge, new_vertex) = Edge::from_ray(
+                    path,
+                    &ray,
+                    vertex_id,
+                    pdf,
+                    weight,
                     rr_weight,
                     sampler,
                     accel,
@@ -173,7 +175,7 @@ impl DirectionalSamplingStrategy {
         }
     }
 }
-impl SamplingStrategy for DirectionalSamplingStrategy {
+impl SamplingStrategy for NaiveSamplingStrategy {
     fn sample<'scene>(
         &self,
         path: &mut Path<'scene>,
@@ -241,7 +243,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         match path.vertex(vertex_id) {
             Vertex::Surface { its, .. } => {
                 // TODO: Check why in the case of smooth, we cannot sample the light source...
-                if its.mesh.bsdf.is_smooth() {
+                if its.mesh.bsdf.bsdf_type().is_smooth() {
                     return None;
                 }
                 if let PDF::SolidAngle(pdf) = its.mesh.bsdf.pdf(

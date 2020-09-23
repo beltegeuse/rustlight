@@ -1,6 +1,7 @@
 use crate::integrators::*;
 use crate::paths::path::*;
-use crate::paths::{strategy::*, strategy_dir::*, vertex::*};
+use crate::paths::strategies::*;
+use crate::paths::vertex::*;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 
@@ -68,7 +69,7 @@ impl TechniqueVPL {
     ) {
         match path.vertex(vertex_id) {
             Vertex::Surface { its, edge_out, .. } => {
-                let bsdf_smooth = its.mesh.bsdf.is_smooth();
+                let bsdf_smooth = its.mesh.bsdf.bsdf_type().is_smooth();
                 if *options != IntegratorVPLOption::Volume && !bsdf_smooth {
                     vpls.push(VPL::Surface(VPLSurface {
                         its: its.clone(),
@@ -165,10 +166,11 @@ impl Integrator for IntegratorVPL {
         let mut vpls = vec![];
 
         // Samplings
-        let samplings: Vec<Box<dyn SamplingStrategy>> =
-            vec![Box::new(DirectionalSamplingStrategy {
+        let samplings: Vec<Box<dyn SamplingStrategy>> = vec![Box::new(
+            crate::paths::strategies::directional::DirectionalSamplingStrategy {
                 transport: Transport::Radiance,
-            })];
+            },
+        )];
         let mut technique = TechniqueVPL {
             max_depth: self.max_depth,
             samplings,
@@ -270,7 +272,7 @@ impl IntegratorVPL {
                         let emitted_radiance = vpl.emitted_radiance
                             * vpl.n.dot(-d).max(0.0)
                             * std::f32::consts::FRAC_1_PI;
-                        if !its.mesh.bsdf.is_smooth() {
+                        if !its.mesh.bsdf.bsdf_type().is_smooth() {
                             let bsdf_val = its.mesh.bsdf.eval(
                                 &its.uv,
                                 &its.wi,
@@ -288,7 +290,7 @@ impl IntegratorVPL {
                     let dist = d.magnitude();
                     d /= dist;
 
-                    if !its.mesh.bsdf.is_smooth() {
+                    if !its.mesh.bsdf.bsdf_type().is_smooth() {
                         let emitted_radiance = vpl.phase_function.eval(&vpl.d_in, &d);
                         let bsdf_val = its.mesh.bsdf.eval(
                             &its.uv,
@@ -308,7 +310,7 @@ impl IntegratorVPL {
                         let dist = d.magnitude();
                         d /= dist;
 
-                        if !its.mesh.bsdf.is_smooth() {
+                        if !its.mesh.bsdf.bsdf_type().is_smooth() {
                             let emitted_radiance = vpl.its.mesh.bsdf.eval(
                                 &vpl.its.uv,
                                 &vpl.its.wi,

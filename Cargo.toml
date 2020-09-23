@@ -24,10 +24,11 @@ tobj = "*"
 pbr = { version = "*", optional = true }
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs", optional = true }
 #pbrt_rs = { path = "../pbrt_rs", optional = true }
-mitsuba_rs = { git = "https://github.com/beltegeuse/mitsuba_rs", optional = true, features = ["serialized", "ply"] } 
-#mitsuba_rs = { path = "../mitsuba_rs", optional = true, features = ["serialized", "ply"] }
+#mitsuba_rs = { git = "https://github.com/beltegeuse/mitsuba_rs", optional = true, features = ["serialized", "ply"] } 
+mitsuba_rs = { path = "../mitsuba_rs", optional = true, features = ["serialized", "ply"] }
 lazy_static = "1.4"
 assert_approx_eq = "1.1"
+bitflags = "*"
 
 [dev-dependencies]
 clap = "*"

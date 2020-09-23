@@ -56,6 +56,8 @@ impl BSDF for BSDFPhong {
                 d: d_out,
                 pdf,
                 eta: 1.0,
+                event: BSDFEvent::REFLECTION,
+                event_type: BSDFType::GLOSSY,
             })
         }
     }
@@ -121,10 +123,14 @@ impl BSDF for BSDFPhong {
         (2.0 / (2.0 + self.exponent)).sqrt()
     }
 
-    fn is_smooth(&self) -> bool {
-        false
-    }
     fn is_twosided(&self) -> bool {
         true
+    }
+
+    fn bsdf_type(&self) -> BSDFType {
+        BSDFType::GLOSSY
+    }
+    fn bsdf_event(&self) -> BSDFEvent {
+        BSDFEvent::REFLECTION
     }
 }

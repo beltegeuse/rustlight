@@ -2,12 +2,7 @@ use crate::accel::*;
 use crate::emitter::*;
 use crate::paths::edge::*;
 use crate::paths::path::*;
-use crate::paths::strategy::*;
-use crate::paths::vertex::*;
-use crate::samplers::*;
-use crate::scene::*;
-use crate::structure::*;
-use crate::volume::*;
+use crate::paths::strategies::*;
 use cgmath::InnerSpace;
 
 pub struct LightSamplingStrategy {}
@@ -67,7 +62,7 @@ impl SamplingStrategy for LightSamplingStrategy {
     ) -> Option<(VertexID, Color)> {
         let (edge, _next_vertex) = match path.vertex(vertex_id) {
             Vertex::Surface { its, .. } => {
-                if its.mesh.bsdf.is_smooth() {
+                if its.mesh.bsdf.bsdf_type().is_smooth() {
                     return None;
                 }
 
@@ -251,7 +246,7 @@ impl SamplingStrategy for LightSamplingStrategy {
             }
             Vertex::Surface { its, .. } => {
                 // Impossible to sample from a Dirac distribution
-                if its.mesh.bsdf.is_smooth() {
+                if its.mesh.bsdf.bsdf_type().is_smooth() {
                     return None;
                 }
                 // Know the the light is intersectable so have a solid angle PDF

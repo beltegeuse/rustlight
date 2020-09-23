@@ -1,6 +1,12 @@
 use crate::integrators::*;
 use crate::volume::*;
-use cgmath::{InnerSpace, Point2, Point3};
+use cgmath::{InnerSpace, Point2, Point3, Vector3};
+
+pub trait DistanceSampling {
+    /// (distance, pdf)
+    fn sample(&self, sample: Point2<f32>) -> (f32, f32);
+    fn pdf(&self, distance: f32) -> f32;
+}
 
 struct KullaSampling {
     // See original paper
@@ -12,25 +18,24 @@ struct KullaSampling {
     max_dist: Option<f32>,
 }
 impl KullaSampling {
-    fn new(max_dist: Option<f32>, ray: &Ray, pos: Point3<f32>) -> KullaSampling {
+    fn new(max_dist: Option<f32>, ray: &Ray, pos: Point3<f32>) -> Self {
         // Compute distance on the ray
         let u_hat0 = ray.d.dot(pos - ray.o);
         // Compute D vector
-        let d = pos - (ray.o + ray.d * u_hat0);
-        let d_l = d.magnitude();
+        let d_l = (pos - (ray.o + ray.d * u_hat0)).magnitude();
 
         // Compute theta_a, theta_b (angles)
-        let alpha_a = u_hat0.atan2(d_l);
+        let alpha_a = (u_hat0 / d_l).atan();
         let alpha_b = match max_dist {
-            None => std::f32::consts::FRAC_PI_2,
+            None => std::f32::consts::FRAC_PI_2 - 0.00001,
             Some(v) => {
                 let u_hat1 = v + u_hat0;
-                u_hat1.atan2(d_l)
+                (u_hat1 / d_l).atan()
             }
         };
         assert!(alpha_a <= alpha_b);
 
-        KullaSampling {
+        Self {
             u_hat0,
             d_l,
             alpha_a,
@@ -38,9 +43,11 @@ impl KullaSampling {
             max_dist,
         }
     }
+}
 
-    fn sample(&self, sample: f32) -> (f32, f32) {
-        let t = self.d_l * ((1.0 - sample) * self.alpha_a + sample * self.alpha_b).tan();
+impl DistanceSampling for KullaSampling {
+    fn sample(&self, sample: Point2<f32>) -> (f32, f32) {
+        let t = self.d_l * ((1.0 - sample.x) * self.alpha_a + sample.x * self.alpha_b).tan();
         let mut t_kulla = t - self.u_hat0;
         let pdf = self.d_l / ((self.alpha_b - self.alpha_a) * (self.d_l.powi(2) + t.powi(2)));
 
@@ -69,13 +76,14 @@ impl KullaSampling {
 struct TransmittanceSampling<'a> {
     m: &'a HomogenousVolume,
     max_dist: Option<f32>,
+    ray: Ray,
 }
-impl<'a> TransmittanceSampling<'a> {
-    fn sample(&self, ray: &Ray, sample: Point2<f32>) -> (f32, f32) {
+impl<'a> DistanceSampling for TransmittanceSampling<'a> {
+    fn sample(&self, sample: Point2<f32>) -> (f32, f32) {
         match self.max_dist {
             None => {
                 // Sample the distance proportional to the transmittance
-                let sampled_dist = self.m.sample(ray, sample);
+                let sampled_dist = self.m.sample(&self.ray, sample);
                 if sampled_dist.exited {
                     // Impossible
                     panic!("Touch a surface!");
@@ -100,10 +108,10 @@ impl<'a> TransmittanceSampling<'a> {
         }
     }
 
-    fn pdf(&self, ray: &Ray, distance: f32) -> f32 {
+    fn pdf(&self, distance: f32) -> f32 {
         match self.max_dist {
             None => {
-                let mut ray = ray.clone();
+                let mut ray = self.ray.clone();
                 ray.tfar = distance;
                 self.m.pdf(ray, false)
             }
@@ -115,22 +123,31 @@ impl<'a> TransmittanceSampling<'a> {
     }
 }
 
-/// This structure store the rendering options
-/// That the user have given through the command line
-#[derive(PartialEq)]
-pub enum IntegratorPathKullaStrategies {
-    All,                // All sampling strategies (using MIS)
-    KullaPosition,      // Kulla and explicit light sampling
-    TransmittancePhase, // Transmittance and phase function
+struct SampleRecord<'scene> {
+    /// The emitter hit
+    pub emitter: &'scene dyn crate::emitter::Emitter,
+    /// The configuration
+    pub p0: Point3<f32>,
+    pub p1: Point3<f32>,
+    pub p2: Point3<f32>,
+    pub d: Vector3<f32>,
 }
-// Note that in the original paper, the authors propose two additional strategies:
-// - Kulla and phase function sampling
-// - Transmittance and explicit light sampling
-// These strategies could be combined to further robustness.
-// However, the two strategies implemented already cover most of the cases.
+
+bitflags! {
+    /// This structure store the rendering options
+    /// That the user have given through the command line
+    pub struct Strategies: u8 {
+        // Distance sampling
+        const TR            = 0b00000001;  // Transmittance distance sampling
+        const KULLA         = 0b00000010;  // Kulla distance sampling
+        // Point sampling
+        const PHASE         = 0b00001000;  // Phase function sampling
+        const EX            = 0b00010000;  // Explicit sampling
+    }
+}
 
 pub struct IntegratorPathKulla {
-    pub strategy: IntegratorPathKullaStrategies,
+    pub strategy: Strategies,
 }
 
 impl Integrator for IntegratorPathKulla {
@@ -164,21 +181,21 @@ impl IntegratorMC for IntegratorPathKulla {
         };
 
         // Helpers
-        let transmittance = |m: &HomogenousVolume, dist: f32, mut ray: Ray| -> Color {
+        let phase = PhaseFunction::Isotropic();
+        let m = scene.volume.as_ref().unwrap();
+        let transmittance = |dist: f32, mut ray: Ray| -> Color {
             ray.tfar = dist;
             m.transmittance(ray)
         };
-        let m = scene.volume.as_ref().unwrap();
-        let phase = PhaseFunction::Isotropic();
 
         // Sampling the distance with Kulla et al.'s scheme
-        let kulla_contrib = |sampler: &mut dyn Sampler| -> Color {
-            if self.strategy == IntegratorPathKullaStrategies::TransmittancePhase {
-                return Color::zero(); // Skip this sampling strategy
-            }
-
+        let (t_cam, t_pdf, option) = if self
+            .strategy
+            .intersects(Strategies::KULLA)
+        {
             // Sampling a point on the light source
-            let (_emitter, sampled_pos, flux) = scene.emitters().random_sample_emitter_position(
+            // This point might be reuse if we are in Kulla + Explicit sampling
+            let (_, sampled_pos, flux) = scene.emitters().random_sample_emitter_position(
                 sampler.next(),
                 sampler.next(),
                 sampler.next2d(),
@@ -186,56 +203,33 @@ impl IntegratorMC for IntegratorPathKulla {
 
             // Sampling the distance over the sensor ray using Kulla's strategy
             let kulla_sampling = KullaSampling::new(max_dist, &ray, sampled_pos.p);
-            let (t_kulla, pdf_kulla) = kulla_sampling.sample(sampler.next());
+            
+            let (t_kulla, pdf_kulla) = kulla_sampling.sample(sampler.next2d());
             if pdf_kulla == 0.0 {
                 return Color::zero();
             }
-
-            // Path configuration
-            let p = ray.o + ray.d * t_kulla;
-            let light_w = sampled_pos.p - p;
-            let light_dist = light_w.magnitude();
-            let light_w = light_w / light_dist;
-
-            // Check visibility and normals
-            if sampled_pos.n.dot(-light_w) <= 0.0 {
-                return Color::zero();
-            }
-            if !accel.visible(&p, &sampled_pos.p) {
-                return Color::zero();
-            }
-
-            //////////////////////////
-            // MIS computation
-            let pdf_kulla = pdf_kulla * light_dist.powi(2) / sampled_pos.n.dot(-light_w);
-            let w = match self.strategy {
-                IntegratorPathKullaStrategies::All => {
-                    let pdf_simple = (TransmittanceSampling { m, max_dist }).pdf(&ray, t_kulla)
-                        * phase.pdf(&(-ray.d), &light_w);
-                    let pdf_kulla_norm = pdf_kulla * sampled_pos.pdf.value();
-                    pdf_kulla_norm.powi(2) / (pdf_simple.powi(2) + pdf_kulla_norm.powi(2))
-                }
-                _ => 1.0,
+            (t_kulla, pdf_kulla, Some((sampled_pos, flux)))
+        } else if self.strategy.intersects(Strategies::TR) {
+            // Sampling the distance
+            let distance_sampling = TransmittanceSampling {
+                m,
+                max_dist,
+                ray: ray.clone(),
             };
-
-            //////////////////////////
-            // Compute contribution
-            let cam_trans = transmittance(m, t_kulla, ray.clone());
-            let light_trans = transmittance(m, light_dist, ray.clone()); // FIXME: Why PI factor here?
-            w * flux * cam_trans * light_trans * m.sigma_s * phase.eval(&-ray.d, &light_w)
-                / (pdf_kulla * std::f32::consts::PI)
+            let (t_tr, pdf_tr) = distance_sampling.sample(sampler.next2d());
+            (t_tr, pdf_tr, None)
+        } else {
+            panic!("A distance sampling technique need to be provided");
         };
 
-        let contrib_phase = |sampler: &mut dyn Sampler, ray: &Ray| -> Color {
-            if self.strategy == IntegratorPathKullaStrategies::KullaPosition {
-                return Color::zero();
-            }
-
-            let distance_sampling = TransmittanceSampling { m, max_dist };
-            let (t_dist, pdf_dist) = distance_sampling.sample(&ray, sampler.next2d());
+        // Point
+        let p = ray.o + ray.d * t_cam;
+        let (contrib, t_light, _pdf_light) = if self.strategy.intersects(Strategies::PHASE) {
+            // Generate a direction from the point p
             let sample_phase = phase.sample(&-ray.d, sampler.next2d());
-            let p = ray.o + ray.d * t_dist;
             let new_ray = Ray::new(p, sample_phase.d);
+
+            // Check if we intersect an emitter
             let its = accel.trace(&new_ray);
             if its.is_none() {
                 return Color::zero();
@@ -248,32 +242,82 @@ impl IntegratorMC for IntegratorPathKulla {
                 return Color::zero();
             }
 
-            // Configuration
-            let pdf_emitter = scene.emitters().pdf(its.mesh);
-            let light_w = its.p - p;
-            let light_dist = light_w.magnitude();
-
-            //////////////////////////
-            // MIS computation
-            let w = match self.strategy {
-                IntegratorPathKullaStrategies::All => {
-                    let pdf_simple = sample_phase.pdf * pdf_dist;
-                    let pdf_kulla = KullaSampling::new(max_dist, &ray, its.p).pdf(t_dist);
-                    let pdf_kulla = its.mesh.pdf() * pdf_emitter * pdf_kulla * light_dist.powi(2)
-                        / its.n_s.dot(-new_ray.d);
-                    pdf_simple.powi(2) / (pdf_simple.powi(2) + pdf_kulla.powi(2))
-                }
-                _ => 1.0,
+            (
+                its.mesh.emission * m.sigma_s * sample_phase.weight,
+                (its.p - p).magnitude(),
+                sample_phase.pdf,
+            )
+        } else if self.strategy.intersects(Strategies::EX) {
+            struct SampleLight {
+                pub p: Point3<f32>,
+                pub n: Vector3<f32>,
+                pub d: Vector3<f32>,
+                pub t: f32,
+                pub contrib: Color,
+                pub pdf: f32,
             };
 
-            //////////////////////////
-            // Compute contribution
-            let cam_trans = transmittance(m, t_dist, ray.clone());
-            let light_trans = transmittance(m, light_dist, new_ray);
-            w * its.mesh.emission * cam_trans * m.sigma_s * light_trans * sample_phase.weight
-                / pdf_dist
+            // Reuse or not the sampling from KULLA
+            let res = if self
+                .strategy
+                .intersects(Strategies::KULLA)
+            {
+                let (sampled_pos, flux) = option.unwrap();
+                let d_light = sampled_pos.p - p;
+                let t_light = d_light.magnitude();
+                let d_light = d_light / t_light;
+
+                // Convert domains
+                let pdf = sampled_pos.pdf.value() * t_light.powi(2) / sampled_pos.n.dot(-d_light);
+                let flux = flux * sampled_pos.n.dot(-d_light) / t_light.powi(2);
+                SampleLight {
+                    p: sampled_pos.p,
+                    n: sampled_pos.n,
+                    d: d_light,
+                    t: t_light,
+                    contrib: flux,
+                    pdf,
+                }
+            } else {
+                let res = scene.emitters().sample_light(
+                    &p,
+                    sampler.next(),
+                    sampler.next(),
+                    sampler.next2d(),
+                );
+
+                SampleLight {
+                    p: res.p,
+                    n: res.n,
+                    d: res.d,
+                    t: (res.p - p).magnitude(),
+                    contrib: res.weight,
+                    pdf: res.pdf.value(),
+                }
+            };
+
+            // Backface the light or not visible
+            if res.n.dot(-res.d) <= 0.0 {
+                return Color::zero();
+            }
+            if !accel.visible(&p, &res.p) {
+                return Color::zero();
+            }
+
+            // TODO: Check if PI is needed
+            (
+                res.contrib * m.sigma_s * phase.eval(&-ray.d, &res.d),
+                res.t,
+                res.pdf,
+            )
+        } else {
+            unimplemented!();
         };
 
-        kulla_contrib(sampler) + contrib_phase(sampler, &ray)
+        //////////////////////////
+        // Compute contribution
+        let cam_trans = transmittance(t_cam, ray.clone()) / t_pdf;
+        let light_trans = transmittance(t_light, ray.clone());
+        contrib * cam_trans * light_trans
     }
 }

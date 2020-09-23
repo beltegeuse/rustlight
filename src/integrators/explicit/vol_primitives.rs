@@ -1,7 +1,8 @@
 use crate::accel::*;
 use crate::integrators::*;
 use crate::paths::path::*;
-use crate::paths::{strategy::*, strategy_dir::*, vertex::*};
+use crate::paths::strategies::*;
+use crate::paths::vertex::*;
 use crate::structure::AABB;
 use crate::volume::*;
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
@@ -592,10 +593,11 @@ impl Integrator for IntegratorVolPrimitives {
         let mut planes = vec![];
 
         let mut still_shoot = true;
-        let samplings: Vec<Box<dyn SamplingStrategy>> =
-            vec![Box::new(DirectionalSamplingStrategy {
+        let samplings: Vec<Box<dyn SamplingStrategy>> = vec![Box::new(
+            crate::paths::strategies::directional::DirectionalSamplingStrategy {
                 transport: Transport::Radiance,
-            })];
+            },
+        )];
         let mut technique = TechniqueVolPrimitives {
             max_depth: self.max_depth,
             samplings,

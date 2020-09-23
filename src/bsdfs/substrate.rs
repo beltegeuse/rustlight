@@ -30,19 +30,22 @@ impl BSDF for BSDFSubstrate {
             return None;
         };
 
-        // TODO: Importance sampling specular or diffuse part
-        let (d_out, domain) = if s.x < 0.5 {
+        let (d_out, domain, event_type) = if s.x < 0.5 {
             s.x *= 2.0; // Rescale random number
                         // assert!(s.x >= 0.0 && s.x < 1.0, "Wrong s.x for diffuse {}", s.x);
             let d_out = cosine_sample_hemisphere(s);
-            (d_out, Domain::SolidAngle)
+            (d_out, Domain::SolidAngle, BSDFType::DIFFUSE)
         } else {
             s.x = (s.x - 0.5) * 2.0;
             // assert!(s.x >= 0.0 && s.x < 1.0, "Wrong s.x for specular {}", s.x);
-            let (m, domain) = match self.distribution {
+            let (m, domain, event_type) = match self.distribution {
                 None => {
                     // Pure specular object
-                    (Vector3::new(0.0, 0.0, 1.0), Domain::Discrete)
+                    (
+                        Vector3::new(0.0, 0.0, 1.0),
+                        Domain::Discrete,
+                        BSDFType::DELTA,
+                    )
                 }
                 Some(ref d) => {
                     // Microfacet distribution
@@ -57,7 +60,7 @@ impl BSDF for BSDFSubstrate {
                         return None;
                     }
 
-                    (m, Domain::SolidAngle)
+                    (m, Domain::SolidAngle, BSDFType::GLOSSY)
                 }
             };
 
@@ -65,7 +68,7 @@ impl BSDF for BSDFSubstrate {
             if cos_theta(&d_out) <= 0.0 {
                 return None;
             }
-            (d_out, domain)
+            (d_out, domain, event_type)
         };
 
         let pdf = self.pdf(uv, d_in, &d_out, domain, transport);
@@ -79,6 +82,8 @@ impl BSDF for BSDFSubstrate {
             d: d_out,
             pdf: pdf,
             eta: 1.0,
+            event: BSDFEvent::REFLECTION,
+            event_type,
         })
     }
 
@@ -204,10 +209,17 @@ impl BSDF for BSDFSubstrate {
         unimplemented!()
     }
 
-    fn is_smooth(&self) -> bool {
-        self.distribution.is_none()
-    }
     fn is_twosided(&self) -> bool {
         true
+    }
+
+    fn bsdf_type(&self) -> BSDFType {
+        match self.distribution {
+            Some(_) => BSDFType::GLOSSY | BSDFType::DIFFUSE,
+            None => BSDFType::DELTA | BSDFType::DIFFUSE,
+        }
+    }
+    fn bsdf_event(&self) -> BSDFEvent {
+        BSDFEvent::REFLECTION
     }
 }

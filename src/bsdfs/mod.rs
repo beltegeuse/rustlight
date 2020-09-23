@@ -96,18 +96,7 @@ impl BSDFColor {
                         }
                     }
                 }
-            } /*  Float x = uv.x - math::floorToInt(uv.x);
-              Float y = uv.y - math::floorToInt(uv.y);
-
-              if (x > .5)
-                  x -= 1;
-              if (y > .5)
-                  y -= 1;
-
-              if (std::abs(x) < m_lineWidth || std::abs(y) < m_lineWidth)
-                  return m_color1;
-              else
-                  return m_color0;*/
+            }
         }
     }
 
@@ -143,6 +132,30 @@ pub struct SampledDirection {
     pub d: Vector3<f32>,
     pub pdf: PDF,
     pub eta: f32,
+    pub event: BSDFEvent,
+    pub event_type: BSDFType,
+}
+
+bitflags! {
+    pub struct BSDFEvent: u8 {
+        const REFLECTION       = 0b00000001;
+        const TRANSMISSION     = 0b00000010;
+    }
+}
+
+bitflags! {
+    pub struct BSDFType: u8 {
+        const NULL              = 0b00000001;
+        const DIFFUSE           = 0b00000010;
+        const GLOSSY            = 0b00000100;
+        const DELTA             = 0b00001000;
+    }
+}
+
+impl BSDFType {
+    pub fn is_smooth(&self) -> bool {
+        self.intersects(Self::DELTA) || self.intersects(Self::NULL)
+    }
 }
 
 pub trait BSDF: Send + Sync {
@@ -177,11 +190,10 @@ pub trait BSDF: Send + Sync {
     ) -> Color;
     /// return the roughness of the material
     fn roughness(&self, uv: &Option<Vector2<f32>>) -> f32;
-    /// check if it is smooth
-    //TODO: Replace this using flags
-    fn is_smooth(&self) -> bool;
     /// Used to automatically flip the normal vector
     fn is_twosided(&self) -> bool;
+    fn bsdf_type(&self) -> BSDFType;
+    fn bsdf_event(&self) -> BSDFEvent;
 }
 
 pub mod blend;

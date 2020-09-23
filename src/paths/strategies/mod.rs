@@ -81,3 +81,7 @@ pub trait Technique {
     fn strategies(&self, vertex: &Vertex) -> &Vec<Box<dyn SamplingStrategy>>;
     fn expand(&self, vertex: &Vertex, depth: u32) -> bool;
 }
+
+pub mod directional;
+pub mod emitters;
+pub mod naive;

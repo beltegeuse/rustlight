@@ -1,7 +1,8 @@
 use crate::integrators::gradient::shiftmapping::{random_replay::RandomReplay, ShiftMapping};
 use crate::integrators::{gradient::*, *};
 use crate::paths::path::*;
-use crate::paths::{strategy::*, strategy_dir::*, strategy_light::*, vertex::*};
+use crate::paths::strategies::*;
+use crate::paths::vertex::*;
 use cgmath::Point2;
 
 /// Path tracing system
@@ -220,10 +221,14 @@ impl IntegratorGradientPathTracing {
     ) -> ColorGradient {
         let mut path = Path::default();
         let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
-        samplings.push(Box::new(DirectionalSamplingStrategy {
-            transport: Transport::Importance,
-        }));
-        samplings.push(Box::new(LightSamplingStrategy {}));
+        samplings.push(Box::new(
+            crate::paths::strategies::directional::DirectionalSamplingStrategy {
+                transport: Transport::Importance,
+            },
+        ));
+        samplings.push(Box::new(
+            crate::paths::strategies::emitters::LightSamplingStrategy {},
+        ));
         let mut technique = TechniqueGradientPathTracing {
             max_depth: None, // FIXME
             samplings,

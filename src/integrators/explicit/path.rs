@@ -1,6 +1,7 @@
 use crate::integrators::*;
 use crate::paths::path::*;
-use crate::paths::{strategy::*, strategy_dir::*, strategy_light::*, vertex::*};
+use crate::paths::strategies::*;
+use crate::paths::vertex::*;
 use cgmath::Point2;
 
 /// This structure store the rendering options
@@ -198,13 +199,17 @@ impl IntegratorMC for IntegratorPathTracing {
         let mut samplings: Vec<Box<dyn SamplingStrategy>> = Vec::new();
 
         // Always need the directional strategy to expend the path
-        samplings.push(Box::new(DirectionalSamplingStrategy {
-            transport: Transport::Importance,
-        }));
+        samplings.push(Box::new(
+            crate::paths::strategies::directional::DirectionalSamplingStrategy {
+                transport: Transport::Importance,
+            },
+        ));
         match self.strategy {
             IntegratorPathTracingStrategies::All | IntegratorPathTracingStrategies::Emitter => {
                 // This strategy only make sense in case of light sampling
-                samplings.push(Box::new(LightSamplingStrategy {}));
+                samplings.push(Box::new(
+                    crate::paths::strategies::emitters::LightSamplingStrategy {},
+                ));
             }
             _ => {}
         }

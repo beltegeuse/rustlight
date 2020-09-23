@@ -53,7 +53,6 @@ pub struct HomogenousVolume {
     pub sigma_a: Color,
     pub sigma_s: Color,
     pub sigma_t: Color,
-    pub density: f32,
 }
 
 // Take the tungsten convention

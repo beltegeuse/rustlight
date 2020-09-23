@@ -483,7 +483,6 @@ fn main() {
                 sigma_a,
                 sigma_s,
                 sigma_t,
-                density: 1.0,
             });
 
             info!("Create volume with: ");
@@ -539,17 +538,14 @@ fn main() {
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
         ("path_kulla", Some(m)) => {
+            use rustlight::integrators::explicit::path_kulla::Strategies;
+
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             let strategy = match strategy.as_ref() {
-                "all" => {
-                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::All
-                }
-                "kulla_position" => {
-                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::KullaPosition
-                }
-                "transmittance_phase" => {
-                    rustlight::integrators::explicit::path_kulla::IntegratorPathKullaStrategies::TransmittancePhase
-                }
+                "kulla_ex" => Strategies::KULLA | Strategies::EX,
+                "kulla_phase" => Strategies::KULLA | Strategies::PHASE,
+                "tr_ex" => Strategies::TR | Strategies::EX,
+                "tr_phase" => Strategies::TR | Strategies::PHASE,
                 _ => panic!("invalid strategy: {}", strategy),
             };
             IntegratorType::Primal(Box::new(
