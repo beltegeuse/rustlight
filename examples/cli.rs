@@ -474,10 +474,18 @@ fn main() {
     ///////////////// Medium
     // TODO: Read from PBRT file
     {
-        let medium_density = value_t_or_exit!(matches.value_of("medium"), f32);
-        if medium_density != 0.0 {
-            let sigma_a = rustlight::structure::Color::value(0.0) * medium_density;
-            let sigma_s = rustlight::structure::Color::value(1.0) * medium_density;
+        let medium_density = value_t_or_exit!(matches.value_of("medium"), String);
+        let medium_density = medium_density.split(":").into_iter().map(|v| v).collect::<Vec<_>>();
+        let (sigma_s, sigma_a) = match &medium_density[..]
+        {
+            [sigma_s] => (sigma_s.parse().unwrap(), 0.0),
+            [sigma_s, sigma_a] => (sigma_s.parse().unwrap(), sigma_a.parse().unwrap()),
+            _ => panic!("invalid medium_density: {:?}", medium_density),
+        };
+    
+        if sigma_a + sigma_s != 0.0 {
+            let sigma_a = rustlight::structure::Color::value(sigma_a);
+            let sigma_s = rustlight::structure::Color::value(sigma_s);
             let sigma_t = sigma_a + sigma_s;
             scene.volume = Some(rustlight::volume::HomogenousVolume {
                 sigma_a,
