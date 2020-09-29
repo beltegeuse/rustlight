@@ -49,6 +49,7 @@ impl PhaseFunction {
 }
 
 // Consider isotropic participating media
+#[derive(Clone)]
 pub struct HomogenousVolume {
     pub sigma_a: Color,
     pub sigma_s: Color,

@@ -231,14 +231,25 @@ fn main() {
             )
             .subcommand(
                 SubCommand::with_name("path_kulla")
-                    .about("path tracing for single scattering")
-                    .arg(
-                        Arg::with_name("strategy")
-                            .takes_value(true)
-                            .short("s")
-                            .help("different sampling strategy: [all, kulla_position, transmittance_phase]")
-                            .default_value("all"),
-                    )
+                .about("path tracing for single scattering")
+                .arg(
+                    Arg::with_name("use_cdf")
+                        .takes_value(true)
+                        .short("c")
+                        .help("use_cdf"),
+                )
+                .arg(
+                    Arg::with_name("use_mis")
+                        .short("x")
+                        .help("use_mis"),
+                )
+                .arg(
+                    Arg::with_name("strategy")
+                        .takes_value(true)
+                        .short("s")
+                        .help("different sampling strategy: [tr_phase, tr_ex, kulla_phase, kulla_ex]")
+                        .default_value("all"),
+                )
             )
             .subcommand(
                 SubCommand::with_name("path")
@@ -475,14 +486,17 @@ fn main() {
     // TODO: Read from PBRT file
     {
         let medium_density = value_t_or_exit!(matches.value_of("medium"), String);
-        let medium_density = medium_density.split(":").into_iter().map(|v| v).collect::<Vec<_>>();
-        let (sigma_s, sigma_a) = match &medium_density[..]
-        {
+        let medium_density = medium_density
+            .split(":")
+            .into_iter()
+            .map(|v| v)
+            .collect::<Vec<_>>();
+        let (sigma_s, sigma_a) = match &medium_density[..] {
             [sigma_s] => (sigma_s.parse().unwrap(), 0.0),
             [sigma_s, sigma_a] => (sigma_s.parse().unwrap(), sigma_a.parse().unwrap()),
             _ => panic!("invalid medium_density: {:?}", medium_density),
         };
-    
+
         if sigma_a + sigma_s != 0.0 {
             let sigma_a = rustlight::structure::Color::value(sigma_a);
             let sigma_s = rustlight::structure::Color::value(sigma_s);
@@ -556,8 +570,15 @@ fn main() {
                 "tr_phase" => Strategies::TR | Strategies::PHASE,
                 _ => panic!("invalid strategy: {}", strategy),
             };
+            let use_cdf = m.value_of("use_cdf").map(|v| v.parse().unwrap());
+            let use_mis = m.is_present("use_mis");
+
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla { strategy },
+                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
+                    strategy,
+                    use_cdf,
+                    use_mis,
+                },
             ))
         }
         ("path", Some(m)) => {
