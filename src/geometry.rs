@@ -276,4 +276,12 @@ impl Mesh {
     pub fn discard_normals(&mut self) {
         self.normals = None;
     }
+
+    pub fn compute_aabb(&self) -> AABB {
+        let mut aabb = AABB::default();
+        for v in &self.vertices {
+            aabb = aabb.union_vec(v)
+        }
+        aabb
+    }
 }

@@ -38,6 +38,36 @@ pub fn sample_uniform_sphere(u: Point2<f32>) -> Vector3<f32> {
     Vector3::new(r * phi.cos(), r * phi.sin(), z)
 }
 
+pub fn solve_quadratic(a: f32, b: f32, c: f32) -> Option<(f32, f32)> {
+    if a == 0.0 {
+        if b != 0.0 {
+            let v = -c / b;
+            Some((v, v))
+        } else {
+            None
+        }
+    } else {
+        let d = b * b - 4.0 * a * c;
+        if d < 0.0 {
+            return None;
+        }
+        let d_sqrt = d.sqrt();
+        let tmp = if b < 0.0 {
+            -0.5 * (b - d_sqrt)
+        } else {
+            -0.5 * (b + d_sqrt)
+        };
+
+        let x0 = tmp / a;
+        let x1 = c / tmp;
+        if x0 > x1 {
+            Some((x1, x0))
+        } else {
+            Some((x0, x1))
+        }
+    }
+}
+
 /// Create an orthogonal basis by taking the normal vector
 /// code based on Pixar paper.
 #[derive(Clone, Debug)]

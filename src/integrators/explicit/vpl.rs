@@ -30,9 +30,13 @@ struct VPLVolume {
     phase_function: PhaseFunction,
     radiance: Color,
 }
+
+enum VPLEmitterInfo {
+    Position { pos: Point3<f32>, n: Vector3<f32> },
+    Infinite { d: Vector3<f32> },
+}
 struct VPLEmitter {
-    pos: Point3<f32>,
-    n: Vector3<f32>,
+    info: VPLEmitterInfo,
     emitted_radiance: Color,
 }
 
@@ -127,11 +131,23 @@ impl TechniqueVPL {
                 edge_out, pos, n, ..
             } => {
                 if *options != IntegratorVPLOption::Volume {
-                    vpls.push(VPL::Emitter(VPLEmitter {
-                        pos: *pos,
-                        n: *n,
-                        emitted_radiance: flux,
-                    }));
+                    // For now it is kinda difficult to test the type
+                    // We need to check the edge out...
+                    let edge_out = edge_out.unwrap();
+                    let edge = path.edge(edge_out);
+                    match edge.pdf_direction {
+                        PDF::SolidAngle(_) => {
+                            vpls.push(VPL::Emitter(VPLEmitter {
+                                info: VPLEmitterInfo::Position { pos: *pos, n: *n },
+                                emitted_radiance: flux,
+                            }));
+                        }
+                        PDF::Discrete(_) => vpls.push(VPL::Emitter(VPLEmitter {
+                            info: VPLEmitterInfo::Infinite { d: edge.d },
+                            emitted_radiance: flux,
+                        })),
+                        _ => todo!(),
+                    }
                 }
 
                 if let Some(edge) = edge_out {
@@ -264,24 +280,50 @@ impl IntegratorVPL {
         for vpl in vpls {
             match *vpl {
                 VPL::Emitter(ref vpl) => {
-                    if accel.visible(&vpl.pos, &its.p) {
-                        let mut d = vpl.pos - its.p;
-                        let dist = d.magnitude();
-                        d /= dist;
+                    match vpl.info {
+                        VPLEmitterInfo::Position { pos, n } => {
+                            if accel.visible(&pos, &its.p) {
+                                let mut d = pos - its.p;
+                                let dist = d.magnitude();
+                                d /= dist;
 
-                        let emitted_radiance = vpl.emitted_radiance
-                            * vpl.n.dot(-d).max(0.0)
-                            * std::f32::consts::FRAC_1_PI;
-                        if !its.mesh.bsdf.bsdf_type().is_smooth() {
-                            let bsdf_val = its.mesh.bsdf.eval(
-                                &its.uv,
-                                &its.wi,
-                                &its.to_local(&d),
-                                Domain::SolidAngle,
-                                Transport::Importance,
-                            );
-                            let trans = self.transmittance(medium, its.p, vpl.pos);
-                            l_i += trans * norm_vpl * emitted_radiance * bsdf_val / (dist * dist);
+                                // TODO: Check why this difference...
+                                let emitted_radiance = vpl.emitted_radiance
+                                    * n.dot(-d).max(0.0)
+                                    * std::f32::consts::FRAC_1_PI;
+                                if !its.mesh.bsdf.bsdf_type().is_smooth() {
+                                    let bsdf_val = its.mesh.bsdf.eval(
+                                        &its.uv,
+                                        &its.wi,
+                                        &its.to_local(&d),
+                                        Domain::SolidAngle,
+                                        Transport::Importance,
+                                    );
+                                    let trans = self.transmittance(medium, its.p, pos);
+                                    l_i += trans * norm_vpl * emitted_radiance * bsdf_val
+                                        / (dist * dist);
+                                }
+                            }
+                        }
+                        VPLEmitterInfo::Infinite { d } => {
+                            let ray = Ray::new(its.p, -d);
+                            if accel.trace(&ray).is_none() {
+                                let emitted_radiance = vpl.emitted_radiance;
+                                if !its.mesh.bsdf.bsdf_type().is_smooth() {
+                                    let bsdf_val = its.mesh.bsdf.eval(
+                                        &its.uv,
+                                        &its.wi,
+                                        &its.to_local(&-d),
+                                        Domain::SolidAngle,
+                                        Transport::Importance,
+                                    );
+                                    // TODO: Medium is not supported yet...
+                                    assert!(medium.is_none());
+                                    //let trans = self.transmittance(medium, its.p, pos);
+                                    l_i += norm_vpl * emitted_radiance * bsdf_val;
+                                    // trans *
+                                }
+                            }
                         }
                     }
                 }
@@ -343,40 +385,55 @@ impl IntegratorVPL {
         vpls: &[VPL<'a>],
         norm_vpl: f32,
         d_cam: Vector3<f32>,
-        pos: Point3<f32>,
+        its_pos: Point3<f32>,
         phase: &PhaseFunction,
     ) -> Color {
         let mut l_i = Color::zero();
         for vpl in vpls {
             match *vpl {
                 VPL::Emitter(ref vpl) => {
-                    if accel.visible(&vpl.pos, &pos) {
-                        let mut d = vpl.pos - pos;
-                        let dist = d.magnitude();
-                        d /= dist;
+                    match vpl.info {
+                        VPLEmitterInfo::Position { pos, n } => {
+                            if accel.visible(&pos, &its_pos) {
+                                let mut d = pos - its_pos;
+                                let dist = d.magnitude();
+                                d /= dist;
 
-                        let emitted_radiance = vpl.emitted_radiance
-                            * vpl.n.dot(-d).max(0.0)
-                            * std::f32::consts::FRAC_1_PI;
-                        let phase_val = phase.eval(&d_cam, &d);
-                        let trans = self.transmittance(medium, pos, vpl.pos);
-                        l_i += trans * norm_vpl * emitted_radiance * phase_val / (dist * dist);
+                                let emitted_radiance = vpl.emitted_radiance
+                                    * n.dot(-d).max(0.0)
+                                    * std::f32::consts::FRAC_1_PI;
+                                let phase_val = phase.eval(&d_cam, &d);
+                                let trans = self.transmittance(medium, pos, its_pos);
+                                l_i +=
+                                    trans * norm_vpl * emitted_radiance * phase_val / (dist * dist);
+                            }
+                        }
+                        VPLEmitterInfo::Infinite { d } => {
+                            let ray = Ray::new(its_pos, -d);
+                            if accel.trace(&ray).is_none() {
+                                let phase_val = phase.eval(&d_cam, &d);
+                                assert!(medium.is_none());
+                                // let trans = self.transmittance(medium, pos, vpl.pos);
+                                let emitted_radiance = vpl.emitted_radiance;
+                                l_i += norm_vpl * emitted_radiance * phase_val; // trans *
+                            }
+                        }
                     }
                 }
                 VPL::Volume(ref vpl) => {
-                    let mut d = vpl.pos - pos;
+                    let mut d = vpl.pos - its_pos;
                     let dist = d.magnitude();
                     d /= dist;
 
                     let emitted_radiance = vpl.phase_function.eval(&vpl.d_in, &d);
                     let phase_val = phase.eval(&d_cam, &d);
-                    let trans = self.transmittance(medium, pos, vpl.pos);
+                    let trans = self.transmittance(medium, its_pos, vpl.pos);
                     l_i += trans * norm_vpl * emitted_radiance * phase_val * vpl.radiance
                         / (dist * dist);
                 }
                 VPL::Surface(ref vpl) => {
-                    if accel.visible(&vpl.its.p, &pos) {
-                        let mut d = vpl.its.p - pos;
+                    if accel.visible(&vpl.its.p, &its_pos) {
+                        let mut d = vpl.its.p - its_pos;
                         let dist = d.magnitude();
                         d /= dist;
 
@@ -388,7 +445,7 @@ impl IntegratorVPL {
                             Transport::Radiance,
                         );
                         let phase_val = phase.eval(&d_cam, &d);
-                        let trans = self.transmittance(medium, pos, vpl.its.p);
+                        let trans = self.transmittance(medium, its_pos, vpl.its.p);
                         l_i += trans * norm_vpl * emitted_radiance * phase_val * vpl.radiance
                             / (dist * dist);
                     }

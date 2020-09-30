@@ -125,30 +125,40 @@ impl TechniqueLightTracing {
                     }
                 }
             }
-            Vertex::Light { pos, n, .. } => {
+            Vertex::Light {
+                pos, n, edge_out, ..
+            } => {
                 if accumulate && self.render_surface {
-                    let pos_sensor = scene.camera.position();
-                    let d = (pos_sensor - pos).normalize();
-                    if accel.visible(pos, &pos_sensor) {
-                        if let Some((importance, uv)) = scene.camera.sample_direct(pos) {
-                            let transmittance = if let Some(ref m) = scene.volume {
-                                let mut ray = Ray::new(*pos, d);
-                                ray.tfar = (pos - pos_sensor).magnitude();
-                                m.transmittance(ray)
-                            } else {
-                                Color::one()
-                            };
+                    // For now, we will use the edge to check the light
+                    let edge_out = edge_out.unwrap();
+                    let edge = path.edge(edge_out);
+                    match edge.pdf_direction {
+                        PDF::SolidAngle(_) => {
+                            let pos_sensor = scene.camera.position();
+                            let d = (pos_sensor - pos).normalize();
+                            if accel.visible(pos, &pos_sensor) {
+                                if let Some((importance, uv)) = scene.camera.sample_direct(pos) {
+                                    let transmittance = if let Some(ref m) = scene.volume {
+                                        let mut ray = Ray::new(*pos, d);
+                                        ray.tfar = (pos - pos_sensor).magnitude();
+                                        m.transmittance(ray)
+                                    } else {
+                                        Color::one()
+                                    };
 
-                            bitmap.accumulate_safe(
-                                Point2::new(uv.x as i32, uv.y as i32),
-                                transmittance
-                                    * flux
-                                    * importance
-                                    * d.dot(*n)
-                                    * std::f32::consts::FRAC_1_PI,
-                                &"primal".to_owned(),
-                            );
+                                    bitmap.accumulate_safe(
+                                        Point2::new(uv.x as i32, uv.y as i32),
+                                        transmittance
+                                            * flux
+                                            * importance
+                                            * d.dot(*n)
+                                            * std::f32::consts::FRAC_1_PI,
+                                        &"primal".to_owned(),
+                                    );
+                                }
+                            }
                         }
+                        _ => {}
                     }
                 }
             }

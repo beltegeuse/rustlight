@@ -1,5 +1,6 @@
 use crate::geometry::Mesh;
 use crate::math::{sample_uniform_sphere, Distribution1D};
+use crate::scene::Scene;
 use crate::structure::*;
 use cgmath::*;
 use std::sync::Arc;
@@ -39,14 +40,106 @@ impl LightSamplingPDF {
 pub trait Emitter: Send + Sync {
     /// Direct sampling & PDF methods
     fn direct_pdf(&self, light_sampling: &LightSamplingPDF) -> PDF;
-    fn sample_direct(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling;
+    fn direct_sample(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling;
 
     /// Sample a particular point on the light source
     fn sample_position(&self, s: f32, uv: Point2<f32>) -> (SampledPosition, Color);
+    fn sample_direction(
+        &self,
+        sampled_pos: &SampledPosition,
+        d: Point2<f32>,
+    ) -> (Vector3<f32>, PDF, Color);
 
     /// Emitters attributes
     fn flux(&self) -> Color;
-    fn emitted_luminance(&self, d: Vector3<f32>) -> Color;
+    fn eval(&self, d: Vector3<f32>) -> Color;
+
+    // Building scene dependent information
+    fn preprocess(&mut self, _: &Scene) {}
+}
+
+pub struct DirectionalLight {
+    // Light direction (from the light to the world)
+    pub direction: Vector3<f32>,
+    // Light intensity
+    pub intensity: Color,
+    // World sphere (populated with preprocess)
+    pub bsphere: Option<BoundingSphere>,
+}
+
+impl Emitter for DirectionalLight {
+    fn preprocess(&mut self, scene: &Scene) {
+        self.bsphere = scene.bsphere.clone();
+        self.bsphere.as_mut().unwrap().radius *= 1.1;
+    }
+
+    fn direct_pdf(&self, _: &LightSamplingPDF) -> PDF {
+        PDF::Discrete(1.0) // Deterministic sampling, no decision
+    }
+
+    fn direct_sample(&self, v: &Point3<f32>, _: f32, _: Point2<f32>) -> LightSampling {
+        let bsphere = self.bsphere.as_ref().unwrap();
+
+        // TODO: Do the test from Mitsuba (distance?)
+        //  To avoid self intersections
+        // let disk_center = bsphere.center - self.direction*bsphere.radius;
+
+        let p = v - bsphere.radius * self.direction;
+        let n = self.direction;
+        LightSampling {
+            emitter: self,
+            pdf: PDF::Discrete(1.0),
+            p: Point3::new(p.x, p.y, p.z),
+            n,
+            d: -self.direction,
+            weight: self.intensity,
+        }
+    }
+
+    fn sample_position(&self, _s: f32, uv: Point2<f32>) -> (SampledPosition, Color) {
+        let bsphere = self.bsphere.as_ref().unwrap();
+
+        // Sampling a disk
+        let p = crate::math::concentric_sample_disk(uv);
+        let area = std::f32::consts::PI * bsphere.radius.powi(2);
+
+        // Compute the point offset
+        let frame = crate::math::Frame::new(self.direction);
+        let poff = frame.to_world(Vector3::new(p.x, p.y, 0.0) * bsphere.radius);
+
+        // Compute position
+        // - Offset center
+        let p = bsphere.center - self.direction * bsphere.radius;
+        // - Move perpendicular
+        let p = p + poff;
+
+        (
+            SampledPosition {
+                p,
+                n: self.direction,
+                pdf: PDF::Area(1.0 / area),
+            },
+            self.flux(),
+        )
+    }
+
+    fn flux(&self) -> Color {
+        // TODO: Can be precomputed (as for PDF)
+        let area = std::f32::consts::PI * self.bsphere.as_ref().unwrap().radius.powi(2);
+        area * self.intensity
+    }
+
+    fn eval(&self, _: Vector3<f32>) -> Color {
+        self.intensity
+    }
+
+    fn sample_direction(
+        &self,
+        sampled_pos: &SampledPosition,
+        _: Point2<f32>,
+    ) -> (Vector3<f32>, PDF, Color) {
+        (sampled_pos.n, PDF::Discrete(1.0), Color::one())
+    }
 }
 
 pub struct EnvironmentLight {
@@ -73,14 +166,22 @@ impl Emitter for EnvironmentLight {
     fn direct_pdf(&self, _light_sampling: &LightSamplingPDF) -> PDF {
         unimplemented!();
     }
-    fn sample_direct(&self, _p: &Point3<f32>, _r: f32, _uv: Point2<f32>) -> LightSampling {
+    fn direct_sample(&self, _p: &Point3<f32>, _r: f32, _uv: Point2<f32>) -> LightSampling {
         unimplemented!();
     }
     fn flux(&self) -> Color {
         std::f32::consts::PI * self.world_radius.powi(2) * self.luminance
     }
-    fn emitted_luminance(&self, _d: Vector3<f32>) -> Color {
+    fn eval(&self, _d: Vector3<f32>) -> Color {
         self.luminance
+    }
+
+    fn sample_direction(
+        &self,
+        _sampled_pos: &SampledPosition,
+        _d: Point2<f32>,
+    ) -> (Vector3<f32>, PDF, Color) {
+        todo!()
     }
 }
 
@@ -99,11 +200,11 @@ impl Emitter for Mesh {
         self.cdf.as_ref().unwrap().normalization * self.emission * std::f32::consts::PI
     }
 
-    fn emitted_luminance(&self, _d: Vector3<f32>) -> Color {
+    fn eval(&self, _d: Vector3<f32>) -> Color {
         self.emission
     }
 
-    fn sample_direct(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
+    fn direct_sample(&self, p: &Point3<f32>, r: f32, uv: Point2<f32>) -> LightSampling {
         let sampled_pos = self.sample(r, uv);
 
         // Compute the distance
@@ -140,9 +241,28 @@ impl Emitter for Mesh {
     }
 
     fn sample_position(&self, s: f32, uv: Point2<f32>) -> (SampledPosition, Color) {
-        let res = self.sample(s, uv);
-        let w = self.emission / res.pdf.value();
-        (self.sample(s, uv), w)
+        (self.sample(s, uv), self.flux())
+    }
+
+    fn sample_direction(
+        &self,
+        sampled_pos: &SampledPosition,
+        d: Point2<f32>,
+    ) -> (Vector3<f32>, PDF, Color) {
+        let d_out = crate::math::cosine_sample_hemisphere(d);
+        let (weight, pdf) = if d_out.z < 0.0 {
+            // Can be due to f32 inaccuracies
+            (Color::zero(), PDF::SolidAngle(0.0))
+        } else {
+            (
+                Color::one(),
+                PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
+            )
+        };
+
+        let frame = crate::math::Frame::new(sampled_pos.n);
+        let d_out_global = frame.to_world(d_out);
+        (d_out_global, pdf, weight)
     }
 }
 
@@ -186,7 +306,7 @@ impl EmitterSampler {
     ) -> LightSampling {
         // Select the point on the light
         let (pdf_sel, emitter) = self.random_select_emitter(r_sel);
-        let mut res = emitter.sample_direct(p, r, uv);
+        let mut res = emitter.direct_sample(p, r, uv);
         res.weight /= pdf_sel;
         res.pdf = res.pdf * pdf_sel;
         res

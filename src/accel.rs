@@ -294,8 +294,9 @@ impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
         let mut d = p1 - p0;
         let length = d.magnitude();
         d /= length;
+        // TODO: Do correct self intersection tests...
         let mut embree_ray =
-            embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
+            embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.0001, length - 0.0001);
         self.embree_scene_commited
             .occluded(&mut intersection_ctx, &mut embree_ray);
         embree_ray.tfar != std::f32::NEG_INFINITY

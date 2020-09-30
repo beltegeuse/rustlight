@@ -138,11 +138,35 @@ impl SceneLoader for PBRTSceneLoader {
             .collect::<Vec<_>>();
 
         // Check if there is other emitter type
+        let mut emitters: Vec<Box<dyn Emitter>> = Vec::new();
         let mut emitter_environment = None;
         {
             let mut have_env = false;
             for l in scene_info.lights {
                 match l {
+                    pbrt_rs::Light::Distant {
+                        luminance,
+                        from,
+                        to,
+                        ..
+                    } => {
+                        // TODO: Do scale
+                        let luminance = match &luminance {
+                            pbrt_rs::parser::Spectrum::RGB(rgb) => Color {
+                                r: rgb.r,
+                                g: rgb.g,
+                                b: rgb.b,
+                            },
+                            _ => panic!("Unsupported luminance field: {:?}", luminance),
+                        };
+
+                        let direction = (to - from).normalize();
+                        emitters.push(Box::new(crate::emitter::DirectionalLight {
+                            direction,
+                            intensity: luminance,
+                            bsphere: None,
+                        }));
+                    }
                     pbrt_rs::Light::Infinite { luminance, .. } => {
                         match &luminance {
                             pbrt_rs::parser::Spectrum::RGB(rgb) => {
@@ -177,6 +201,7 @@ impl SceneLoader for PBRTSceneLoader {
                     } => {
                         let mat = world_to_camera.inverse_transform().unwrap();
                         info!("camera matrix: {:?}", mat);
+                        info!("camera fov: {:?}", fov);
                         Camera::new(scene_info.image_size, Fov::Y(*fov), mat, false)
                     }
                 }
@@ -197,7 +222,8 @@ impl SceneLoader for PBRTSceneLoader {
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
             volume: None,
-            emitters: None,
+            emitters: Some(EmittersState::Unbuild(emitters)),
+            bsphere: None,
         })
     }
 }
@@ -531,7 +557,8 @@ impl SceneLoader for MTSSceneLoader {
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
             volume,
-            emitters: None,
+            emitters: Some(EmittersState::Unbuild(vec![])),
+            bsphere: None,
         })
     }
 }

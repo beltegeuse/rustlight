@@ -770,6 +770,57 @@ impl AABB {
             None
         }
     }
+
+    pub fn to_sphere(&self) -> BoundingSphere {
+        let c = self.center();
+        BoundingSphere {
+            center: Point3::new(c.x, c.y, c.z),
+            radius: (c - self.p_max).magnitude(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct BoundingSphere {
+    pub center: Point3<f32>,
+    pub radius: f32,
+}
+impl Default for BoundingSphere {
+    fn default() -> Self {
+        Self {
+            center: Point3::new(0.0, 0.0, 0.0),
+            radius: 0.0,
+        }
+    }
+}
+
+impl BoundingSphere {
+    pub fn is_empty(&self) -> bool {
+        self.radius <= 0.0
+    }
+
+    fn intersect(&self, r: &Ray) -> Option<f32> {
+        let d_p = self.center - r.o;
+        let a = r.d.magnitude2();
+        let b = 2.0 * d_p.dot(r.d);
+        let c = d_p.magnitude2() - self.radius * self.radius;
+
+        if let Some((t0, t1)) = crate::math::solve_quadratic(a, b, c) {
+            if t0 < r.tnear {
+                if t1 < r.tfar {
+                    Some(t1)
+                } else {
+                    None
+                }
+            } else if t0 < r.tfar {
+                Some(t0)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 }
 
 // Simple intersection primitive

@@ -66,39 +66,44 @@ impl IntegratorMC for IntegratorDirect {
                 sampler.next(),
                 sampler.next2d(),
             );
-            let light_pdf = match light_record.pdf {
-                PDF::SolidAngle(v) => v,
-                _ => panic!("Wrong light PDF"),
-            };
 
+            // Compute the contribution of direct lighting
             let d_out_local = its.frame.to_local(light_record.d);
             if light_record.is_valid()
                 && accel.visible(&its.p, &light_record.p)
                 && d_out_local.z > 0.0
+                && !its.mesh.bsdf.bsdf_type().is_smooth()
             {
-                // Compute the contribution of direct lighting
-                // FIXME: A bit waste full, need to detect before sampling the light...
-                if let PDF::SolidAngle(pdf_bsdf) = its.mesh.bsdf.pdf(
-                    &its.uv,
-                    &its.wi,
-                    &d_out_local,
-                    Domain::SolidAngle,
-                    Transport::Importance,
-                ) {
-                    // Compute MIS weights
-                    let weight_light =
-                        mis_weight(light_pdf * weight_nb_light, pdf_bsdf * weight_nb_bsdf);
-                    l_i += &(weight_light
-                        * its.mesh.bsdf.eval(
-                            &its.uv,
-                            &its.wi,
-                            &d_out_local,
-                            Domain::SolidAngle,
-                            Transport::Importance,
-                        )
-                        * weight_nb_light
-                        * light_record.weight);
-                }
+                let weight_light = {
+                    let pdf_bsdf = its.mesh.bsdf.pdf(
+                        &its.uv,
+                        &its.wi,
+                        &d_out_local,
+                        Domain::SolidAngle,
+                        Transport::Importance,
+                    );
+                    match (light_record.pdf, pdf_bsdf) {
+                        (PDF::SolidAngle(pdf_light), PDF::SolidAngle(pdf_bsdf)) => {
+                            mis_weight(pdf_light * weight_nb_light, pdf_bsdf * weight_nb_bsdf)
+                        }
+                        (PDF::Discrete(_), PDF::Discrete(_)) => {
+                            panic!("Impossible that both are discrete")
+                        }
+                        (PDF::Discrete(_), _) => 1.0, // The light is discrete, MIS does not apply
+                        _ => todo!(),
+                    }
+                };
+
+                l_i += &(weight_light
+                    * its.mesh.bsdf.eval(
+                        &its.uv,
+                        &its.wi,
+                        &d_out_local,
+                        Domain::SolidAngle,
+                        Transport::Importance,
+                    )
+                    * weight_nb_light
+                    * light_record.weight);
             }
         }
 

@@ -1,5 +1,4 @@
 use crate::accel::*;
-use crate::math::*;
 use crate::paths::edge::*;
 use crate::paths::path::*;
 use crate::paths::strategies::*;
@@ -132,29 +131,33 @@ impl DirectionalSamplingStrategy {
                 );
                 (Some(edge), new_vertex)
             }
-            Vertex::Light { n, pos, .. } => {
+            Vertex::Light {
+                n, pos, emitter, ..
+            } => {
                 // For now, just computing the outgoing direction
                 // Using cosine base weighting as we know that the light source
                 // can only be cosine based isotropic lighting
-                let d_out = cosine_sample_hemisphere(sampler.next2d());
-                if d_out.z == 0.0 {
+                let (d, pdf_direction, weight) = emitter.sample_direction(
+                    &SampledPosition {
+                        p: *pos,
+                        n: *n,
+                        pdf: PDF::SolidAngle(1.0),
+                    },
+                    sampler.next2d(),
+                );
+                if d.z == 0.0 {
                     return (None, None); // Failed to sample the outgoing direction
                 }
-
-                let frame = Frame::new(*n);
-                let d_out_global = frame.to_world(d_out);
-                let ray = Ray::new(*pos, d_out_global);
-                // FIXME: This might be wrong!
-                let weight = Color::one(); // Perfectly importance sampled
 
                 // This will generate the edge
                 // if there is a participating media
                 // the edge will be generated properly
+                let ray = Ray::new(*pos, d);
                 let (edge, new_vertex) = Edge::from_ray(
                     path,
                     &ray,
                     vertex_id,
-                    PDF::SolidAngle(d_out.z * std::f32::consts::FRAC_1_PI),
+                    pdf_direction,
                     weight,
                     1.0,
                     sampler,

@@ -62,6 +62,7 @@ impl SamplingStrategy for LightSamplingStrategy {
     ) -> Option<(VertexID, Color)> {
         let (edge, _next_vertex) = match path.vertex(vertex_id) {
             Vertex::Surface { its, .. } => {
+                // We cannot extend on smooth surfaces
                 if its.mesh.bsdf.bsdf_type().is_smooth() {
                     return None;
                 }
@@ -87,10 +88,11 @@ impl SamplingStrategy for LightSamplingStrategy {
                         edge_out: None,
                     };
 
+                    // WTF!
                     // FIXME: Only work for diffuse light
                     // FIXME: Check the direction of hte light
                     let mut weight = light_record.weight;
-                    let emission = light_record.emitter.emitted_luminance(light_record.d);
+                    let emission = light_record.emitter.eval(light_record.d);
                     if emission.r != 0.0 {
                         weight.r /= emission.r;
                     }
@@ -168,7 +170,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                     // FIXME: Only work for diffuse light
                     // FIXME: This is the wrong -d_out_local, no?
                     let mut weight = light_record.weight;
-                    let emission = light_record.emitter.emitted_luminance(-light_record.d);
+                    let emission = light_record.emitter.eval(-light_record.d);
                     weight.r /= emission.r;
                     weight.g /= emission.g;
                     weight.b /= emission.b;

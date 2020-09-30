@@ -7,6 +7,11 @@ use crate::volume;
 use cgmath::*;
 use std::sync::Arc;
 
+pub enum EmittersState {
+    Unbuild(Vec<Box<dyn Emitter>>),
+    Build(EmitterSampler),
+}
+
 /// Scene representation
 pub struct Scene {
     /// Main camera
@@ -19,7 +24,9 @@ pub struct Scene {
     pub emitter_environment: Option<Arc<EnvironmentLight>>,
     pub volume: Option<volume::HomogenousVolume>,
     // Internal building
-    pub emitters: Option<EmitterSampler>,
+    // Note that we need an option to call take()
+    pub emitters: Option<EmittersState>,
+    pub bsphere: Option<BoundingSphere>,
 }
 
 impl Scene {
@@ -37,10 +44,20 @@ impl Scene {
     }
 
     pub fn emitters(&self) -> &EmitterSampler {
-        self.emitters.as_ref().unwrap()
+        match &self.emitters {
+            Some(EmittersState::Build(s)) => s,
+            _ => panic!("The emitters are not built?"),
+        }
     }
 
     pub fn build_emitters(&mut self) {
+        // Compute the bounding box
+        let mut aabb = AABB::default();
+        for m in &self.meshes {
+            aabb = aabb.union_aabb(&m.compute_aabb());
+        }
+        self.bsphere = Some(aabb.to_sphere());
+
         // Append emission mesh to the emitter list
         let mut emitters: Vec<Arc<dyn Emitter>> = vec![];
         for e in &self.meshes {
@@ -48,6 +65,18 @@ impl Scene {
                 emitters.push(e.clone())
             }
         }
+        // Add other emitters
+        let other_emitters = self.emitters.take();
+        match other_emitters {
+            Some(EmittersState::Build(_)) => panic!("Emitters are build twice?"),
+            None => {}
+            Some(EmittersState::Unbuild(other_emitters)) => {
+                for mut e in other_emitters {
+                    e.preprocess(self);
+                    emitters.push(Arc::from(e));
+                }
+            }
+        };
 
         // Stop early if necessary
         if emitters.is_empty() {
@@ -65,16 +94,16 @@ impl Scene {
             cdf_construct.normalize()
         };
 
-        self.emitters = Some(EmitterSampler {
+        self.emitters = Some(EmittersState::Build(EmitterSampler {
             emitters,
             emitters_cdf,
-        });
+        }));
     }
 
     pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {
         match self.emitter_environment {
             None => Color::zero(),
-            Some(ref env) => env.emitted_luminance(d),
+            Some(ref env) => env.eval(d),
         }
     }
 }
