@@ -87,10 +87,19 @@ impl SceneLoader for PBRTSceneLoader {
                     indices,
                 } => {
                     let mat = m.matrix;
+                    let reverse_orientation = m.reverse_orientation;
                     let normals = match normals {
-                        Some(ref v) => {
-                            Some(v.iter().map(|n| mat.transform_vector(n.clone())).collect())
-                        }
+                        Some(ref v) => Some(
+                            v.iter()
+                                .map(|n| {
+                                    mat.transform_vector(if reverse_orientation {
+                                        -n.clone()
+                                    } else {
+                                        n.clone()
+                                    })
+                                })
+                                .collect(),
+                        ),
                         None => None,
                     };
                     let points = points
@@ -131,7 +140,10 @@ impl SceneLoader for PBRTSceneLoader {
                         None
                     }
                 }
-                _ => panic!("All mesh should be converted to trimesh"),
+                _ => {
+                    warn!("All mesh should be converted to trimesh: {:?}", m.data);
+                    None
+                }
             })
             .filter(|x| x.is_some())
             .map(|m| m.unwrap())

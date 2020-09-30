@@ -231,7 +231,10 @@ fn bsdf_texture_match_pbrt(
                 None
             }
         }
-        _ => None,
+        _ => {
+            warn!("Spectrum conversion not handled: {:?}", v);
+            None
+        }
     }
 }
 
