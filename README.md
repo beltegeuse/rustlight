@@ -101,6 +101,7 @@ For now, these are the following features implemented:
     * Specular
 - Emitters: 
     * Multiple tri-mesh lights support
+    * Point, Directional and Envmap
 - Volumes:
     * Infinite homogenous participating media
 - Phase functions:
