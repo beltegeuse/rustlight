@@ -54,6 +54,22 @@ impl Default for SceneLoaderManager {
 }
 
 #[cfg(feature = "pbrt")]
+fn convert_spectrum_to_color(
+    s: &pbrt_rs::parser::Spectrum,
+    scale: Option<&pbrt_rs::parser::RGB>,
+) -> Color {
+    let scale = scale.map_or(Color::one(), |s| Color {
+        r: s.r,
+        g: s.g,
+        b: s.b,
+    });
+    match s {
+        pbrt_rs::parser::Spectrum::RGB(rgb) => Color::new(rgb.r, rgb.g, rgb.b) * scale,
+        _ => panic!("convert_spectrum_to_color failed: {:?}", s),
+    }
+}
+
+#[cfg(feature = "pbrt")]
 pub struct PBRTSceneLoader {}
 #[cfg(feature = "pbrt")]
 impl SceneLoader for PBRTSceneLoader {
@@ -61,6 +77,7 @@ impl SceneLoader for PBRTSceneLoader {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
         pbrt_rs::read_pbrt_file(filename, &mut scene_info, &mut state);
+        let wk = std::path::Path::new(filename).parent().unwrap();
 
         // Then do some transformation
         // if it is necessary
@@ -125,16 +142,10 @@ impl SceneLoader for PBRTSceneLoader {
 
                     if let Some(mut mesh) = mesh {
                         mesh.bsdf = bsdf;
-
-                        match &m.emission {
-                            Some(pbrt_rs::parser::Spectrum::RGB(rgb)) => {
-                                info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
-                                mesh.emission = Color::new(rgb.r, rgb.g, rgb.b)
-                            }
-                            None => {}
-                            _ => warn!("unsupported emission profile: {:?}", m.emission),
+                        if m.emission.is_some() {
+                            mesh.emission =
+                                convert_spectrum_to_color(m.emission.as_ref().unwrap(), None);
                         }
-
                         Some(mesh)
                     } else {
                         None
@@ -160,18 +171,9 @@ impl SceneLoader for PBRTSceneLoader {
                         luminance,
                         from,
                         to,
-                        ..
+                        scale,
                     } => {
-                        // TODO: Do scale
-                        let luminance = match &luminance {
-                            pbrt_rs::parser::Spectrum::RGB(rgb) => Color {
-                                r: rgb.r,
-                                g: rgb.g,
-                                b: rgb.b,
-                            },
-                            _ => panic!("Unsupported luminance field: {:?}", luminance),
-                        };
-
+                        let luminance = convert_spectrum_to_color(&luminance, Some(&scale));
                         let direction = (to - from).normalize();
                         emitters.push(Box::new(crate::emitter::DirectionalLight {
                             direction,
@@ -179,27 +181,55 @@ impl SceneLoader for PBRTSceneLoader {
                             bsphere: None,
                         }));
                     }
-                    pbrt_rs::Light::Infinite { luminance, .. } => {
-                        match &luminance {
-                            pbrt_rs::parser::Spectrum::RGB(rgb) => {
-                                if have_env {
-                                    panic!("Multiple env map is NOT supported");
-                                }
-                                emitter_environment = Some(Arc::new(EnvironmentLight {
-                                    luminance: Color::new(rgb.r, rgb.g, rgb.b),
-                                    world_radius: 1.0, // TODO: Add the correct radius
-                                    world_position: Point3::new(0.0, 0.0, 0.0), // TODO:
-                                }));
-                                have_env = true;
+                    pbrt_rs::Light::Point {
+                        intensity,
+                        from,
+                        scale,
+                    } => {
+                        let intensity = convert_spectrum_to_color(&intensity, Some(&scale));
+                        dbg!(&from);
+                        emitters.push(Box::new(crate::emitter::PointEmitter {
+                            intensity,
+                            position: from,
+                        }));
+                    }
+                    pbrt_rs::Light::Infinite {
+                        luminance, scale, ..
+                    } => match &luminance {
+                        pbrt_rs::parser::Spectrum::RGB(rgb) => {
+                            if have_env {
+                                panic!("Multiple env map is NOT supported");
                             }
-                            _ => {
-                                warn!("Unsupported luminance field: {:?}", luminance);
-                            }
+                            emitter_environment = Some(Arc::new(EnvironmentLight {
+                                luminance: EnvironmentLightColor::Constant(Color::new(
+                                    rgb.r * scale.r,
+                                    rgb.g * scale.g,
+                                    rgb.b * scale.b,
+                                )),
+                                bsphere: None,
+                            }));
+                            have_env = true;
                         }
-                    }
-                    _ => {
-                        warn!("Igoring light type: {:?}", l);
-                    }
+                        pbrt_rs::parser::Spectrum::Texture(name) => {
+                            dbg!(name);
+                            todo!()
+                        }
+                        pbrt_rs::parser::Spectrum::Mapname(name) => {
+                            assert!(scale.r == 1.0);
+                            assert!(scale.g == 1.0);
+                            assert!(scale.b == 1.0);
+
+                            let filename = wk.join(name);
+                            let image = Bitmap::read(filename.to_str().unwrap());
+                            emitter_environment = Some(Arc::new(EnvironmentLight {
+                                luminance: EnvironmentLightColor::new_texture(image),
+                                bsphere: None,
+                            }));
+                        }
+                        _ => {
+                            warn!("Unsupported luminance field: {:?}", luminance);
+                        }
+                    },
                 }
             }
         };

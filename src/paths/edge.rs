@@ -2,6 +2,7 @@ use crate::accel::*;
 use crate::paths::path::*;
 use crate::paths::vertex::*;
 use crate::samplers::*;
+use crate::scene::Scene;
 use crate::structure::*;
 use crate::volume::*;
 use cgmath::*;
@@ -17,6 +18,7 @@ pub struct Edge {
     pub sampled_distance: Option<SampledDistance>,
     pub pdf_direction: PDF,
     pub weight: Color, // BSDF * Transmittance
+    pub contrib: Option<Color>,
     pub rr_weight: f32,
     pub id_sampling: usize,
 }
@@ -27,6 +29,7 @@ impl Edge {
         org_vertex_id: VertexID,
         pdf_direction: PDF,
         weight: Color,
+        contrib: Option<Color>,
         rr_weight: f32,
         next_vertex_id: VertexID,
         id_sampling: usize,
@@ -45,6 +48,7 @@ impl Edge {
             sampled_distance: None,
             pdf_direction,
             weight,
+            contrib,
             rr_weight,
             id_sampling,
         };
@@ -66,6 +70,7 @@ impl Edge {
         weight: Color,
         rr_weight: f32,
         sampler: &mut dyn Sampler,
+        scene: &Scene,
         accel: &'scene dyn Acceleration,
         medium: Option<&HomogenousVolume>,
         id_sampling: usize,
@@ -77,6 +82,7 @@ impl Edge {
             sampled_distance: None,
             pdf_direction,
             weight,
+            contrib: None,
             rr_weight,
             id_sampling,
         };
@@ -85,6 +91,8 @@ impl Edge {
             Some(its) => its,
             None => {
                 if let Some(ref m) = medium {
+                    assert!(scene.emitter_environment.is_none());
+
                     // Sample the participating media
                     let mrec = m.sample(ray, sampler.next2d());
                     let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
@@ -180,21 +188,24 @@ impl Edge {
         (edge, Some(new_vertex))
     }
 
-    pub fn next_on_light_source(&self, path: &Path) -> bool {
+    pub fn next_on_light_source(&self, scene: &Scene, path: &Path) -> bool {
         if let Some(v) = &self.vertices.1 {
             path.vertex(*v).on_light_source()
         } else {
-            false //TODO: No env map
+            scene.emitter_environment.is_some()
         }
     }
 
     /// Get the contribution along this edge (toward the light direction)
     /// @deprecated: This might be not optimal as it is not a recursive call.
-    pub fn contribution(&self, path: &Path) -> Color {
+    pub fn contribution(&self, scene: &Scene, path: &Path) -> Color {
         if let Some(v) = &self.vertices.1 {
-            self.weight * self.rr_weight * path.vertex(*v).contribution(self)
+            match &self.contrib {
+                Some(v) => *v * self.weight * self.rr_weight,
+                None => self.weight * self.rr_weight * path.vertex(*v).contribution(self),
+            }
         } else {
-            Color::zero() //TODO: No env map
+            self.weight * self.rr_weight * scene.enviroment_luminance(self.d)
         }
     }
 }

@@ -170,13 +170,13 @@ impl Mesh {
     }
 
     pub fn pdf(&self) -> f32 {
-        1.0 / (self.cdf.as_ref().unwrap().normalization)
+        1.0 / (self.cdf.as_ref().unwrap().total())
     }
 
     // FIXME: reuse random number
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
         // Select a triangle
-        let id = self.indices[self.cdf.as_ref().unwrap().sample(s)];
+        let id = self.indices[self.cdf.as_ref().unwrap().sample_discrete(s)];
         let v0 = self.vertices[id.x];
         let v1 = self.vertices[id.y];
         let v2 = self.vertices[id.z];
@@ -203,7 +203,7 @@ impl Mesh {
         SampledPosition {
             p: Point3::from_vec(pos),
             n: normal,
-            pdf: PDF::Area(1.0 / (self.cdf.as_ref().unwrap().normalization)),
+            pdf: PDF::Area(1.0 / (self.cdf.as_ref().unwrap().total())),
         }
     }
 

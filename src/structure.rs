@@ -151,6 +151,9 @@ impl Color {
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
     }
+    pub fn is_valid(&self) -> bool {
+        self.r >= 0.0 && self.g >= 0.0 && self.b >= 0.0
+    }
 
     #[cfg(feature = "image")]
     pub fn to_rgba(&self) -> image::Rgba<u8> {
@@ -374,6 +377,7 @@ impl<'a> Add<&'a Color> for Color {
     }
 }
 
+#[derive(Clone)]
 pub struct Bitmap {
     pub size: Vector2<u32>,
     pub colors: Vec<Color>,
@@ -445,10 +449,16 @@ impl Bitmap {
             self.colors[i]
         }
     }
+
     pub fn pixel(&self, p: Point2<u32>) -> Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         self.colors[(p.y * self.size.x + p.x) as usize]
+    }
+    pub fn pixel_mut(&mut self, p: Point2<u32>) -> &mut Color {
+        assert!(p.x < self.size.x);
+        assert!(p.y < self.size.y);
+        &mut self.colors[(p.y * self.size.x + p.x) as usize]
     }
 
     // Save functions
@@ -545,6 +555,7 @@ impl Bitmap {
 
     // Load images
     pub fn read_pfm(filename: &str) -> Self {
+        dbg!(filename);
         let f = File::open(Path::new(filename)).unwrap();
         let mut f = BufReader::new(f);
         // Check the flag
@@ -557,24 +568,31 @@ impl Bitmap {
         }
         // Check the dim
         let size = {
-            let mut img_dim_y = String::new();
-            f.read_line(&mut img_dim_y).unwrap();
-            let mut img_dim_x = String::new();
-            f.read_line(&mut img_dim_x).unwrap();
-            Vector2::new(
-                img_dim_x.parse::<u32>().unwrap(),
-                img_dim_y.parse::<u32>().unwrap(),
-            )
+            let mut img_dim = String::new();
+            f.read_line(&mut img_dim).unwrap();
+            let img_dim = img_dim
+                .split(" ")
+                .map(|v| v.trim().parse::<u32>().unwrap())
+                .collect::<Vec<_>>();
+            assert!(img_dim.len() == 2);
+            Vector2::new(img_dim[0], img_dim[1])
         };
+
+        // Check the encoding
+        {
+            let mut encoding = String::new();
+            f.read_line(&mut encoding).unwrap();
+            let encoding = encoding.trim().parse::<f32>().unwrap();
+            assert!(encoding == -1.0);
+        }
 
         let mut colors = vec![Color::zero(); (size.x * size.y) as usize];
         for y in 0..size.y {
             for x in 0..size.x {
+                let p = Point2::new(x, size.y - y - 1);
                 let r = f.read_f32::<LittleEndian>().unwrap();
                 let g = f.read_f32::<LittleEndian>().unwrap();
                 let b = f.read_f32::<LittleEndian>().unwrap();
-                //
-                let p = Point2::new(x, size.y - y - 1);
                 colors[(p.y * size.x + p.x) as usize] = Color::new(r, g, b);
             }
         }
@@ -780,7 +798,7 @@ impl AABB {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BoundingSphere {
     pub center: Point3<f32>,
     pub radius: f32,
@@ -799,7 +817,7 @@ impl BoundingSphere {
         self.radius <= 0.0
     }
 
-    fn intersect(&self, r: &Ray) -> Option<f32> {
+    pub fn intersect(&self, r: &Ray) -> Option<f32> {
         let d_p = self.center - r.o;
         let a = r.d.magnitude2();
         let b = 2.0 * d_p.dot(r.d);

@@ -46,7 +46,7 @@ impl TechniquePathTracing {
         // Get the edge that we considering
         let edge = path.edge(edge_id);
         // Compute the contribution
-        let contrib = edge.contribution(path);
+        let contrib = edge.contribution(scene, path);
         let contrib = match strategy {
             IntegratorPathTracingStrategies::All => contrib,
             IntegratorPathTracingStrategies::BSDF => {
@@ -77,17 +77,23 @@ impl TechniquePathTracing {
                 IntegratorPathTracingStrategies::All => {
                     // Balance heuristic
                     if let PDF::SolidAngle(v) = edge.pdf_direction {
-                        let total: f32 = self
+                        let total = self
                             .strategies(path.vertex(vertex_id))
                             .iter()
-                            .map(|s| {
-                                if let Some(v) = s.pdf(path, scene, vertex_id, edge_id) {
-                                    v
+                            .enumerate()
+                            .map(|(id, s)| {
+                                let pdf = if id == edge.id_sampling {
+                                     v
                                 } else {
-                                    0.0
-                                }
+                                    if let Some(v) = s.pdf(path, scene, vertex_id, edge_id) {
+                                        v
+                                    } else {
+                                        0.0
+                                    }
+                                };
+                                pdf
                             })
-                            .sum();
+                            .sum::<f32>();
                         v / total
                     } else {
                         1.0
@@ -152,7 +158,7 @@ impl TechniquePathTracing {
                 };
 
                 // Get the potential contribution
-                let contrib = edge.contribution(path);
+                let contrib = edge.contribution(scene, path);
                 if !contrib.is_zero() && add_contrib {
                     l_i += contrib;
                 }

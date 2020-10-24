@@ -33,6 +33,7 @@ impl NaiveSamplingStrategy {
                     Color::one(),
                     1.0,
                     sampler,
+                    scene,
                     accel,
                     medium,
                     id_strategy,
@@ -93,6 +94,7 @@ impl NaiveSamplingStrategy {
                     bsdf_weight,
                     rr_weight,
                     sampler,
+                    scene,
                     accel,
                     medium,
                     id_strategy,
@@ -133,6 +135,7 @@ impl NaiveSamplingStrategy {
                     weight,
                     rr_weight,
                     sampler,
+                    scene,
                     accel,
                     medium,
                     id_strategy,
@@ -165,6 +168,7 @@ impl NaiveSamplingStrategy {
                     weight,
                     1.0,
                     sampler,
+                    scene,
                     accel,
                     medium,
                     id_strategy,
@@ -223,7 +227,7 @@ impl SamplingStrategy for NaiveSamplingStrategy {
     fn pdf<'scene>(
         &self,
         path: &Path<'scene>,
-        _scene: &'scene Scene,
+        scene: &'scene Scene,
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {
@@ -232,7 +236,7 @@ impl SamplingStrategy for NaiveSamplingStrategy {
         // in this case, it makes sense that the PDF for this strategy
         // if None in case of delta distribution...
         let edge = path.edge(edge_id);
-        if !edge.next_on_light_source(path) {
+        if !edge.next_on_light_source(scene, path) {
             return None;
         }
 

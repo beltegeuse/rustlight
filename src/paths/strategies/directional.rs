@@ -32,6 +32,7 @@ impl DirectionalSamplingStrategy {
                     Color::one(),
                     1.0,
                     sampler,
+                    scene,
                     accel,
                     medium,
                     id_strategy,
@@ -84,6 +85,7 @@ impl DirectionalSamplingStrategy {
                         sampled_bsdf.weight,
                         rr_weight,
                         sampler,
+                        scene,
                         accel,
                         medium,
                         id_strategy,
@@ -125,6 +127,7 @@ impl DirectionalSamplingStrategy {
                     sampled_phase.weight,
                     rr_weight,
                     sampler,
+                    scene,
                     accel,
                     medium,
                     id_strategy,
@@ -145,9 +148,22 @@ impl DirectionalSamplingStrategy {
                     },
                     sampler.next2d(),
                 );
-                if d.z == 0.0 {
-                    return (None, None); // Failed to sample the outgoing direction
+
+                // TODO: This test was to check something... right?
+                // if d.z == 0.0 {
+                //     return (None, None); // Failed to sample the outgoing direction
+                // }
+                *throughput *= &weight;
+                if throughput.is_zero() {
+                    return (None, None);
                 }
+
+                // let rr_weight = throughput.channel_max().min(0.95);
+                // if rr_weight < sampler.next() {
+                //     return (None, None);
+                // }
+                // let rr_weight = 1.0 / rr_weight;
+                // throughput.scale(rr_weight);
 
                 // This will generate the edge
                 // if there is a participating media
@@ -161,6 +177,7 @@ impl DirectionalSamplingStrategy {
                     weight,
                     1.0,
                     sampler,
+                    scene,
                     accel,
                     medium,
                     id_strategy,
@@ -219,7 +236,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
     fn pdf<'scene>(
         &self,
         path: &Path<'scene>,
-        _scene: &'scene Scene,
+        scene: &'scene Scene,
         vertex_id: VertexID,
         edge_id: EdgeID,
     ) -> Option<f32> {
@@ -228,7 +245,7 @@ impl SamplingStrategy for DirectionalSamplingStrategy {
         // in this case, it makes sense that the PDF for this strategy
         // if None in case of delta distribution...
         let edge = path.edge(edge_id);
-        if !edge.next_on_light_source(path) {
+        if !edge.next_on_light_source(scene, path) {
             return None;
         }
 

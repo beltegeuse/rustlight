@@ -79,12 +79,19 @@ where
     let mut seeds = vec![];
 
     // Generate seeds
-    for _ in 0..nb_samples {
-        let current_seed = sampler.rnd.clone();
-        let state = routine(&mut sampler);
-        if state.tf > 0.0 {
-            seeds.push((state.tf, current_seed));
-        }
+    let b = (0..nb_samples)
+        .map(|_| {
+            let current_seed = sampler.rnd.clone();
+            let state = routine(&mut sampler);
+            if state.tf > 0.0 {
+                seeds.push((state.tf, current_seed));
+            }
+            state.tf
+        })
+        .sum::<f32>()
+        / nb_samples as f32;
+    if b == 0.0 {
+        panic!("Normalization is 0, impossible to continue");
     }
 
     let mut cdf = Distribution1DConstruct::new(seeds.len());
@@ -92,11 +99,6 @@ where
         cdf.add(s.0);
     }
     let cdf = cdf.normalize();
-    let b = cdf.normalization / nb_samples as f32;
-    if b == 0.0 {
-        panic!("Normalization is 0, impossible to continue");
-    }
-
     (b, seeds, cdf)
 }
 

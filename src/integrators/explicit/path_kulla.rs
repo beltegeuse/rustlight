@@ -577,7 +577,7 @@ impl IntegratorPathKulla {
                         cdf.add(s.0.importance());
                     }
                     let cdf = cdf.normalize();
-                    let id = cdf.sample(sampler.next());
+                    let id = cdf.sample_discrete(sampler.next());
                     // w: (1 / i(x)) * (1/M) * \sum(i_x)
                     let nb = strategies.len();
                     (

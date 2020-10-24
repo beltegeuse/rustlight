@@ -1,3 +1,4 @@
+use crate::emitter::Emitter;
 use crate::integrators::*;
 use crate::paths::path::*;
 use crate::paths::strategies::*;
@@ -489,7 +490,10 @@ impl IntegratorVPL {
                     ) * mrec.w;
                     return l_i;
                 } else {
-                    return l_i;
+                    return match &scene.emitter_environment {
+                        None => l_i,
+                        Some(envmap) => l_i + envmap.eval(ray.d),
+                    };
                 }
             }
         };

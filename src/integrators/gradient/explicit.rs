@@ -39,7 +39,7 @@ impl TechniqueGradientPathTracing {
             Vertex::Surface { edge_out, .. } => {
                 for edge_id in edge_out {
                     let edge = path.edge(*edge_id);
-                    let contrib = edge.contribution(path);
+                    let contrib = edge.contribution(scene, path);
                     if !contrib.is_zero() {
                         let weight = if let PDF::SolidAngle(v) = edge.pdf_direction {
                             let total: f32 = self
@@ -72,7 +72,7 @@ impl TechniqueGradientPathTracing {
                 let edge = path.edge(edge_out.unwrap());
 
                 // Get the potential contribution
-                let contrib = edge.contribution(path);
+                let contrib = edge.contribution(scene, path);
                 if !contrib.is_zero() {
                     l_i += contrib;
                 }

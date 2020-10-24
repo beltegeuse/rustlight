@@ -1,5 +1,6 @@
 use crate::emitter::*;
 use crate::integrators::*;
+use cgmath::InnerSpace;
 
 pub struct IntegratorDirect {
     pub nb_bsdf_samples: u32,
@@ -71,7 +72,6 @@ impl IntegratorMC for IntegratorDirect {
             let d_out_local = its.frame.to_local(light_record.d);
             if light_record.is_valid()
                 && accel.visible(&its.p, &light_record.p)
-                && d_out_local.z > 0.0
                 && !its.mesh.bsdf.bsdf_type().is_smooth()
             {
                 let weight_light = {
@@ -120,36 +120,80 @@ impl IntegratorMC for IntegratorDirect {
                 // Generate the new ray and do the intersection
                 let d_out_world = its.frame.to_world(sampled_bsdf.d);
                 let ray = Ray::new(its.p, d_out_world);
-                let next_its = match accel.trace(&ray) {
-                    Some(x) => x,
+                match accel.trace(&ray) {
+                    Some(next_its) => {
+                        // Check that we have intersected a light or not
+                        if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
+                            let weight_bsdf = match sampled_bsdf.pdf {
+                                PDF::SolidAngle(bsdf_pdf) => {
+                                    let light_pdf = scene
+                                        .emitters()
+                                        .direct_pdf(
+                                            next_its.mesh,
+                                            &LightSamplingPDF::new(&ray, &next_its),
+                                        )
+                                        .value();
+                                    mis_weight(
+                                        bsdf_pdf * weight_nb_bsdf,
+                                        light_pdf * weight_nb_light,
+                                    )
+                                }
+                                PDF::Discrete(_v) => 1.0,
+                                _ => {
+                                    warn!("Wrong PDF values retrieve on an intersected mesh");
+                                    continue;
+                                }
+                            };
+
+                            l_i += weight_bsdf
+                                * sampled_bsdf.weight
+                                * next_its.mesh.emission
+                                * weight_nb_bsdf;
+                        }
+                    }
                     None => {
-                        l_i += sampled_bsdf.weight
-                            * scene.enviroment_luminance(ray.d)
-                            * weight_nb_bsdf;
-                        continue;
-                    } // FIXME: Need to implement MIS for BSDF
+                        if scene.emitter_environment.is_some() {
+                            let envmap = scene.emitter_environment.as_ref().unwrap();
+                            // We have to compute MIS
+                            let weight_bsdf = match sampled_bsdf.pdf {
+                                PDF::SolidAngle(bsdf_pdf) => {
+                                    let bsphere = envmap.bsphere.as_ref().unwrap();
+                                    let t = bsphere.intersect(&ray);
+                                    let t = t.unwrap();
+
+                                    let p = ray.o + ray.d * t;
+                                    let n = (bsphere.center - p).normalize();
+                                    if let PDF::SolidAngle(light_pdf) = scene.emitters().direct_pdf(
+                                        envmap.as_ref(),
+                                        &LightSamplingPDF {
+                                            o: ray.o,
+                                            p,
+                                            n,
+                                            dir: ray.d,
+                                        },
+                                    ) {
+                                        mis_weight(
+                                            bsdf_pdf * weight_nb_bsdf,
+                                            light_pdf * weight_nb_light,
+                                        )
+                                    } else {
+                                        1.0
+                                    }
+                                }
+                                PDF::Discrete(_v) => 1.0,
+                                _ => {
+                                    warn!("Wrong PDF values retrieve on an intersected mesh");
+                                    continue;
+                                }
+                            };
+
+                            l_i += weight_bsdf
+                                * sampled_bsdf.weight
+                                * scene.enviroment_luminance(ray.d)
+                                * weight_nb_bsdf;
+                        }
+                    }
                 };
-
-                // Check that we have intersected a light or not
-                if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
-                    let weight_bsdf = match sampled_bsdf.pdf {
-                        PDF::SolidAngle(bsdf_pdf) => {
-                            let light_pdf = scene
-                                .emitters()
-                                .direct_pdf(next_its.mesh, &LightSamplingPDF::new(&ray, &next_its))
-                                .value();
-                            mis_weight(bsdf_pdf * weight_nb_bsdf, light_pdf * weight_nb_light)
-                        }
-                        PDF::Discrete(_v) => 1.0,
-                        _ => {
-                            warn!("Wrong PDF values retrieve on an intersected mesh");
-                            continue;
-                        }
-                    };
-
-                    l_i +=
-                        weight_bsdf * sampled_bsdf.weight * next_its.mesh.emission * weight_nb_bsdf;
-                }
             }
         }
 

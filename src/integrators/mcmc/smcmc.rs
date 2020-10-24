@@ -1042,7 +1042,7 @@ impl Initialization for MCMCInit {
                 cdf.add(s.1);
             }
             let cdf = cdf.normalize();
-            if cdf.normalization == 0.0 {
+            if cdf.func_int == 0.0 {
                 panic!("Normalization is 0, impossible to continue");
             }
 
@@ -1063,7 +1063,7 @@ impl Initialization for MCMCInit {
 
                     // Pick one with stratified sampling
                     let v_id = (chain_id as f32 + dumy_tile.sampler.rand()) / nb_chains as f32;
-                    let seed = &seeds[cdf.sample(v_id)];
+                    let seed = &seeds[cdf.sample_discrete(v_id)];
 
                     // Save the rng for later
                     let ori_rng = dumy_tile.sampler.rnd.clone();

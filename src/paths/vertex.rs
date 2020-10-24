@@ -74,7 +74,8 @@ impl<'scene> Vertex<'scene> {
                 }
             }
             Vertex::Sensor { .. } | Vertex::Volume { .. } => Color::zero(),
-            Vertex::Light { emitter, .. } => emitter.eval(-edge.d), // FIXME: Check the normal orientation
+            // FIXME: Check the normal orientation
+            Vertex::Light { emitter, .. } => emitter.eval(-edge.d),
         }
     }
 }

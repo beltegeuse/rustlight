@@ -158,6 +158,10 @@ impl BufferCollection {
     }
 
     pub fn accumulate_safe(&mut self, p: Point2<i32>, f: Color, name: &str) {
+        if !f.is_valid() {
+            warn!("Try to splat: {:?}", f);
+            return;
+        }
         if p.x >= 0 && p.y >= 0 && p.x < (self.size.x as i32) && p.y < (self.size.y as i32) {
             self.accumulate(
                 Point2 {

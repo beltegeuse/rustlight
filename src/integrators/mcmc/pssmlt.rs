@@ -61,7 +61,7 @@ impl Integrator for IntegratorPSSMLT {
                 let previous_rnd = s.rnd.clone(); // We save the RNG (to recover it later)
                                                   // Use deterministic sampling to select a given seed
                 let id_v = (id as f32 + 0.5) / nb_chains as f32;
-                let seed = &seeds[cdf.sample(id_v)];
+                let seed = &seeds[cdf.sample_discrete(id_v)];
                 // Replace the seed, check that the target function values matches
                 s.rnd = seed.1.clone();
                 let mut current_state = sample(s);

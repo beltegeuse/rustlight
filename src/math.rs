@@ -107,13 +107,15 @@ pub fn uniform_sample_triangle(u: Point2<f32>) -> Point2<f32> {
 }
 
 /// Create 1D distribution
+#[derive(Debug)]
 pub struct Distribution1DConstruct {
     pub elements: Vec<f32>,
 }
 
 pub struct Distribution1D {
     pub cdf: Vec<f32>,
-    pub normalization: f32,
+    pub func: Vec<f32>,
+    pub func_int: f32,
 }
 
 impl Distribution1DConstruct {
@@ -126,7 +128,7 @@ impl Distribution1DConstruct {
         self.elements.push(v);
     }
 
-    pub fn normalize(&mut self) -> Distribution1D {
+    pub fn normalize(self) -> Distribution1D {
         assert!(self.elements.len() > 0);
 
         // Create the new CDF
@@ -134,25 +136,30 @@ impl Distribution1DConstruct {
         let mut cur = 0.0;
         for e in &self.elements {
             cdf.push(cur);
-            cur += e;
+            cur += e / self.elements.len() as f32;
         }
         cdf.push(cur);
 
         // Normalize the cdf
-        cdf.iter_mut().for_each(|x| *x /= cur);
+        if cur != 0.0 {
+            cdf.iter_mut().for_each(|x| *x /= cur);
+        }
+        *cdf.last_mut().unwrap() = 1.0;
 
         Distribution1D {
             cdf,
-            normalization: cur,
+            func: self.elements,
+            func_int: cur,
         }
     }
 }
 
 impl Distribution1D {
-    pub fn sample(&self, v: f32) -> usize {
+    /// Sample an element in a discrete manner
+    /// The function return the index of such element
+    pub fn sample_discrete(&self, v: f32) -> usize {
         assert!(v >= 0.0);
         assert!(v < 1.0);
-
         match self
             .cdf
             .binary_search_by(|probe| probe.partial_cmp(&v).unwrap())
@@ -162,8 +169,77 @@ impl Distribution1D {
         }
     }
 
+    /// Sample an element in a continous manner
+    /// The function return the wrapped position in [0, usize]
+    pub fn sample_continuous(&self, v: f32) -> f32 {
+        let i = self.sample_discrete(v);
+
+        // Remap the random number between [0, 1]
+        let dv = {
+            let dv = v - self.cdf[i];
+            let pdf = self.pdf(i);
+            if pdf > 0.0 {
+                // Normally, if the PDF is zero, there is no change to pick this entry
+                // However, this can happens due to float inaccuracies
+                dv / pdf
+            } else {
+                dv
+            }
+        };
+
+        i as f32 + dv
+    }
+
     pub fn pdf(&self, i: usize) -> f32 {
-        assert!(i < self.cdf.len() - 1);
         self.cdf[i + 1] - self.cdf[i]
+    }
+
+    pub fn total(&self) -> f32 {
+        self.func_int * (self.cdf.len() - 1) as f32
+    }
+}
+
+pub struct Distribution2D {
+    pub marginal: Distribution1D,
+    pub conditionals: Vec<Distribution1D>,
+}
+
+impl Distribution2D {
+    pub fn from_bitmap(image: &crate::structure::Bitmap) -> Distribution2D {
+        let size_x = image.size.x as usize;
+        let size_y = image.size.y as usize;
+
+        // Build conditionals
+        let mut marginal = Distribution1DConstruct::new(size_y);
+        let conditionals = (0..size_y)
+            .map(|y| {
+                let mut conditional = Distribution1DConstruct::new(size_x);
+                for x in 0..size_x {
+                    let p = image.pixel(Point2::new(x as u32, y as u32));
+                    conditional.add(p.luminance());
+                }
+
+                let conditional = conditional.normalize();
+                marginal.add(conditional.func_int);
+                conditional
+            })
+            .collect::<Vec<_>>();
+
+        // Build marginal
+        let marginal = marginal.normalize();
+        Distribution2D {
+            marginal,
+            conditionals,
+        }
+    }
+
+    pub fn sample_continuous(&self, uv: Point2<f32>) -> Point2<f32> {
+        let y = self.marginal.sample_continuous(uv.y);
+        let x = self.conditionals[y as usize].sample_continuous(uv.x);
+        Point2::new(x, y)
+    }
+
+    pub fn pdf(&self, i: Point2<usize>) -> f32 {
+        self.conditionals[i.y].func[i.x] / self.marginal.func_int
     }
 }

@@ -12,39 +12,69 @@ impl LightSamplingStrategy {
         path: &Path<'scene>,
         scene: &'scene Scene,
         ray: Ray,
-        next_vertex_id: VertexID,
+        next_vertex_id: Option<VertexID>,
     ) -> Option<f32> {
-        match path.vertex(next_vertex_id) {
-            Vertex::Surface { its, .. } => {
-                // We could create a emitter sampling
-                // if we have intersected the light source randomly
-                if let PDF::SolidAngle(light_pdf) = scene
-                    .emitters()
-                    .direct_pdf(its.mesh, &LightSamplingPDF::new(&ray, its))
-                {
-                    Some(light_pdf)
+        match next_vertex_id {
+            None => {
+                if let Some(envmap) = &scene.emitter_environment {
+                    let bsphere = envmap.bsphere.as_ref().unwrap();
+                    let t = bsphere.intersect(&ray);
+                    let t = t.unwrap();
+
+                    let p = ray.o + ray.d * t;
+                    let n = (bsphere.center - p).normalize();
+                    if let PDF::SolidAngle(light_pdf) = scene.emitters().direct_pdf(
+                        envmap.as_ref(),
+                        &LightSamplingPDF {
+                            o: ray.o,
+                            p,
+                            n,
+                            dir: ray.d,
+                        },
+                    ) {
+                        Some(light_pdf)
+                    } else {
+                        // todo!()
+                        None
+                    }
                 } else {
                     None
                 }
             }
-            Vertex::Light {
-                emitter, pos, n, ..
-            } => {
-                if let PDF::SolidAngle(light_pdf) = scene.emitters().direct_pdf(
-                    *emitter,
-                    &LightSamplingPDF {
-                        o: ray.o,
-                        p: *pos,
-                        n: *n,
-                        dir: ray.d,
-                    },
-                ) {
-                    Some(light_pdf)
-                } else {
-                    None
+            Some(next_vertex_id) => {
+                match path.vertex(next_vertex_id) {
+                    Vertex::Surface { its, .. } => {
+                        // We could create a emitter sampling
+                        // if we have intersected the light source randomly
+                        if let PDF::SolidAngle(light_pdf) = scene
+                            .emitters()
+                            .direct_pdf(its.mesh, &LightSamplingPDF::new(&ray, its))
+                        {
+                            Some(light_pdf)
+                        } else {
+                            None
+                        }
+                    }
+                    Vertex::Light {
+                        emitter, pos, n, ..
+                    } => {
+                        if let PDF::SolidAngle(light_pdf) = scene.emitters().direct_pdf(
+                            *emitter,
+                            &LightSamplingPDF {
+                                o: ray.o,
+                                p: *pos,
+                                n: *n,
+                                dir: ray.d,
+                            },
+                        ) {
+                            Some(light_pdf)
+                        } else {
+                            None
+                        }
+                    }
+                    Vertex::Sensor { .. } | Vertex::Volume { .. } => None,
                 }
             }
-            Vertex::Sensor { .. } | Vertex::Volume { .. } => None,
         }
     }
 }
@@ -88,23 +118,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                         edge_out: None,
                     };
 
-                    // WTF!
-                    // FIXME: Only work for diffuse light
-                    // FIXME: Check the direction of hte light
-                    let mut weight = light_record.weight;
-                    let emission = light_record.emitter.eval(light_record.d);
-                    if emission.r != 0.0 {
-                        weight.r /= emission.r;
-                    }
-                    if emission.g != 0.0 {
-                        weight.g /= emission.g;
-                    }
-                    if emission.b != 0.0 {
-                        weight.b /= emission.b;
-                    }
-
-                    // Need to evaluate the BSDF
-                    weight *= &its.mesh.bsdf.eval(
+                    let mut weight = its.mesh.bsdf.eval(
                         &its.uv,
                         &its.wi,
                         &its.to_local(&light_record.d),
@@ -131,6 +145,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                             vertex_id,
                             light_record.pdf,
                             weight,
+                            Some(light_record.weight),
                             1.0,
                             next_vertex_id,
                             id_strategy,
@@ -166,17 +181,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                         edge_in: None,
                         edge_out: None,
                     };
-
-                    // FIXME: Only work for diffuse light
-                    // FIXME: This is the wrong -d_out_local, no?
-                    let mut weight = light_record.weight;
-                    let emission = light_record.emitter.eval(-light_record.d);
-                    weight.r /= emission.r;
-                    weight.g /= emission.g;
-                    weight.b /= emission.b;
-
-                    // Need to evaluate the phase function
-                    weight *= &phase_function.eval(d_in, &light_record.d);
+                    let mut weight = phase_function.eval(d_in, &light_record.d);
 
                     if let Some(m) = medium {
                         // Evaluate the transmittance
@@ -197,6 +202,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                             vertex_id,
                             light_record.pdf,
                             weight,
+                            Some(light_record.weight),
                             1.0,
                             next_vertex_id,
                             id_strategy,
@@ -230,7 +236,7 @@ impl SamplingStrategy for LightSamplingStrategy {
     ) -> Option<f32> {
         // Get the edge and check the condition
         let edge = path.edge(edge_id);
-        if !edge.next_on_light_source(path) {
+        if !edge.next_on_light_source(scene, path) {
             return None;
         }
 
@@ -240,11 +246,7 @@ impl SamplingStrategy for LightSamplingStrategy {
             Vertex::Volume { .. } => {
                 // Always ok for have sampling a light source
                 let ray = Ray::new(vertex.position(), edge.d);
-                if let Some(next_vertex_id) = edge.vertices.1 {
-                    self.pdf_emitter(path, scene, ray, next_vertex_id)
-                } else {
-                    None
-                }
+                self.pdf_emitter(path, scene, ray, edge.vertices.1)
             }
             Vertex::Surface { its, .. } => {
                 // Impossible to sample from a Dirac distribution
@@ -253,11 +255,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                 }
                 // Know the the light is intersectable so have a solid angle PDF
                 let ray = Ray::new(vertex.position(), edge.d);
-                if let Some(next_vertex_id) = edge.vertices.1 {
-                    self.pdf_emitter(path, scene, ray, next_vertex_id)
-                } else {
-                    None
-                }
+                self.pdf_emitter(path, scene, ray, edge.vertices.1)
             }
             _ => None,
         }

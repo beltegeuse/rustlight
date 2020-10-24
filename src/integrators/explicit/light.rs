@@ -130,6 +130,11 @@ impl TechniqueLightTracing {
             } => {
                 if accumulate && self.render_surface {
                     // For now, we will use the edge to check the light
+                    if edge_out.is_none() {
+                        warn!("None on edge_out light vertex, sampling failed?");
+                        return;
+                    }
+
                     let edge_out = edge_out.unwrap();
                     let edge = path.edge(edge_out);
                     match edge.pdf_direction {

@@ -56,6 +56,7 @@ impl Scene {
         for m in &self.meshes {
             aabb = aabb.union_aabb(&m.compute_aabb());
         }
+        aabb = aabb.union_vec(&self.camera.position().to_vec());
         self.bsphere = Some(aabb.to_sphere());
 
         // Append emission mesh to the emitter list
@@ -65,6 +66,20 @@ impl Scene {
                 emitters.push(e.clone())
             }
         }
+        // Add env map
+        if self.emitter_environment.is_some() {
+            // Need to take and remove the Arc to be able to modify
+            // It is fine as we will have only one version of the scene
+            let envmap = self.emitter_environment.take().unwrap();
+            let mut envmap = Arc::try_unwrap(envmap).unwrap();
+            envmap.preprocess(self);
+
+            // Now it is initialized, we need to put it back inside emitter_env
+            self.emitter_environment = Some(Arc::new(envmap));
+            // Add it to the list of potential emitters to samples
+            emitters.push(self.emitter_environment.as_ref().unwrap().clone());
+        }
+
         // Add other emitters
         let other_emitters = self.emitters.take();
         match other_emitters {
@@ -91,6 +106,7 @@ impl Scene {
                 .iter()
                 .map(|e| e.flux())
                 .for_each(|f| cdf_construct.add(f.channel_max()));
+            dbg!(&cdf_construct);
             cdf_construct.normalize()
         };
 
