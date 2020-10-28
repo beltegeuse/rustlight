@@ -49,6 +49,7 @@ extern crate bitflags;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;
+    pub const ONE_MINUS_EPSILON: f32 = 0.9999999403953552;
 }
 
 pub trait Scale<T> {

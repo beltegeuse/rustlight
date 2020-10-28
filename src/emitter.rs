@@ -2,6 +2,8 @@ use crate::geometry::Mesh;
 use crate::math::{sample_uniform_sphere, Distribution1D, Distribution2D};
 use crate::scene::Scene;
 use crate::structure::*;
+use crate::constants::ONE_MINUS_EPSILON;
+use crate::clamp;
 use cgmath::*;
 use std::sync::Arc;
 
@@ -219,7 +221,7 @@ impl std::fmt::Debug for EnvironmentLightColor {
     }
 }
 pub fn to_spherical_coordinates(d: Vector3<f32>) -> Vector2<f32> {
-    Vector2::new(
+    let mut uv = Vector2::new(
         {
             let p = d.y.atan2(d.x);
             if p < 0.0 {
@@ -230,7 +232,12 @@ pub fn to_spherical_coordinates(d: Vector3<f32>) -> Vector2<f32> {
         } * std::f32::consts::FRAC_1_PI
             * 0.5,
         crate::clamp(d.z, -1.0, 1.0).acos() * std::f32::consts::FRAC_1_PI,
-    )
+    );
+    // It is possible due to f32, that one of the coordinate of UV's vector is 1
+    // breaking the assum
+    uv.x = clamp(uv.x, 0.0, ONE_MINUS_EPSILON);
+    uv.y = clamp(uv.y, 0.0, ONE_MINUS_EPSILON);
+    uv
 }
 
 impl EnvironmentLightColor {
@@ -258,7 +265,10 @@ impl EnvironmentLightColor {
             ),
             EnvironmentLightColor::Texture { image, image_cdf } => {
                 // Return [0, size]
-                let uv = image_cdf.sample_continuous(uv);
+                let mut uv = image_cdf.sample_continuous(uv);
+                uv.x = clamp(uv.x, 0.0, image.size.x as f32 - 1.0);
+                uv.y = clamp(uv.y, 0.0, image.size.y as f32 - 1.0);
+
                 // TODO: Do bilinear interpolation
                 let value = image.pixel(Point2::new(uv.x as u32, uv.y as u32));
                 let pdf = image_cdf.pdf(Point2::new(uv.x as usize, uv.y as usize));
