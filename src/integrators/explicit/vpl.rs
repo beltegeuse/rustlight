@@ -16,6 +16,7 @@ pub enum IntegratorVPLOption {
 pub struct IntegratorVPL {
     pub nb_vpl: usize,
     pub max_depth: Option<u32>,
+    pub rr_depth: Option<u32>,
     pub clamping_factor: Option<f32>,
     pub option_vpl: IntegratorVPLOption,
     pub option_lt: IntegratorVPLOption,
@@ -186,6 +187,7 @@ impl Integrator for IntegratorVPL {
         let samplings: Vec<Box<dyn SamplingStrategy>> = vec![Box::new(
             crate::paths::strategies::directional::DirectionalSamplingStrategy {
                 transport: Transport::Radiance,
+                rr_depth: self.rr_depth,
             },
         )];
         let mut technique = TechniqueVPL {

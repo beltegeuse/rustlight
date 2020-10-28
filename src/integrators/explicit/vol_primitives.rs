@@ -17,6 +17,7 @@ pub enum VolPrimitivies {
 pub struct IntegratorVolPrimitives {
     pub nb_primitive: usize,
     pub max_depth: Option<u32>,
+    pub rr_depth: Option<u32>,
     pub primitives: VolPrimitivies,
 }
 
@@ -596,6 +597,7 @@ impl Integrator for IntegratorVolPrimitives {
         let samplings: Vec<Box<dyn SamplingStrategy>> = vec![Box::new(
             crate::paths::strategies::directional::DirectionalSamplingStrategy {
                 transport: Transport::Radiance,
+                rr_depth: self.rr_depth,
             },
         )];
         let mut technique = TechniqueVolPrimitives {

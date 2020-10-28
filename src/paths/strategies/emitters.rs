@@ -89,6 +89,7 @@ impl SamplingStrategy for LightSamplingStrategy {
         sampler: &mut dyn Sampler,
         medium: Option<&HomogenousVolume>,
         id_strategy: usize,
+        _depth: u32,
     ) -> Option<(VertexID, Color)> {
         let (edge, _next_vertex) = match path.vertex(vertex_id) {
             Vertex::Surface { its, .. } => {

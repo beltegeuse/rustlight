@@ -8,6 +8,7 @@ use cgmath::InnerSpace;
 
 pub struct NaiveSamplingStrategy {
     pub transport: Transport,
+    pub rr_depth: Option<u32>,
 }
 impl NaiveSamplingStrategy {
     pub fn bounce<'scene>(
@@ -20,6 +21,7 @@ impl NaiveSamplingStrategy {
         sampler: &mut dyn Sampler,
         medium: Option<&HomogenousVolume>,
         id_strategy: usize,
+        depth: u32,
     ) -> (Option<EdgeID>, Option<VertexID>) {
         match path.vertex(vertex_id) {
             Vertex::Sensor { uv, .. } => {
@@ -77,11 +79,19 @@ impl NaiveSamplingStrategy {
                 }
 
                 // Check RR
-                let rr_weight = throughput.channel_max().min(0.95);
-                if rr_weight < sampler.next() {
-                    return (None, None);
-                }
-                let rr_weight = 1.0 / rr_weight;
+                let do_rr = match self.rr_depth {
+                    None => true,
+                    Some(v) => v <= depth,
+                };
+                let rr_weight = if do_rr {
+                    let rr_weight = throughput.channel_max().min(0.95);
+                    if rr_weight < sampler.next() {
+                        return (None, None);
+                    }
+                    1.0 / rr_weight
+                } else {
+                    1.0
+                };
                 throughput.scale(rr_weight);
 
                 // Generate the new ray and do the intersection
@@ -118,11 +128,19 @@ impl NaiveSamplingStrategy {
                 }
 
                 // Check RR
-                let rr_weight = throughput.channel_max().min(0.95);
-                if rr_weight < sampler.next() {
-                    return (None, None);
-                }
-                let rr_weight = 1.0 / rr_weight;
+                let do_rr = match self.rr_depth {
+                    None => true,
+                    Some(v) => v <= depth,
+                };
+                let rr_weight = if do_rr {
+                    let rr_weight = throughput.channel_max().min(0.95);
+                    if rr_weight < sampler.next() {
+                        return (None, None);
+                    }
+                    1.0 / rr_weight
+                } else {
+                    1.0
+                };
                 throughput.scale(rr_weight);
 
                 // Generate the new ray and do the intersection
@@ -190,6 +208,7 @@ impl SamplingStrategy for NaiveSamplingStrategy {
         sampler: &mut dyn Sampler,
         medium: Option<&HomogenousVolume>,
         id_strategy: usize,
+        depth: u32,
     ) -> Option<(VertexID, Color)> {
         // Generate the next edge and the next vertex
         let (edge, new_vertex) = self.bounce(
@@ -201,6 +220,7 @@ impl SamplingStrategy for NaiveSamplingStrategy {
             sampler,
             medium,
             id_strategy,
+            depth,
         );
 
         // Update the edge if we sucesfull sample it

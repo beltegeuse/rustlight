@@ -7,6 +7,7 @@ use cgmath::Point2;
 pub struct IntegratorLightTracing {
     pub max_depth: Option<u32>,
     pub min_depth: Option<u32>,
+    pub rr_depth: Option<u32>,
     pub render_surface: bool,
     pub render_volume: bool,
 }
@@ -251,6 +252,7 @@ impl Integrator for IntegratorLightTracing {
                 let samplings: Vec<Box<dyn SamplingStrategy>> = vec![Box::new(
                     crate::paths::strategies::directional::DirectionalSamplingStrategy {
                         transport: Transport::Importance,
+                        rr_depth: self.rr_depth,
                     },
                 )];
                 // Do the sampling here

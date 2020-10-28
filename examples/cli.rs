@@ -45,6 +45,11 @@ fn main() {
         .short("m")
         .help("max path depth")
         .default_value("inf");
+    let rr_arg = Arg::with_name("rr")
+        .takes_value(true)
+        .short("r")
+        .help("russian roulette")
+        .default_value("inf");
     let min_arg = Arg::with_name("min")
         .takes_value(true)
         .short("n")
@@ -143,6 +148,7 @@ fn main() {
                     .about("path tracing with MCMC sampling")
                     .arg(&max_arg)
                     .arg(&min_arg)
+                    .arg(&rr_arg)
                     .arg(
                         Arg::with_name("strategy")
                             .takes_value(true)
@@ -203,6 +209,7 @@ fn main() {
                     .about("path tracing with MCMC sampling")
                     .arg(&max_arg)
                     .arg(&min_arg)
+                    .arg(&rr_arg)
                     .arg(
                         Arg::with_name("no_stratified")
                         .short("k")
@@ -256,6 +263,7 @@ fn main() {
                     .about("path tracing generating path from the sensor")
                     .arg(&max_arg)
                     .arg(&min_arg)
+                    .arg(&rr_arg)
                     .arg(
                         Arg::with_name("strategy")
                             .takes_value(true)
@@ -273,6 +281,7 @@ fn main() {
                     .about("light tracing generating path from the lights")
                     .arg(&max_arg)
                     .arg(&min_arg)
+                    .arg(&rr_arg)
                     .arg(
                         Arg::with_name("lightpaths")
                             .takes_value(true)
@@ -285,6 +294,7 @@ fn main() {
                 SubCommand::with_name("vpl")
                     .about("brute force virtual point light integrator")
                     .arg(&max_arg)
+                    .arg(&rr_arg)
                     .arg(
                         Arg::with_name("clamping")
                             .takes_value(true)
@@ -318,6 +328,7 @@ fn main() {
                 SubCommand::with_name("vol_primitives")
                     .about("BRE/Beam/Planes estimators")
                     .arg(&max_arg)
+                    .arg(&rr_arg)
                     .arg(
                         Arg::with_name("nb_primitive")
                             .takes_value(true)
@@ -584,6 +595,7 @@ fn main() {
         ("path", Some(m)) => {
             let single_scattering = m.is_present("single");
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let rr_depth = match_infinity(m.value_of("rr").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             let strategy = match strategy.as_ref() {
@@ -602,6 +614,7 @@ fn main() {
                 rustlight::integrators::explicit::path::IntegratorPathTracing {
                     min_depth,
                     max_depth,
+                    rr_depth,
                     strategy,
                     single_scattering,
                 },
@@ -610,6 +623,7 @@ fn main() {
         ("light", Some(m)) => {
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let min_depth = match_infinity(m.value_of("min").unwrap());
+            let rr_depth = match_infinity(m.value_of("rr").unwrap());
             let strategy = value_t_or_exit!(m.value_of("lightpaths"), String);
             let (render_surface, render_volume) = match strategy.as_ref() {
                 "all" => (true, true),
@@ -621,6 +635,7 @@ fn main() {
                 rustlight::integrators::explicit::light::IntegratorLightTracing {
                     max_depth,
                     min_depth,
+                    rr_depth,
                     render_surface,
                     render_volume,
                 },
@@ -665,6 +680,7 @@ fn main() {
                 }
             };
 
+            let rr_depth = match_infinity(m.value_of("rr").unwrap());
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
             let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
@@ -675,6 +691,7 @@ fn main() {
                 rustlight::integrators::explicit::vpl::IntegratorVPL {
                     nb_vpl,
                     max_depth,
+                    rr_depth,
                     clamping_factor: if clamping <= 0.0 {
                         None
                     } else {
@@ -740,6 +757,7 @@ fn main() {
             ))
         }
         ("vol_primitives", Some(m)) => {
+            let rr_depth = match_infinity(m.value_of("rr").unwrap());
             let max_depth = match_infinity(m.value_of("max").unwrap());
             let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
             let primitives = value_t_or_exit!(m.value_of("primitives"), String);
@@ -757,6 +775,7 @@ fn main() {
                 rustlight::integrators::explicit::vol_primitives::IntegratorVolPrimitives {
                     nb_primitive,
                     max_depth,
+                    rr_depth,
                     primitives,
                 },
             ))
@@ -764,6 +783,7 @@ fn main() {
         ("pssmlt", Some(m)) => {
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let rr_depth = match_infinity(m.value_of("rr").unwrap());
             let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
             let nb_samples_norm = value_t_or_exit!(m.value_of("nb_samples_norm"), usize);
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
@@ -788,6 +808,7 @@ fn main() {
                         rustlight::integrators::explicit::path::IntegratorPathTracing {
                             min_depth,
                             max_depth,
+                            rr_depth,
                             strategy,
                             single_scattering: false,
                         },
@@ -848,6 +869,7 @@ fn main() {
                         rustlight::integrators::explicit::path::IntegratorPathTracing {
                             min_depth,
                             max_depth,
+                            rr_depth: None, // Disable RR for now
                             strategy,
                             single_scattering: false,
                         },
@@ -862,6 +884,7 @@ fn main() {
         ("erpt", Some(m)) => {
             let min_depth = match_infinity(m.value_of("min").unwrap());
             let max_depth = match_infinity(m.value_of("max").unwrap());
+            let rr_depth = match_infinity(m.value_of("rr").unwrap());
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             let strategy = match strategy.as_ref() {
                 "all" => {
@@ -886,6 +909,7 @@ fn main() {
                         rustlight::integrators::explicit::path::IntegratorPathTracing {
                             min_depth,
                             max_depth,
+                            rr_depth,
                             strategy,
                             single_scattering: false,
                         },

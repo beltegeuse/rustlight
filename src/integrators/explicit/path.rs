@@ -14,6 +14,7 @@ pub enum IntegratorPathTracingStrategies {
 pub struct IntegratorPathTracing {
     pub min_depth: Option<u32>,
     pub max_depth: Option<u32>,
+    pub rr_depth: Option<u32>,
     pub strategy: IntegratorPathTracingStrategies,
     pub single_scattering: bool,
 }
@@ -83,7 +84,7 @@ impl TechniquePathTracing {
                             .enumerate()
                             .map(|(id, s)| {
                                 let pdf = if id == edge.id_sampling {
-                                     v
+                                    v
                                 } else {
                                     if let Some(v) = s.pdf(path, scene, vertex_id, edge_id) {
                                         v
@@ -208,6 +209,7 @@ impl IntegratorMC for IntegratorPathTracing {
         samplings.push(Box::new(
             crate::paths::strategies::directional::DirectionalSamplingStrategy {
                 transport: Transport::Importance,
+                rr_depth: self.rr_depth,
             },
         ));
         match self.strategy {

@@ -219,16 +219,18 @@ impl std::fmt::Debug for EnvironmentLightColor {
     }
 }
 pub fn to_spherical_coordinates(d: Vector3<f32>) -> Vector2<f32> {
-    Vector2::new({
-        let p = d.y.atan2(d.x);
-        if p < 0.0 {
-            p + 2.0 * std::f32::consts::PI
-        } else {
-            p
-        }
-    } * std::f32::consts::FRAC_1_PI
-        * 0.5,
-    crate::clamp(d.z, -1.0, 1.0).acos() * std::f32::consts::FRAC_1_PI,)
+    Vector2::new(
+        {
+            let p = d.y.atan2(d.x);
+            if p < 0.0 {
+                p + 2.0 * std::f32::consts::PI
+            } else {
+                p
+            }
+        } * std::f32::consts::FRAC_1_PI
+            * 0.5,
+        crate::clamp(d.z, -1.0, 1.0).acos() * std::f32::consts::FRAC_1_PI,
+    )
 }
 
 impl EnvironmentLightColor {
@@ -267,7 +269,7 @@ impl EnvironmentLightColor {
                 let (sin_theta, cos_theta) =
                     ((std::f32::consts::PI / image.size.y as f32) * uv.y).sin_cos();
 
-                let d = Vector3::new(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta); 
+                let d = Vector3::new(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
                 if sin_theta == 0.0 {
                     (d, Color::zero(), 0.0)
                 } else {

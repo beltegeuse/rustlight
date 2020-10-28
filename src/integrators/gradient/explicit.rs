@@ -224,6 +224,7 @@ impl IntegratorGradientPathTracing {
         samplings.push(Box::new(
             crate::paths::strategies::directional::DirectionalSamplingStrategy {
                 transport: Transport::Importance,
+                rr_depth: None,
             },
         ));
         samplings.push(Box::new(

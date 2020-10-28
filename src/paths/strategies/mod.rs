@@ -19,6 +19,7 @@ pub trait SamplingStrategy {
         sampler: &mut dyn Sampler,
         medium: Option<&HomogenousVolume>,
         id_strategy: usize,
+        depth: u32,
     ) -> Option<(VertexID, Color)>;
 
     // All PDF have to be inside the same domain
@@ -65,6 +66,7 @@ pub fn generate<'scene, T: Technique>(
                         sampler,
                         scene.volume.as_ref(), // TODO: For now volume is global
                         id_sampling,
+                        depth,
                     ) {
                         next.push((new_vertex, new_throughput));
                     }
