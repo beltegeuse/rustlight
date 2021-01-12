@@ -513,8 +513,12 @@ impl Bitmap {
 
         // Create a `FrameBuffer` that points at our pixel data and describes it as
         // RGB data.
-        let mut fb = openexr::FrameBuffer::new(self.size.x, self.size.y);
-        fb.insert_channels(&["R", "G", "B"], &pixel_data);
+        let fb = {
+            // Create the frame buffer
+            let mut fb = openexr::FrameBuffer::new(self.size.x, self.size.y);
+            fb.insert_channels(&["R", "G", "B"], &pixel_data);
+            fb
+        };
 
         // Write pixel data to the file.
         output_file.write_pixels(&fb).unwrap();

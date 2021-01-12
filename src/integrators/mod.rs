@@ -281,13 +281,13 @@ impl IntegratorType {
         // or Embree ...
         // TODO: Need to found a work around due to the lifetime issue
         #[cfg(feature = "embree")]
-        let embree_device = embree_rs::Device::new();
+        let embree_device = embree::Device::new();
         #[cfg(feature = "embree")]
-        let mut embree_scene = embree_rs::Scene::new(&embree_device);
+        let mut embree_scene = embree::Scene::new(&embree_device);
         #[cfg(feature = "embree")]
         {
             for m in &scene.meshes {
-                let mut tris = embree_rs::TriangleMesh::unanimated(
+                let mut tris = embree::TriangleMesh::unanimated(
                     &embree_device,
                     m.indices.len(),
                     m.vertices.len(),
@@ -312,7 +312,7 @@ impl IntegratorType {
                         );
                     }
                 }
-                let mut tri_geom = embree_rs::Geometry::Triangle(tris);
+                let mut tri_geom = embree::Geometry::Triangle(tris);
                 tri_geom.commit();
                 embree_scene.attach_geometry(tri_geom);
             }

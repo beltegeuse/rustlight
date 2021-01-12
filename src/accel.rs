@@ -235,13 +235,13 @@ impl<'a> Acceleration for NaiveAcceleration<'a> {
 #[cfg(feature = "embree")]
 pub struct EmbreeAcceleration<'scene, 'embree> {
     pub scene: &'scene Scene,
-    pub embree_scene_commited: embree_rs::CommittedScene<'embree>,
+    pub embree_scene_commited: embree::CommittedScene<'embree>,
 }
 #[cfg(feature = "embree")]
 impl<'scene, 'embree> EmbreeAcceleration<'scene, 'embree> {
     pub fn new(
         scene: &'scene Scene,
-        embree_scene: &'embree embree_rs::Scene,
+        embree_scene: &'embree embree::Scene,
     ) -> EmbreeAcceleration<'scene, 'embree> {
         EmbreeAcceleration {
             scene,
@@ -253,14 +253,14 @@ impl<'scene, 'embree> EmbreeAcceleration<'scene, 'embree> {
 #[cfg(feature = "embree")]
 impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
     fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        let mut intersection_ctx = embree_rs::IntersectContext::incoherent();
-        let embree_ray = embree_rs::Ray::segment(
+        let mut intersection_ctx = embree::IntersectContext::incoherent();
+        let embree_ray = embree::Ray::segment(
             Vector3::new(ray.o.x, ray.o.y, ray.o.z),
             ray.d,
             ray.tnear,
             ray.tfar,
         );
-        let mut ray_hit = embree_rs::RayHit::new(embree_ray);
+        let mut ray_hit = embree::RayHit::new(embree_ray);
         self.embree_scene_commited
             .intersect(&mut intersection_ctx, &mut ray_hit);
         if ray_hit.hit.hit() {
@@ -290,13 +290,13 @@ impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
         }
     }
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
-        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
+        let mut intersection_ctx = embree::IntersectContext::coherent();
         let mut d = p1 - p0;
         let length = d.magnitude();
         d /= length;
         // TODO: Do correct self intersection tests...
         let mut embree_ray =
-            embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.0001, length - 0.0001);
+            embree::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.0001, length - 0.0001);
         self.embree_scene_commited
             .occluded(&mut intersection_ctx, &mut embree_ray);
         embree_ray.tfar != std::f32::NEG_INFINITY

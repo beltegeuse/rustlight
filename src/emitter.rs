@@ -1,9 +1,9 @@
+use crate::clamp;
+use crate::constants::ONE_MINUS_EPSILON;
 use crate::geometry::Mesh;
 use crate::math::{sample_uniform_sphere, Distribution1D, Distribution2D};
 use crate::scene::Scene;
 use crate::structure::*;
-use crate::constants::ONE_MINUS_EPSILON;
-use crate::clamp;
 use cgmath::*;
 use std::sync::Arc;
 
