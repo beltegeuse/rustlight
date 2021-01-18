@@ -129,12 +129,12 @@ impl SceneLoader for PBRTSceneLoader {
                             bsdfs::bsdf_pbrt(bsdf_name, &textures)
                         } else {
                             Box::new(bsdfs::diffuse::BSDFDiffuse {
-                                diffuse: bsdfs::BSDFColor::Constant(Color::value(0.8)),
+                                diffuse: bsdfs::BSDFColor::Constant(Color::value(0.5)),
                             })
                         }
                     } else {
                         Box::new(bsdfs::diffuse::BSDFDiffuse {
-                            diffuse: bsdfs::BSDFColor::Constant(Color::value(0.8)),
+                            diffuse: bsdfs::BSDFColor::Constant(Color::value(0.5)),
                         })
                     };
                     let mesh =
