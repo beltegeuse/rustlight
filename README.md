@@ -2,8 +2,6 @@
 Rustlight <img src="http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/rustlight/logo.png" width="96"> 
 </h1>
 
-[![Build Status](https://travis-ci.org/beltegeuse/rustlight.svg?branch=master)](https://travis-ci.org/beltegeuse/rustlight)
-
 Physically-based rendering engine implemented with **Rust**.
 
 ## How to use it

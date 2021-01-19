@@ -173,7 +173,7 @@ impl Mesh {
         1.0 / (self.cdf.as_ref().unwrap().total())
     }
 
-    pub fn naive_intersection(&self, ray: &Ray) ->  Option<Intersection> {
+    pub fn naive_intersection(&self, ray: &Ray) -> Option<Intersection> {
         let mut its = IntersectionUV {
             t: std::f32::MAX,
             p: Point3::new(0.0, 0.0, 0.0),
@@ -181,14 +181,14 @@ impl Mesh {
             u: 0.0,
             v: 0.0,
         };
-        
+
         let mut id_t = 0;
         for i in 0..self.indices.len() {
             if self.intersection_tri(i, &ray.o, &ray.d, &mut its) {
                 id_t = i;
             }
         }
-    
+
         if its.t == std::f32::MAX {
             None
         } else {

@@ -17,8 +17,6 @@ jobs:
             - run: echo "EMBREE_DIR=`pwd`/embree-${EMBREE_VERSION}.x86_64.linux/" >> $GITHUB_ENV
             - run: cargo build
             - run: cargo test
-            - run: cargo doc
-            - run: scripts/build-examples-linux-mac.sh
             - name: Format Core
               run: cargo fmt -- --check
             - name: Cli 
