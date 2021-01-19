@@ -1,7 +1,6 @@
 use crate::constants;
 use crate::geometry::Mesh;
 use crate::math::Frame;
-use crate::scene::Scene;
 use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -648,7 +647,7 @@ impl Bitmap {
         // The image that we will render
         let image_ldr = image::open(filename)
             .unwrap_or_else(|_| panic!("Impossible to read image: {}", filename));
-        let image_ldr = image_ldr.to_rgb();
+        let image_ldr = image_ldr.to_rgb8();
         let size = Vector2::new(image_ldr.width(), image_ldr.height());
         let mut colors = vec![Color::zero(); (size.x * size.y) as usize];
         for x in 0..size.x {
@@ -885,9 +884,8 @@ impl<'a> Intersection<'a> {
         self.frame.to_world(*d)
     }
     pub fn fill_intersection(
-        mesh_id: usize,
+        mesh: &'a crate::geometry::Mesh,
         tri_id: usize,
-        scene: &'a Scene,
         hit_u: f32,
         hit_v: f32,
         ray: &Ray,
@@ -895,7 +893,6 @@ impl<'a> Intersection<'a> {
         dist: f32,
         p: Point3<f32>,
     ) -> Intersection<'a> {
-        let mesh = &scene.meshes[mesh_id];
         let index = mesh.indices[tri_id];
 
         let n_s = if let Some(normals) = &mesh.normals {

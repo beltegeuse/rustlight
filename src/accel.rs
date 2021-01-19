@@ -200,8 +200,9 @@ impl<'a> Acceleration for NaiveAcceleration<'a> {
         if its.t == std::f32::MAX {
             None
         } else {
+            let mesh = &self.scene.meshes[id_m];
             Some(Intersection::fill_intersection(
-                id_m, id_t, self.scene, its.u, its.v, ray, its.n, its.t, its.p,
+                mesh, id_t, its.u, its.v, ray, its.n, its.t, its.p,
             ))
         }
     }
@@ -274,10 +275,11 @@ impl<'scene, 'embree> Acceleration for EmbreeAcceleration<'scene, 'embree> {
                 ray_hit.ray.org_y + ray_hit.ray.tfar * ray_hit.ray.dir_y,
                 ray_hit.ray.org_z + ray_hit.ray.tfar * ray_hit.ray.dir_z,
             );
+
+            let mesh = &self.scene.meshes[ray_hit.hit.geomID as usize];
             Some(Intersection::fill_intersection(
-                ray_hit.hit.geomID as usize,
+                mesh,
                 ray_hit.hit.primID as usize,
-                self.scene,
                 ray_hit.hit.u,
                 ray_hit.hit.v,
                 ray,

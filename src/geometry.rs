@@ -173,6 +173,31 @@ impl Mesh {
         1.0 / (self.cdf.as_ref().unwrap().total())
     }
 
+    pub fn naive_intersection(&self, ray: &Ray) ->  Option<Intersection> {
+        let mut its = IntersectionUV {
+            t: std::f32::MAX,
+            p: Point3::new(0.0, 0.0, 0.0),
+            n: Vector3::new(0.0, 0.0, 0.0),
+            u: 0.0,
+            v: 0.0,
+        };
+        
+        let mut id_t = 0;
+        for i in 0..self.indices.len() {
+            if self.intersection_tri(i, &ray.o, &ray.d, &mut its) {
+                id_t = i;
+            }
+        }
+    
+        if its.t == std::f32::MAX {
+            None
+        } else {
+            Some(Intersection::fill_intersection(
+                self, id_t, its.u, its.v, ray, its.n, its.t, its.p,
+            ))
+        }
+    }
+
     // FIXME: reuse random number
     pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
         // Select a triangle
