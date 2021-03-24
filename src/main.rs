@@ -441,9 +441,7 @@ fn main() {
                 _ => panic!("invalid strategy: {}", strategy),
             };
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
-                    strategy
-                },
+                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla { strategy },
             ))
         }
         ("path", Some(m)) => {
@@ -520,7 +518,9 @@ fn main() {
                 let options = value_t_or_exit!(m.value_of(name), String);
                 match options.as_ref() {
                     "all" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::All,
-                    "surface" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface,
+                    "surface" => {
+                        rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface
+                    }
                     "volume" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Volume,
                     _ => panic!("Invalid options: [all, surface, volume]"),
                 }
@@ -531,7 +531,7 @@ fn main() {
             let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
             let option_vpl = get_option("option_vpl");
             let option_lt = get_option("option_lt");
-           
+
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::vpl::IntegratorVPL {
                     nb_vpl,
@@ -572,8 +572,7 @@ fn main() {
                 _ => panic!(
                     "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
                     strategy
-                ),
-            
+                )
             };
             let stratified = m.is_present("stratified");
             IntegratorType::Primal(Box::new(
@@ -610,8 +609,7 @@ fn main() {
                 _ => panic!(
                     "{} is not a correct strategy choice (uv, ut, vt, average, discrete_mis, valpha, cmis)",
                     strategy
-                ),
-            
+                )
             };
             let stratified = m.is_present("stratified");
             IntegratorType::Primal(Box::new(

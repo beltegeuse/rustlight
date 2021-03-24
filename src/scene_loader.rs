@@ -179,7 +179,6 @@ impl SceneLoader for PBRTSceneLoader {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
         pbrt_rs::read_pbrt_file(filename, &mut scene_info, &mut state);
-        let wk = std::path::Path::new(filename).parent().unwrap();
 
         // Then do some transformation
         // if it is necessary
@@ -244,7 +243,8 @@ impl SceneLoader for PBRTSceneLoader {
 
                     mesh.bsdf = bsdf;
                     if m.emission.is_some() {
-                        mesh.emission = convert_spectrum_to_color(m.emission.as_ref().unwrap(), None);
+                        mesh.emission =
+                            convert_spectrum_to_color(m.emission.as_ref().unwrap(), None);
                     }
                     Some(mesh)
                 }
@@ -256,7 +256,6 @@ impl SceneLoader for PBRTSceneLoader {
             .filter(|x| x.is_some())
             .map(|m| m.unwrap())
             .collect::<Vec<_>>();
-
 
         // Check if there is other emitter type
         let emitter_environment = None;

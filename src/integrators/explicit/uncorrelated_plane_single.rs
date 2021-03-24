@@ -1,9 +1,9 @@
 use crate::accel::*;
+use crate::integrators::explicit::plane_single::*;
 use crate::integrators::*;
 use crate::math::*;
 use crate::volume::*;
 use cgmath::{InnerSpace, Point2};
-use crate::integrators::explicit::plane_single::*;
 
 fn clamp<T: PartialOrd>(v: T, min: T, max: T) -> T {
     if v < min {
@@ -33,18 +33,19 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
             .filter(|m| !m.emission.is_zero())
             .collect::<Vec<_>>();
 
-        
         let rect_lights = {
-            emitters.iter().map(|emitter| {
-                info!("Emitter vertices: {:?}", emitter.vertices);
-                info!("Emitter indices: {:?}", emitter.indices);
-                if emitter.vertices.len() != 3 && emitter.indices.len() != 2 {
-                    panic!("Only support rectangular emitters");
-                }
-                RectangularLightSource::from_shape(emitter)
-            }).collect::<Vec<_>>()
+            emitters
+                .iter()
+                .map(|emitter| {
+                    info!("Emitter vertices: {:?}", emitter.vertices);
+                    info!("Emitter indices: {:?}", emitter.indices);
+                    if emitter.vertices.len() != 3 && emitter.indices.len() != 2 {
+                        panic!("Only support rectangular emitters");
+                    }
+                    RectangularLightSource::from_shape(emitter)
+                })
+                .collect::<Vec<_>>()
         };
-    
 
         let generate_plane = |t: PlaneType,
                               light: &[RectangularLightSource],
@@ -68,12 +69,21 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
             // Need to check the intersection distance iff need to failed ...
             // ray_med.tfar = intersection_distance;
             let mrec = m.sample(&ray_med, sampler.next2d());
-           
+
             // Sample planes
             let sample = sampler.next2d();
-            SinglePhotonPlane::new(t, &light[id_emitter], d, sample, sampler.next(), mrec.continued_t, id_emitter, m.sigma_s)
+            SinglePhotonPlane::new(
+                t,
+                &light[id_emitter],
+                d,
+                sample,
+                sampler.next(),
+                mrec.continued_t,
+                id_emitter,
+                m.sigma_s,
+            )
         };
-        
+
         // Generate the image block to get VPL efficiently
         let buffernames = vec![String::from("primal")];
         let mut image_blocks = generate_img_blocks(scene, &buffernames);
@@ -110,40 +120,70 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
                             // Now gather all planes
                             let mut c = Color::value(0.0);
                             for _id_plane in 0..self.nb_primitive {
-                                let id_emitter = (sampler_ray.next() * rect_lights.len() as f32) as usize;
-                                let plane =  match self.strategy {
-                                    SinglePlaneStrategy::UT => {
-                                        generate_plane(PlaneType::UT, &rect_lights, id_emitter, &mut sampler_ray, m)
-                                    }
-                                    SinglePlaneStrategy::VT => {
-                                       generate_plane(PlaneType::VT, &rect_lights, id_emitter, &mut sampler_ray, m)
-                                    }
-                                    SinglePlaneStrategy::UV => {
-                                       generate_plane(PlaneType::UV, &rect_lights, id_emitter, &mut sampler_ray, m)
-                                    }
-                                    SinglePlaneStrategy::DiscreteMIS | SinglePlaneStrategy::Average => {
+                                let id_emitter =
+                                    (sampler_ray.next() * rect_lights.len() as f32) as usize;
+                                let plane = match self.strategy {
+                                    SinglePlaneStrategy::UT => generate_plane(
+                                        PlaneType::UT,
+                                        &rect_lights,
+                                        id_emitter,
+                                        &mut sampler_ray,
+                                        m,
+                                    ),
+                                    SinglePlaneStrategy::VT => generate_plane(
+                                        PlaneType::VT,
+                                        &rect_lights,
+                                        id_emitter,
+                                        &mut sampler_ray,
+                                        m,
+                                    ),
+                                    SinglePlaneStrategy::UV => generate_plane(
+                                        PlaneType::UV,
+                                        &rect_lights,
+                                        id_emitter,
+                                        &mut sampler_ray,
+                                        m,
+                                    ),
+                                    SinglePlaneStrategy::DiscreteMIS
+                                    | SinglePlaneStrategy::Average => {
                                         // Generate 3 planes
                                         let plane_type = sampler_ray.next();
                                         if plane_type < (1.0 / 3.0) {
-                                            generate_plane(PlaneType::UV, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                            generate_plane(
+                                                PlaneType::UV,
+                                                &rect_lights,
+                                                id_emitter,
+                                                &mut sampler_ray,
+                                                m,
+                                            )
                                         } else if plane_type < (2.0 / 3.0) {
-                                            generate_plane(PlaneType::VT, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                            generate_plane(
+                                                PlaneType::VT,
+                                                &rect_lights,
+                                                id_emitter,
+                                                &mut sampler_ray,
+                                                m,
+                                            )
                                         } else {
-                                            generate_plane(PlaneType::UT, &rect_lights, id_emitter, &mut sampler_ray, m)
+                                            generate_plane(
+                                                PlaneType::UT,
+                                                &rect_lights,
+                                                id_emitter,
+                                                &mut sampler_ray,
+                                                m,
+                                            )
                                         }
                                     }
                                     SinglePlaneStrategy::UAlpha
                                     | SinglePlaneStrategy::ContinousMIS
                                     | SinglePlaneStrategy::SMISAll(_)
-                                    | SinglePlaneStrategy::SMISJacobian(_) => {
-                                        generate_plane(
-                                            PlaneType::UAlphaT,
-                                            &rect_lights,
-                                            id_emitter,
-                                            &mut sampler_ray,
-                                            m,
-                                        )
-                                    }
+                                    | SinglePlaneStrategy::SMISJacobian(_) => generate_plane(
+                                        PlaneType::UAlphaT,
+                                        &rect_lights,
+                                        id_emitter,
+                                        &mut sampler_ray,
+                                        m,
+                                    ),
                                 };
 
                                 let plane_its = plane.intersection(&ray);
@@ -151,10 +191,10 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
                                     continue;
                                 }
                                 let plane_its = plane_its.unwrap();
-                                
 
                                 let p_hit = ray.o + ray.d * plane_its.t_cam;
-                                let p_light = plane.light_position(&rect_lights[id_emitter], &plane_its);
+                                let p_light =
+                                    plane.light_position(&rect_lights[id_emitter], &plane_its);
                                 if accel.visible(&p_hit, &p_light) {
                                     let transmittance = {
                                         let mut ray_tr = Ray::new(ray.o, ray.d);
@@ -252,8 +292,8 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
                                                     .sqrt());
                                             w_cmis * plane.weight
                                         }
-                                        SinglePlaneStrategy::SMISAll(n_samples) 
-                                        | SinglePlaneStrategy::SMISJacobian(n_samples)   => {
+                                        SinglePlaneStrategy::SMISAll(n_samples)
+                                        | SinglePlaneStrategy::SMISJacobian(n_samples) => {
                                             assert!(n_samples > 0);
                                             let rect_light = &rect_lights[id_emitter];
 
@@ -277,23 +317,27 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
                                             // using stratified sampling.
                                             let offset = plane.sample_alpha;
                                             let mut inv_norm = match self.strategy {
-                                                SinglePlaneStrategy::SMISAll(_v) => plane.d1.cross(plane.d0).dot(ray.d).abs() * plane.length0,
-                                                SinglePlaneStrategy::SMISJacobian(_v) => plane.d1.cross(plane.d0).dot(ray.d).abs(),
-                                                _ => panic!("Unimplemented")
+                                                SinglePlaneStrategy::SMISAll(_v) => {
+                                                    plane.d1.cross(plane.d0).dot(ray.d).abs()
+                                                        * plane.length0
+                                                }
+                                                SinglePlaneStrategy::SMISJacobian(_v) => {
+                                                    plane.d1.cross(plane.d0).dot(ray.d).abs()
+                                                }
+                                                _ => panic!("Unimplemented"),
                                             };
 
-                                            for i in 0..(n_samples-1) {
+                                            for i in 0..(n_samples - 1) {
                                                 let new_alpha = {
                                                     if self.stratified {
-                                                        (offset + ((i+1) as f32 / n_samples as f32)) % 1.0
+                                                        (offset
+                                                            + ((i + 1) as f32 / n_samples as f32))
+                                                            % 1.0
                                                     } else {
                                                         sampler_ecmis.next()
                                                     }
                                                 };
-                                                assert!(
-                                                    new_alpha >= 0.0
-                                                        && new_alpha <= 1.0
-                                                );
+                                                assert!(new_alpha >= 0.0 && new_alpha <= 1.0);
                                                 let new_plane = SinglePhotonPlane::new(
                                                     PlaneType::UAlphaT,
                                                     &rect_light,
@@ -302,21 +346,38 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
                                                     new_alpha,
                                                     0.0,
                                                     id_emitter,
-                                                    m.sigma_s
+                                                    m.sigma_s,
                                                 );
                                                 inv_norm += match self.strategy {
-                                                    SinglePlaneStrategy::SMISAll(_v) => new_plane.d1.cross(new_plane.d0).dot(ray.d).abs() * new_plane.length0,
-                                                    SinglePlaneStrategy::SMISJacobian(_v) => new_plane.d1.cross(new_plane.d0).dot(ray.d).abs(),
-                                                    _ => panic!("Unimplemented")
+                                                    SinglePlaneStrategy::SMISAll(_v) => {
+                                                        new_plane
+                                                            .d1
+                                                            .cross(new_plane.d0)
+                                                            .dot(ray.d)
+                                                            .abs()
+                                                            * new_plane.length0
+                                                    }
+                                                    SinglePlaneStrategy::SMISJacobian(_v) => {
+                                                        new_plane
+                                                            .d1
+                                                            .cross(new_plane.d0)
+                                                            .dot(ray.d)
+                                                            .abs()
+                                                    }
+                                                    _ => panic!("Unimplemented"),
                                                 };
                                             }
                                             inv_norm = inv_norm / (n_samples as f32);
 
                                             match self.strategy {
-                                                SinglePlaneStrategy::SMISAll(_v) => (plane.weight * plane.length0) / inv_norm,
-                                                SinglePlaneStrategy::SMISJacobian(_v) => (plane.weight) / inv_norm,
+                                                SinglePlaneStrategy::SMISAll(_v) => {
+                                                    (plane.weight * plane.length0) / inv_norm
+                                                }
+                                                SinglePlaneStrategy::SMISJacobian(_v) => {
+                                                    (plane.weight) / inv_norm
+                                                }
                                                 _ => panic!("Unimplemented"),
-                                            }                                        
+                                            }
                                         }
                                         _ => plane.contrib(&ray.d),
                                     };

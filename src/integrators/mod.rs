@@ -228,11 +228,8 @@ impl IntegratorType {
         let mut embree_scene = embree::Scene::new(&embree_device);
         // Add all meshes
         for m in &scene.meshes {
-            let mut tris = embree::TriangleMesh::unanimated(
-                &embree_device,
-                m.indices.len(),
-                m.vertices.len(),
-            );
+            let mut tris =
+                embree::TriangleMesh::unanimated(&embree_device, m.indices.len(), m.vertices.len());
             {
                 let mut verts = tris.vertex_buffer.map();
                 let mut tris = tris.index_buffer.map();

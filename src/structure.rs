@@ -209,7 +209,6 @@ impl Div<f32> for Color {
             }
         }
         //assert_ne!(other, 0.0);
-        
     }
 }
 
@@ -573,7 +572,7 @@ impl Bitmap {
         // The image that we will render
         let image_ldr = image::open(filename)
             .unwrap_or_else(|_| panic!("Impossible to read image: {}", filename));
-        let image_ldr = image_ldr.to_rgb();
+        let image_ldr = image_ldr.to_rgb8();
         let size = Vector2::new(image_ldr.width(), image_ldr.height());
         let mut colors = vec![Color::zero(); (size.x * size.y) as usize];
         for x in 0..size.x {

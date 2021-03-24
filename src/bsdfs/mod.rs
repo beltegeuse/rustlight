@@ -156,7 +156,7 @@ fn bsdf_texture_match_pbrt(
         }
         pbrt_rs::parser::Spectrum::Texture(name) => {
             if let Some(texture) = textures.get(name) {
-                Some(BSDFColor::TextureColor( Texture {
+                Some(BSDFColor::TextureColor(Texture {
                     img: Bitmap::read(&texture.filename),
                 }))
             } else {
@@ -170,7 +170,6 @@ fn bsdf_texture_match_pbrt(
         }
     }
 }
-
 
 // Debug macro for color
 // macro_rules! default_color {
@@ -196,9 +195,7 @@ pub fn bsdf_pbrt(
                 None
             }
         }
-        pbrt_rs::BSDF::Metal {
-            ..
-        } => {
+        pbrt_rs::BSDF::Metal { .. } => {
             // let eta = bsdf_texture_match_pbrt(eta, textures).unwrap();
             // let k = bsdf_texture_match_pbrt(k, textures).unwrap();
             // let distribution = Some(distribution_pbrt(distribution, textures));
@@ -212,11 +209,9 @@ pub fn bsdf_pbrt(
         }
         pbrt_rs::BSDF::Mirror { kr, .. } => {
             let specular = bsdf_texture_match_pbrt(kr, textures).unwrap();
-            Some(Box::new(BSDFSpecular {
-                specular,
-            }))
+            Some(Box::new(BSDFSpecular { specular }))
         }
-        _ => { None }
+        _ => None,
     };
 
     if let Some(bsdf) = bsdf {
@@ -227,4 +222,3 @@ pub fn bsdf_pbrt(
         })
     }
 }
-

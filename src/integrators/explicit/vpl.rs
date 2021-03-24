@@ -9,7 +9,7 @@ use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector3};
 pub enum IntegratorVPLOption {
     Volume,
     Surface,
-    All
+    All,
 }
 
 pub struct IntegratorVPL {
@@ -195,7 +195,14 @@ impl Integrator for IntegratorVPL {
                 &mut sampler,
                 &mut technique,
             );
-            technique.convert_vpl(&path, scene, root[0].0, self.option_vpl, &mut vpls, Color::one());
+            technique.convert_vpl(
+                &path,
+                scene,
+                root[0].0,
+                self.option_vpl,
+                &mut vpls,
+                Color::one(),
+            );
             nb_path_shot += 1;
         }
         let vpls = vpls;
@@ -467,8 +474,9 @@ impl IntegratorVPL {
                 l_i
             } else {
                 if self.option_lt != IntegratorVPLOption::Volume {
-                    l_i += self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
-                        * mrec.w;
+                    l_i +=
+                        self.gathering_surface(scene.volume.as_ref(), accel, vpls, norm_vpl, &its)
+                            * mrec.w;
                 }
                 l_i
             }
