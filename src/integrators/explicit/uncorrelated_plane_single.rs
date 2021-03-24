@@ -86,8 +86,10 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
         let phase_function = PhaseFunction::Isotropic();
         pool.install(|| {
             image_blocks.par_iter_mut().for_each(|im_block| {
-                let mut sampler_ray = independent::IndependentSampler::from_seed((im_block.pos.x + im_block.pos.y) as u64);
-                let mut sampler_ecmis = independent::IndependentSampler::from_seed((im_block.pos.x + im_block.pos.y) as u64);
+                //let mut sampler_ray = independent::IndependentSampler::from_seed((im_block.pos.x + im_block.pos.y) as u64);
+                //let mut sampler_ecmis = independent::IndependentSampler::from_seed((im_block.pos.x + im_block.pos.y) as u64);
+                let mut sampler_ray = independent::IndependentSampler::default();
+                let mut sampler_ecmis = independent::IndependentSampler::default();
                 for ix in 0..im_block.size.x {
                     for iy in 0..im_block.size.y {
                         for _ in 0..scene.nb_samples {

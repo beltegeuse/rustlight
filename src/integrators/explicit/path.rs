@@ -29,7 +29,7 @@ impl Technique for TechniquePathTracing {
         path: &mut Path<'scene, 'emitter>,
         _accel: &dyn Acceleration,
         scene: &'scene Scene,
-        sampler: &mut dyn Sampler,
+        _sampler: &mut dyn Sampler,
         _emitters: &'emitter EmitterSampler,
     ) -> Vec<(VertexID, Color)> {
         // Only generate a path from the sensor

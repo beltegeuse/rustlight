@@ -224,11 +224,11 @@ pub enum IntegratorType {
 impl IntegratorType {
     pub fn compute(&mut self, scene: &Scene) -> BufferCollection {
         info!("Build acceleration data structure...");
-        let embree_device = embree_rs::Device::new();
-        let mut embree_scene = embree_rs::Scene::new(&embree_device);
+        let embree_device = embree::Device::new();
+        let mut embree_scene = embree::Scene::new(&embree_device);
         // Add all meshes
         for m in &scene.meshes {
-            let mut tris = embree_rs::TriangleMesh::unanimated(
+            let mut tris = embree::TriangleMesh::unanimated(
                 &embree_device,
                 m.indices.len(),
                 m.vertices.len(),
@@ -253,7 +253,7 @@ impl IntegratorType {
                     );
                 }
             }
-            let mut tri_geom = embree_rs::Geometry::Triangle(tris);
+            let mut tri_geom = embree::Geometry::Triangle(tris);
             tri_geom.commit();
             embree_scene.attach_geometry(tri_geom);
         }

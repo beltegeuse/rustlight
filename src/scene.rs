@@ -14,13 +14,13 @@ pub trait Acceleration: Sync + Send {
 
 pub struct EmbreeAcceleration<'a, 'scene> {
     pub scene: &'a Scene,
-    pub rtscene: embree_rs::CommittedScene<'scene>,
+    pub rtscene: embree::CommittedScene<'scene>,
 }
 
 impl<'a, 'scene> EmbreeAcceleration<'a, 'scene> {
     pub fn new(
         scene: &'a Scene,
-        embree_scene: &'scene embree_rs::Scene,
+        embree_scene: &'scene embree::Scene,
     ) -> EmbreeAcceleration<'a, 'scene> {
         EmbreeAcceleration {
             scene,
@@ -31,14 +31,14 @@ impl<'a, 'scene> EmbreeAcceleration<'a, 'scene> {
 
 impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
     fn trace(&self, ray: &Ray) -> Option<Intersection> {
-        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
-        let embree_ray = embree_rs::Ray::segment(
+        let mut intersection_ctx = embree::IntersectContext::coherent();
+        let embree_ray = embree::Ray::segment(
             Vector3::new(ray.o.x, ray.o.y, ray.o.z),
             ray.d,
             ray.tnear,
             ray.tfar,
         );
-        let mut ray_hit = embree_rs::RayHit::new(embree_ray);
+        let mut ray_hit = embree::RayHit::new(embree_ray);
         self.rtscene.intersect(&mut intersection_ctx, &mut ray_hit);
         if ray_hit.hit.hit() {
             let mesh = &self.scene.meshes[ray_hit.hit.geomID as usize];
@@ -113,12 +113,12 @@ impl<'a, 'scene> Acceleration for EmbreeAcceleration<'a, 'scene> {
         }
     }
     fn visible(&self, p0: &Point3<f32>, p1: &Point3<f32>) -> bool {
-        let mut intersection_ctx = embree_rs::IntersectContext::coherent();
+        let mut intersection_ctx = embree::IntersectContext::coherent();
         let mut d = p1 - p0;
         let length = d.magnitude();
         d /= length;
         let mut embree_ray =
-            embree_rs::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
+            embree::Ray::segment(Vector3::new(p0.x, p0.y, p0.z), d, 0.00001, length - 0.00001);
         self.rtscene
             .occluded(&mut intersection_ctx, &mut embree_ray);
         embree_ray.tfar != std::f32::NEG_INFINITY
