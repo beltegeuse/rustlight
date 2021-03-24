@@ -229,40 +229,58 @@ impl SinglePhotonPlane {
                 }
             }
             PlaneType::UAlphaT => {
-                let alpha = std::f32::consts::PI * sample_alpha;
-                let o_plane = Point2::new(sample.x * light.u_l, sample.y * light.v_l);
-                let d_plane: Vector2<f32> = Vector2::new(alpha.cos(), alpha.sin());
-
-                // 2D AABB
+                // Function to compute intersection on 2D AABB
                 let plane2d_its = |d: Vector2<f32>, o: Point2<f32>| {
                     let t_0 = (-o.to_vec()).div_element_wise(d);
                     let t_1 = (Vector2::new(light.u_l, light.v_l) - o.to_vec()).div_element_wise(d);
                     let t_max_coord = Vector2::new(t_0.x.max(t_1.x), t_0.y.max(t_1.y));
-                    o_plane + d * t_max_coord.x.min(t_max_coord.y)
+                    o + d * t_max_coord.x.min(t_max_coord.y)
                 };
 
-                // These are the intersection points in 2D (local coordinate)
+                // 1) Generate point on the light
+                let o_plane = Point2::new(sample.x * light.u_l, sample.y * light.v_l);
+
+                // 2) Generate orientation of the plane
+                let alpha = std::f32::consts::PI * sample_alpha;
+                let d_plane: Vector2<f32> = Vector2::new(alpha.cos(), alpha.sin());
+
+                // 3) Compute the intersection point from the 2D light source
+                //    to compute the segment on it
                 let p1_2d = plane2d_its(d_plane, o_plane);
                 let p2_2d = plane2d_its(-d_plane, o_plane);
-                //dbg!(sample_alpha, &o_plane,&d_plane,&p1_2d, &p2_2d);
 
-                // Convert them into light coordinates
+                // 4) Convert the 2D end-point of the segment in 3D
                 let p1 = light.o + p1_2d.x * light.u + p1_2d.y * light.v;
                 let p2 = light.o + p2_2d.x * light.u + p2_2d.y * light.v;
+
+                // 5) Compute the segment in 3D
                 let u_plane = p2 - p1;
                 let u_plane_length = u_plane.magnitude();
                 let u_plane = u_plane / u_plane_length;
+
                 SinglePhotonPlane {
+                    // Plane geometry
                     o: p1,
                     d0: u_plane,
                     d1: d,
+                    // d0 length = segment length
                     length0: u_plane_length,
+                    // d1 length = use transmittance sampling
                     length1: t_sampled,
+                    // storing the random sample in case
                     sample,
+                    // Mark that it is a (u, alpha)-plane
                     plane_type: PlaneType::UAlphaT,
+                    // Compute the plane weight
+                    // f() / (p(w_l) * p(e)) where
+                    //  p(w_l) = cos(..) / PI, the cos cancel out with emission
+                    //  p(e) = |e| / A
                     weight: std::f32::consts::PI * light.emission * (light.u_l * light.v_l)
                         / u_plane_length,
+                    // Store the emitter ID
                     id_emitter,
+                    // storing the eandom sample for the orientation
+                    // usefull for stratification
                     sample_alpha,
                 }
             }
@@ -563,32 +581,29 @@ impl Integrator for IntegratorSinglePlane {
                                         }
                                     };
 
-                                    // UV planes are not importance sampled (position/direction)
-                                    // For other primitive, there such importance sampled approach.
-                                    let (w, contrib) = match self.strategy {
+                                    // Compute the plane weighted constribution
+                                    let contrib = match self.strategy {
+                                        // Deng et al. CMIS
                                         SinglePlaneStrategy::ContinousMIS => {
                                             // Here we use their integration from
                                             // Normally, all the jacobian simplifies
                                             // So it is why we need to have a special estimator
-                                            (
-                                                1.0 / ((2.0 / std::f32::consts::PI)
-                                                    * (rect_light
-                                                        .u
+
+                                            1.0 / ((2.0 / std::f32::consts::PI)
+                                                * (rect_light.u.cross(plane.d1).dot(ray.d).powi(2)
+                                                    + rect_light
+                                                        .v
                                                         .cross(plane.d1)
                                                         .dot(ray.d)
-                                                        .powi(2)
-                                                        + rect_light
-                                                            .v
-                                                            .cross(plane.d1)
-                                                            .dot(ray.d)
-                                                            .powi(2))
-                                                    .sqrt()),
-                                                plane.weight,
-                                            )
+                                                        .powi(2))
+                                                .sqrt())
+                                                * plane.weight // The original jacobian cancel out
                                         }
+                                        // SMIS
                                         SinglePlaneStrategy::SMISAll(n_samples)
                                         | SinglePlaneStrategy::SMISJacobian(n_samples) => {
                                             assert!(n_samples > 0);
+
                                             // Compute wrap random number for generating fake planes that generate same
                                             // path configuration. Indeed, we need to be sure that the new planes alpha plane
                                             // cross the same point on the light source
@@ -607,19 +622,29 @@ impl Integrator for IntegratorSinglePlane {
                                             // --------------------
                                             // Create N-1 fake planes with the same path configuration
                                             // using stratified sampling.
-                                            let offset = plane.sample_alpha;
+
+                                            // We will compute the inverse norm of the SMIS weight
+                                            // We initialize the variable with the actual plane that
+                                            // the ray intersected
                                             let mut inv_norm = match self.strategy {
                                                 SinglePlaneStrategy::SMISAll(_v) => {
+                                                    // J(..) * p(e)
+                                                    // we do not include A (light source area)
+                                                    // as it cancel out
                                                     plane.d1.cross(plane.d0).dot(ray.d).abs()
                                                         * plane.length0
                                                 }
                                                 SinglePlaneStrategy::SMISJacobian(_v) => {
+                                                    // J(..)
                                                     plane.d1.cross(plane.d0).dot(ray.d).abs()
                                                 }
                                                 _ => panic!("Unimplemented"),
                                             };
 
+                                            // Generate the other planes
+                                            let offset = plane.sample_alpha;
                                             for i in 0..(n_samples - 1) {
+                                                // The new alpha
                                                 let new_alpha = {
                                                     if self.stratified {
                                                         (offset
@@ -630,16 +655,21 @@ impl Integrator for IntegratorSinglePlane {
                                                     }
                                                 };
                                                 assert!(new_alpha >= 0.0 && new_alpha <= 1.0);
+
+                                                // This construct a new plane (call previous snipped)
+                                                // to generate the plane
                                                 let new_plane = SinglePhotonPlane::new(
                                                     PlaneType::UAlphaT,
                                                     &rect_light,
                                                     plane.d1,
-                                                    sample_wrap,
+                                                    sample_wrap, // Random number used to sample the point on the light source
                                                     new_alpha,
                                                     0.0,
                                                     plane.id_emitter,
                                                     m.sigma_s,
                                                 );
+
+                                                // Accumulate the weight
                                                 inv_norm += match self.strategy {
                                                     SinglePlaneStrategy::SMISAll(_v) => {
                                                         new_plane
@@ -659,23 +689,35 @@ impl Integrator for IntegratorSinglePlane {
                                                     _ => panic!("Unimplemented"),
                                                 };
                                             }
-                                            inv_norm = inv_norm / (n_samples as f32);
 
-                                            let w = match self.strategy {
+                                            // The SMIS weight and the plane contribution
+                                            // First each weight have J(..) * p(e) or J(..) at the numerator
+                                            // however this factor cancel out with the plane evaluation: f(..) / (J(..) * p(e))
+                                            // With that, all planes contribute to the same :)
+                                            let w = 1.0 / inv_norm;
+                                            let contrib = match self.strategy {
                                                 SinglePlaneStrategy::SMISAll(_v) => {
-                                                    plane.length0 / inv_norm
+                                                    // Note we need to also cancel out lenght0
+                                                    // as it will cancel out inside the SMIS_weight
+                                                    plane.weight * plane.length0 * n_samples as f32
                                                 }
                                                 SinglePlaneStrategy::SMISJacobian(_v) => {
-                                                    1.0 / inv_norm
+                                                    plane.weight * n_samples as f32
                                                 }
                                                 _ => panic!("Unimplemented"),
                                             };
-                                            (w, plane.weight)
+
+                                            w * contrib
                                         }
-                                        _ => (w, plane.contrib(&ray.d)), // Do nothing and just evaluate the plane
+                                        // Default: evaluate and weight the contrib
+                                        // plane.contrib(..) =  plane.weight / jacobian
+                                        // w: other MIS compute above
+                                        _ => (w * plane.contrib(&ray.d)), // Do nothing and just evaluate the plane
                                     };
-                                    c += w
-                                        * rho
+
+                                    // Compute the rest of the term
+                                    // and accumulate them
+                                    c += rho
                                         * transmittance
                                         * m.sigma_s
                                         * contrib
