@@ -686,7 +686,7 @@ dependencies = [
 [[package]]
 name = "pbrt_rs"
 version = "0.0.2"
-source = "git+https://github.com/beltegeuse/pbrt_rs#c45f22db66b031d5b7e9ca04d79125c39c439a83"
+source = "git+https://github.com/beltegeuse/pbrt_rs#bd0ddc92a70b2e72895b1e6cf8e4f8d1375dbbbc"
 dependencies = [
  "cgmath",
  "log",
