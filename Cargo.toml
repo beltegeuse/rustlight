@@ -17,7 +17,8 @@ cgmath = { version = "*" }
 #embree = { version = "*" , optional = true }
 embree = { git = "https://github.com/beltegeuse/embree-rs", optional = true }
 image = { version =  "*", optional = true }
-openexr = { version = "*", optional = true }
+# openexr = { version = "*", optional = true } # OpenEXR 2
+openexr = { git = "https://github.com/beltegeuse/openexr-rs", optional = true } # Contains Openexr 3 fix
 log = "*"
 rand = { version = "*", features = ["small_rng"] }
 rayon = "*"
@@ -30,7 +31,8 @@ mitsuba_rs = { git = "https://github.com/beltegeuse/mitsuba_rs", optional = true
 lazy_static = "1.4"
 assert_approx_eq = "1.1"
 bitflags = "*"
-nalgebra = "*"
+float_extras = "*" # For ldexp
+roots = "*"
 
 [dev-dependencies]
 clap = "*"

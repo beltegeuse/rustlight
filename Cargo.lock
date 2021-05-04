@@ -287,6 +287,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "float_extras"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b22b70f8649ea2315955f1a36d964b0e4da482dfaa5f0d04df0d1fb7c338ab7a"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -467,15 +476,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matrixmultiply"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a8a15b776d9dfaecd44b03c5828c2199cddff5247215858aac14624f8d6b741"
-dependencies = [
- "rawpointer",
-]
-
-[[package]]
 name = "memchr"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -525,21 +525,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nalgebra"
-version = "0.26.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "476d1d59fe02fe54c86356e91650cd892f392782a1cb9fc524ec84f7aa9e1d06"
-dependencies = [
- "approx",
- "matrixmultiply",
- "num-complex",
- "num-rational",
- "num-traits",
- "simba",
- "typenum",
-]
-
-[[package]]
 name = "nom"
 version = "6.0.0-alpha1"
 source = "git+https://github.com/Geal/nom.git?tag=6.0.0-alpha1#b889d7c7e1879e3ff0a79bde61972f6662ed9ea7"
@@ -547,15 +532,6 @@ dependencies = [
  "lexical-core",
  "memchr",
  "version_check",
-]
-
-[[package]]
-name = "num-complex"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "747d632c0c558b87dbabbe6a82f3b4ae03720d0646ac5b7b4dae89394be5f2c5"
-dependencies = [
- "num-traits",
 ]
 
 [[package]]
@@ -612,8 +588,7 @@ dependencies = [
 [[package]]
 name = "openexr"
 version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e00775466799235631e5cf0d7af7b4ebe080042ba9d288e1fb57f57656f60cf"
+source = "git+https://github.com/beltegeuse/openexr-rs#735a4bbaadd0b9baa02956beccf6bf5596356599"
 dependencies = [
  "half",
  "libc",
@@ -623,8 +598,7 @@ dependencies = [
 [[package]]
 name = "openexr-sys"
 version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29fb288fecb81811a0c42a587f0a1a4f75c6e53a8f4c5589759e593efe215951"
+source = "git+https://github.com/beltegeuse/openexr-rs#735a4bbaadd0b9baa02956beccf6bf5596356599"
 dependencies = [
  "cc",
  "libc",
@@ -664,12 +638,6 @@ dependencies = [
  "smallvec",
  "winapi",
 ]
-
-[[package]]
-name = "paste"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
 
 [[package]]
 name = "pbr"
@@ -842,12 +810,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rawpointer"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
-
-[[package]]
 name = "rayon"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -914,6 +876,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "roots"
+version = "0.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c36d2bbc763f480668d6d6790ae2fdd2e52ac0c21a3a26d156f3534a3d9eea9"
+
+[[package]]
 name = "rustlight"
 version = "0.2.0"
 dependencies = [
@@ -923,18 +891,19 @@ dependencies = [
  "cgmath",
  "clap",
  "embree",
+ "float_extras",
  "image",
  "lazy_static",
  "log",
  "log4rs",
  "mitsuba_rs",
- "nalgebra",
  "num_cpus",
  "openexr",
  "pbr",
  "pbrt_rs",
  "rand",
  "rayon",
+ "roots",
  "tobj",
 ]
 
@@ -1035,18 +1004,6 @@ dependencies = [
  "linked-hash-map",
  "serde",
  "yaml-rust",
-]
-
-[[package]]
-name = "simba"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5132a955559188f3d13c9ba831e77c802ddc8782783f050ed0c52f5988b95f4c"
-dependencies = [
- "approx",
- "num-complex",
- "num-traits",
- "paste",
 ]
 
 [[package]]
@@ -1188,12 +1145,6 @@ checksum = "653be63c80a3296da5551e1bfd2cca35227e13cdd08c6668903ae2f4f77aa1f6"
 dependencies = [
  "unsafe-any",
 ]
-
-[[package]]
-name = "typenum"
-version = "1.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "879f6906492a7cd215bfa4cf595b600146ccfac0c79bcbd1f3000162af5e8b06"
 
 [[package]]
 name = "ucd-trie"
