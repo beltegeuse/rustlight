@@ -123,14 +123,26 @@ impl Mesh {
 
         // Normalize all the normal if if it is necessary
         // Indeed, sometimes the normal are not properly normalized
+        let mut nb_wrong_normals = 0;
         if let Some(ref mut ns) = normals.as_mut() {
             for n in ns.iter_mut() {
                 let l = n.dot(*n);
                 if l == 0.0 {
-                    warn!("Wrong normal! {:?}", n);
-                // TODO: Need to do something...
+                    nb_wrong_normals += 1;
+                    // TODO: The problem is n_s that is incorrect...
+                    // There is not much we can do
                 } else if l != 1.0 {
                     *n /= l.sqrt();
+                }
+            }
+        }
+        if normals.is_some() {
+            let nb_normal = normals.as_ref().unwrap().len();
+            if nb_wrong_normals > 0 {
+                warn!("Detected wrong normal: {}/{}", nb_wrong_normals, nb_normal);
+                if nb_normal == nb_wrong_normals {
+                    error!("All normal are wrong, we will delete the normal informations");
+                    normals = None;
                 }
             }
         }

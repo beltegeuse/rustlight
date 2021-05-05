@@ -628,7 +628,7 @@ impl IntegratorPathKulla {
                 pub t: f32,
                 pub contrib: Color,
                 pub pdf: f32,
-            };
+            }
 
             // Reuse or not the sampling from KULLA
             let res = if self.strategy.intersects(Strategies::KULLA) {

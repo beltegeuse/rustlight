@@ -437,8 +437,10 @@ pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
         warn!("MIS weight requested for 0.0 pdf");
         return 0.0;
     }
-    assert!(pdf_a.is_finite());
-    assert!(pdf_b.is_finite());
+    if !pdf_a.is_finite() || !pdf_b.is_finite() {
+        warn!("Non-finite PDF values for MIS: {}, {}", pdf_a, pdf_b);
+        return 0.0;
+    }
     let w = pdf_a.powi(2) / (pdf_a.powi(2) + pdf_b.powi(2));
     if w.is_finite() {
         w

@@ -47,6 +47,11 @@ impl IntegratorMC for IntegratorAO {
             its.frame.to_world(d_local)
         };
 
+        // TODO: A good check in case we have a geometric problem.
+        if !its.frame.valid() {
+            warn!("Invalid frame: {:?}", its.frame);
+        }
+
         // Check the new intersection distance
         let ray = Ray::new(its.p, d_world);
         match accel.trace(&ray) {

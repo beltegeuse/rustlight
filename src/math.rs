@@ -94,6 +94,10 @@ impl Frame {
     pub fn to_local(&self, v: Vector3<f32>) -> Vector3<f32> {
         Vector3::new(v.dot(self.0.x), v.dot(self.0.y), v.dot(self.0.z))
     }
+
+    pub fn valid(&self) -> bool {
+        self.0.x.is_finite() && self.0.y.is_finite() && self.0.z.is_finite()
+    }
 }
 
 /// Uniformly distributing samples over isosceles right triangles

@@ -4,7 +4,7 @@ use crate::math::Frame;
 use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3};
+use cgmath::{Array, EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3};
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, Pixel};
 #[cfg(feature = "openexr")]
@@ -909,7 +909,9 @@ impl<'a> Intersection<'a> {
             //  geometry. I need to check what are the other strategies that have been used
             //  in other rendering engine.
             let l = n_s.dot(n_s);
-            if l != 1.0 {
+            if l == 0.0 {
+                n_g.clone()
+            } else if l != 1.0 {
                 n_s / l.sqrt()
             } else {
                 n_s
@@ -922,7 +924,7 @@ impl<'a> Intersection<'a> {
         // Note that we do not fix the surfaces if:
         //  - the bsdf is not two sided (like glass where the normal orientation gives us extra information)
         //  - if it is a light source
-        let (n_s, n_g) =
+        let (mut n_s, n_g) =
             if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && ray.d.dot(n_s) > 0.0 {
                 (
                     Vector3::new(-n_s.x, -n_s.y, -n_s.z),
@@ -941,6 +943,12 @@ impl<'a> Intersection<'a> {
         } else {
             None
         };
+
+        // TODO: Safe guard for now but can impact performance too much.
+        if !n_s.is_finite() {
+            warn!("Normal problems: n_s: {:?} n_g: {:?}", n_s, n_g);
+            n_s = n_g; // Replace for now
+        }
 
         let frame = Frame::new(n_s);
         let wi = frame.to_local(-ray.d);

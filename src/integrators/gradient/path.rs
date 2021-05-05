@@ -517,7 +517,7 @@ impl IntegratorGradientPath {
                         pub contrib: Color,
                         pub state: RayState<'a>,
                         pub half_vector: bool,
-                    };
+                    }
                     impl<'a> Default for ShiftResult<'a> {
                         fn default() -> Self {
                             Self {
@@ -527,7 +527,7 @@ impl IntegratorGradientPath {
                                 half_vector: false,
                             }
                         }
-                    };
+                    }
                     let result: ShiftResult = match offset {
                         RayState::Dead => ShiftResult::default(),
                         RayState::Connected(mut s) => {
