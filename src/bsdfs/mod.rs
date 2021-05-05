@@ -254,19 +254,31 @@ fn distribution_pbrt(
     d: &pbrt_rs::Distribution,
     textures: &HashMap<String, pbrt_rs::Texture>,
 ) -> MicrofacetDistributionBSDF {
-    warn!("Remap roughness is ignored!");
+    let transform_roughness = |v: f32| {
+        if d.remaproughness {
+            let x = v.max(1e-3).ln();
+            1.62142
+                + 0.819955 * x
+                + 0.1734 * x * x
+                + 0.0171201 * x * x * x
+                + 0.000640711 * x * x * x * x
+        } else {
+            v
+        }
+    };
+
     match &d.roughness {
         pbrt_rs::Roughness::Isotropic(v) => {
             let alpha = bsdf_texture_f32_match_pbrt(v, textures);
             MicrofacetDistributionBSDF {
                 microfacet_type: MicrofacetType::GGX,
-                alpha_u: alpha,
-                alpha_v: alpha,
+                alpha_u: transform_roughness(alpha),
+                alpha_v: transform_roughness(alpha),
             }
         }
         pbrt_rs::Roughness::Anisotropic { u, v } => {
-            let alpha_u = bsdf_texture_f32_match_pbrt(u, textures);
-            let alpha_v = bsdf_texture_f32_match_pbrt(v, textures);
+            let alpha_u = transform_roughness(bsdf_texture_f32_match_pbrt(u, textures));
+            let alpha_v = transform_roughness(bsdf_texture_f32_match_pbrt(v, textures));
             MicrofacetDistributionBSDF {
                 microfacet_type: MicrofacetType::GGX,
                 alpha_u,
