@@ -4,7 +4,7 @@ use crate::math::Frame;
 use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3, Array};
+use cgmath::{Array, EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3};
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, Pixel};
 #[cfg(feature = "openexr")]

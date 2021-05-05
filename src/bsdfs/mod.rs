@@ -349,8 +349,10 @@ pub fn bsdf_pbrt(
             distribution,
             ..
         } => {
-            let kd = bsdf_texture_match_pbrt(kd, textures).unwrap_or(BSDFColor::Constant(Color::value(0.5)));
-            let ks = bsdf_texture_match_pbrt(ks, textures).unwrap_or(BSDFColor::Constant(Color::value(0.5)));
+            let kd = bsdf_texture_match_pbrt(kd, textures)
+                .unwrap_or(BSDFColor::Constant(Color::value(0.5)));
+            let ks = bsdf_texture_match_pbrt(ks, textures)
+                .unwrap_or(BSDFColor::Constant(Color::value(0.5)));
             let distribution = Some(distribution_pbrt(distribution, textures));
             Some(Box::new(BSDFSubstrate {
                 specular: ks,

@@ -84,7 +84,8 @@ impl SceneLoader for PBRTSceneLoader {
         for s in &mut scene_info.shapes {
             match &mut s.data {
                 pbrt_rs::Shape::Ply { filename, .. } => {
-                    s.data = pbrt_rs::ply::read_ply(std::path::Path::new(filename), false).to_trimesh();
+                    s.data =
+                        pbrt_rs::ply::read_ply(std::path::Path::new(filename), false).to_trimesh();
                 }
                 _ => (),
             }
