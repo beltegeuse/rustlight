@@ -1,9 +1,9 @@
-use crate::bsdfs;
 use crate::camera::{Camera, Fov};
 use crate::emitter::*;
 use crate::geometry;
 use crate::scene::*;
 use crate::structure::*;
+use crate::{bsdfs, geometry::Mesh};
 use cgmath::Transform;
 use cgmath::*;
 #[cfg(feature = "mitsuba")]
@@ -72,6 +72,80 @@ fn convert_spectrum_to_color(
 #[cfg(feature = "pbrt")]
 pub struct PBRTSceneLoader {}
 #[cfg(feature = "pbrt")]
+impl PBRTSceneLoader {
+    fn transform_mesh(
+        mut m: pbrt_rs::ShapeInfo,
+        materials: &HashMap<String, pbrt_rs::BSDF>,
+        textures: &HashMap<String, pbrt_rs::Texture>,
+        matrix: Matrix4<f32>,
+    ) -> Option<Mesh> {
+        match m.data {
+            pbrt_rs::Shape::Ply { filename, .. } => {
+                m.data =
+                    pbrt_rs::ply::read_ply(std::path::Path::new(&filename), false).to_trimesh();
+                PBRTSceneLoader::transform_mesh(m, materials, textures, matrix)
+            }
+            pbrt_rs::Shape::TriMesh {
+                uv,
+                normals,
+                points,
+                indices,
+            } => {
+                let mat = matrix * m.matrix;
+                let reverse_orientation = m.reverse_orientation;
+                let normals = match normals {
+                    Some(ref v) => Some(
+                        v.iter()
+                            .map(|n| {
+                                mat.transform_vector(if reverse_orientation {
+                                    -n.clone()
+                                } else {
+                                    n.clone()
+                                })
+                            })
+                            .collect(),
+                    ),
+                    None => None,
+                };
+                let points = points
+                    .into_iter()
+                    .map(|n| mat.transform_point(n.clone()).to_vec())
+                    .collect();
+
+                let bsdf = if let Some(ref name) = m.material_name {
+                    if let Some(bsdf_name) = materials.get(name) {
+                        bsdfs::bsdf_pbrt(bsdf_name, &textures)
+                    } else {
+                        Box::new(bsdfs::diffuse::BSDFDiffuse {
+                            diffuse: bsdfs::BSDFColor::Constant(Color::value(0.5)),
+                        })
+                    }
+                } else {
+                    Box::new(bsdfs::diffuse::BSDFDiffuse {
+                        diffuse: bsdfs::BSDFColor::Constant(Color::value(0.5)),
+                    })
+                };
+                let mesh = geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
+
+                if let Some(mut mesh) = mesh {
+                    mesh.bsdf = bsdf;
+                    if m.emission.is_some() {
+                        mesh.emission =
+                            convert_spectrum_to_color(m.emission.as_ref().unwrap(), None);
+                    }
+                    Some(mesh)
+                } else {
+                    None
+                }
+            }
+            _ => {
+                warn!("All mesh should be converted to trimesh: {:?}", m.data);
+                None
+            }
+        }
+    }
+}
+#[cfg(feature = "pbrt")]
 impl SceneLoader for PBRTSceneLoader {
     fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
@@ -83,10 +157,6 @@ impl SceneLoader for PBRTSceneLoader {
         // if it is necessary
         for s in &mut scene_info.shapes {
             match &mut s.data {
-                pbrt_rs::Shape::Ply { filename, .. } => {
-                    s.data =
-                        pbrt_rs::ply::read_ply(std::path::Path::new(filename), false).to_trimesh();
-                }
                 _ => (),
             }
         }
@@ -94,72 +164,28 @@ impl SceneLoader for PBRTSceneLoader {
         // Load the data
         let materials = scene_info.materials;
         let textures = scene_info.textures;
-        let meshes = scene_info
+        let mut meshes = scene_info
             .shapes
             .into_iter()
-            .map(|m| match m.data {
-                pbrt_rs::Shape::TriMesh {
-                    uv,
-                    normals,
-                    points,
-                    indices,
-                } => {
-                    let mat = m.matrix;
-                    let reverse_orientation = m.reverse_orientation;
-                    let normals = match normals {
-                        Some(ref v) => Some(
-                            v.iter()
-                                .map(|n| {
-                                    mat.transform_vector(if reverse_orientation {
-                                        -n.clone()
-                                    } else {
-                                        n.clone()
-                                    })
-                                })
-                                .collect(),
-                        ),
-                        None => None,
-                    };
-                    let points = points
-                        .into_iter()
-                        .map(|n| mat.transform_point(n.clone()).to_vec())
-                        .collect();
-
-                    let bsdf = if let Some(ref name) = m.material_name {
-                        if let Some(bsdf_name) = materials.get(name) {
-                            bsdfs::bsdf_pbrt(bsdf_name, &textures)
-                        } else {
-                            Box::new(bsdfs::diffuse::BSDFDiffuse {
-                                diffuse: bsdfs::BSDFColor::Constant(Color::value(0.5)),
-                            })
-                        }
-                    } else {
-                        Box::new(bsdfs::diffuse::BSDFDiffuse {
-                            diffuse: bsdfs::BSDFColor::Constant(Color::value(0.5)),
-                        })
-                    };
-                    let mesh =
-                        geometry::Mesh::new("noname".to_string(), points, indices, normals, uv);
-
-                    if let Some(mut mesh) = mesh {
-                        mesh.bsdf = bsdf;
-                        if m.emission.is_some() {
-                            mesh.emission =
-                                convert_spectrum_to_color(m.emission.as_ref().unwrap(), None);
-                        }
-                        Some(mesh)
-                    } else {
-                        None
-                    }
-                }
-                _ => {
-                    warn!("All mesh should be converted to trimesh: {:?}", m.data);
-                    None
-                }
-            })
+            .map(|m| PBRTSceneLoader::transform_mesh(m, &materials, &textures, Matrix4::identity()))
             .filter(|x| x.is_some())
             .map(|m| m.unwrap())
             .collect::<Vec<_>>();
+
+        for instance in scene_info.instances {
+            let object = scene_info.objects.get(&instance.name).unwrap();
+            meshes.extend(
+                object
+                    .shapes
+                    .clone()
+                    .into_iter()
+                    .map(|m| {
+                        PBRTSceneLoader::transform_mesh(m, &materials, &textures, instance.matrix)
+                    })
+                    .filter(|x| x.is_some())
+                    .map(|m| m.unwrap()),
+            );
+        }
 
         // Check if there is other emitter type
         let mut emitters: Vec<Box<dyn Emitter>> = Vec::new();
