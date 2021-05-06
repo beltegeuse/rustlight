@@ -1,6 +1,10 @@
 use cgmath::*;
 use std;
 
+pub fn abs_vec(v: &Vector3<f32>) -> Vector3<f32> {
+    Vector3::new(v.x.abs(), v.y.abs(), v.z.abs())
+}
+
 pub fn concentric_sample_disk(u: Point2<f32>) -> Point2<f32> {
     // map uniform random numbers to $[-1,1]^2$
     let u_offset: Point2<f32> = u * 2.0 as f32 - Vector2 { x: 1.0, y: 1.0 };

@@ -471,7 +471,7 @@ impl IntegratorGradientPath {
 
             // Generate the new ray and do the intersection
             let main_d_out_global = main.its.frame.to_world(main_sampled_bsdf.d);
-            main.ray = Ray::new(main.its.p, main_d_out_global);
+            main.ray = Ray::spawn_ray(&main.its, main_d_out_global);
             let main_pred_its = main.its; // Need to save the previous hit
             main.its = match accel.trace(&main.ray) {
                 Some(x) => x,
@@ -796,7 +796,7 @@ impl IntegratorGradientPath {
                                     );
                                     // Shoot a ray to compute the next intersection
                                     let shift_d_out_global = s.its.frame.to_world(wo);
-                                    s.ray = Ray::new(s.its.p, shift_d_out_global);
+                                    s.ray = Ray::spawn_ray(&s.its, shift_d_out_global);
                                     let new_its = accel.trace(&s.ray);
                                     if let Some(new_its) = new_its {
                                         s.its = new_its;

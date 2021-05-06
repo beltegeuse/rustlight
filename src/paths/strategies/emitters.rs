@@ -129,7 +129,7 @@ impl SamplingStrategy for LightSamplingStrategy {
 
                     if let Some(m) = medium {
                         // Evaluate the transmittance
-                        let mut ray = Ray::new(its.p, light_record.d);
+                        let mut ray = Ray::spawn_ray(&its, light_record.d);
                         let d = light_record.p - its.p;
                         // Trick to compute the distance
                         ray.tfar = d.dot(light_record.d);

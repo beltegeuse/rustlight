@@ -95,7 +95,7 @@ impl NaiveSamplingStrategy {
                 throughput.scale(rr_weight);
 
                 // Generate the new ray and do the intersection
-                let ray = Ray::new(its.p, d_out_global);
+                let ray = Ray::spawn_ray(&its, d_out_global);
                 let (edge, new_vertex) = Edge::from_ray(
                     path,
                     &ray,

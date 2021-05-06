@@ -1,4 +1,3 @@
-use crate::constants;
 use crate::geometry::Mesh;
 use crate::math::Frame;
 use crate::tools::*;
@@ -705,7 +704,24 @@ impl Ray {
         Ray {
             o,
             d,
-            tnear: constants::EPSILON,
+            tnear: std::f32::EPSILON,
+            tfar: std::f32::MAX,
+        }
+    }
+
+    pub fn spawn_ray(its: &Intersection, d_out: Vector3<f32>) -> Ray {
+        // Compute offset ray
+        let d = crate::math::abs_vec(&its.n_g).dot(its.p_error);
+        let mut offset = d * its.n_g;
+        if d_out.dot(its.n_g) < 0.0 {
+            offset = -offset;
+        }
+        let o = its.p + offset;
+        // TODO: offset with one offset in term of bits
+        Ray {
+            o,
+            d: d_out,
+            tnear: 0.0,
             tfar: std::f32::MAX,
         }
     }
@@ -863,6 +879,7 @@ pub struct Intersection<'a> {
     pub n_s: Vector3<f32>,
     /// Intersection point
     pub p: Point3<f32>,
+    pub p_error: Vector3<f32>,
     /// Textures coordinates
     pub uv: Option<Vector2<f32>>,
     /// Mesh which we have intersected
@@ -944,6 +961,26 @@ impl<'a> Intersection<'a> {
             None
         };
 
+        // Compute error position
+        // From PBRT
+        let p_error = {
+            let p0 = &mesh.vertices[index.x];
+            let p1 = &mesh.vertices[index.y];
+            let p2 = &mesh.vertices[index.z];
+
+            let b0 = 1.0 - hit_u - hit_v;
+            let b1 = hit_u;
+            let b2 = hit_v;
+
+            let gamma_7 = 7.0 * std::f32::EPSILON * 0.5 / (1.0 - 7.0 * std::f32::EPSILON * 0.5);
+            gamma_7
+                * Vector3::new(
+                    (p0.x * b0).abs() + (p1.x * b1).abs() + (p2.x * b2).abs(),
+                    (p0.y * b0).abs() + (p1.y * b1).abs() + (p2.y * b2).abs(),
+                    (p0.z * b0).abs() + (p1.z * b1).abs() + (p2.z * b2).abs(),
+                )
+        };
+
         let frame = Frame::new(n_s);
         let wi = frame.to_local(-ray.d);
         Intersection {
@@ -951,6 +988,7 @@ impl<'a> Intersection<'a> {
             n_g,
             n_s,
             p,
+            p_error,
             uv,
             mesh,
             frame,

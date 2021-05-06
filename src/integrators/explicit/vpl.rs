@@ -309,7 +309,7 @@ impl IntegratorVPL {
                             }
                         }
                         VPLEmitterInfo::Infinite { d } => {
-                            let ray = Ray::new(its.p, -d);
+                            let ray = Ray::spawn_ray(&its, -d);
                             if accel.trace(&ray).is_none() {
                                 let emitted_radiance = vpl.emitted_radiance;
                                 if !its.mesh.bsdf.bsdf_type().is_smooth() {
