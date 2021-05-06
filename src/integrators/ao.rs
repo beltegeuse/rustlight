@@ -53,7 +53,7 @@ impl IntegratorMC for IntegratorAO {
         }
 
         // Check the new intersection distance
-        let ray = Ray::new(its.p, d_world);
+        let ray = Ray::spawn_ray(&its, d_world);
         match accel.trace(&ray) {
             None => Color::one(),
             Some(new_its) => match self.max_distance {

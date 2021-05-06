@@ -119,7 +119,7 @@ impl IntegratorMC for IntegratorDirect {
             {
                 // Generate the new ray and do the intersection
                 let d_out_world = its.frame.to_world(sampled_bsdf.d);
-                let ray = Ray::new(its.p, d_out_world);
+                let ray = Ray::spawn_ray(&its, d_out_world);
                 match accel.trace(&ray) {
                     Some(next_its) => {
                         // Check that we have intersected a light or not

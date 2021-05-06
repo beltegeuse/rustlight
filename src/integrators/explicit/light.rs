@@ -109,7 +109,7 @@ impl TechniqueLightTracing {
 
                             // If medium, need to take into account the transmittance
                             let transmittance = if let Some(ref m) = scene.volume {
-                                let mut ray = Ray::new(its.p, d);
+                                let mut ray = Ray::spawn_ray(&its, d);
                                 ray.tfar = (its.p - pos_sensor).magnitude();
                                 m.transmittance(ray)
                             } else {
@@ -145,7 +145,7 @@ impl TechniqueLightTracing {
                             if accel.visible(pos, &pos_sensor) {
                                 if let Some((importance, uv)) = scene.camera.sample_direct(pos) {
                                     let transmittance = if let Some(ref m) = scene.volume {
-                                        let mut ray = Ray::new(*pos, d);
+                                        let mut ray = Ray::new(*pos, d); // TODO: Add offset
                                         ray.tfar = (pos - pos_sensor).magnitude();
                                         m.transmittance(ray)
                                     } else {
