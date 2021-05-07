@@ -222,18 +222,38 @@ impl Mesh {
 
         // interpol the point
         let pos = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
+        let n_g = {
+            let u = v1 - v0;
+            let v = v2 - v0;
+            v.cross(u).normalize()
+        };
+
         let normal = match &self.normals {
             Some(normals) => {
                 let n0 = normals[id.x];
                 let n1 = normals[id.y];
                 let n2 = normals[id.z];
-                (n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1])).normalize()
+                // Interpolate normal
+                let n = n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1]);
+                let n_l = n.magnitude2();
+
+                // Normalize the shading normal
+                let n = if n_l == 0.0 {
+                    n_g
+                } else if n_l != 1.0 {
+                    n / n_l.sqrt()
+                } else {
+                    n
+                };
+
+                // Make shading normal facing geometric one
+                if n_g.dot(n) < 0.0 {
+                    -n
+                } else {
+                    n
+                }
             }
-            None => {
-                let u = v1 - v0;
-                let v = v2 - v0;
-                v.cross(u).normalize()
-            }
+            None => n_g,
         };
 
         SampledPosition {
