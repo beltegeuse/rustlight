@@ -11,7 +11,10 @@ use tobj;
 /// custom texture coordinates or normals are not supported yet
 pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadError> {
     info!("Try to load {:?}", file_name);
-    let (models, materials) = tobj::load_obj(file_name, true)?;
+    let mut options = tobj::LoadOptions::default();
+    options.triangulate = true;
+    let (models, materials) = tobj::load_obj(file_name, &options)?;
+    let materials = materials?;
     let wk = file_name.parent().unwrap();
     info!("Working directory for loading the scene: {:?}", wk);
 

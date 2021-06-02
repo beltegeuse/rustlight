@@ -704,24 +704,24 @@ impl Ray {
         Ray {
             o,
             d,
-            tnear: std::f32::EPSILON,
+            // tnear: std::f32::EPSILON,
+            tnear: crate::constants::EPSILON,
             tfar: std::f32::MAX,
         }
     }
 
     pub fn spawn_ray(its: &Intersection, d_out: Vector3<f32>) -> Ray {
         // Compute offset ray
-        let d = crate::math::abs_vec(&its.n_g).dot(its.p_error);
-        let mut offset = d * its.n_g;
-        if d_out.dot(its.n_g) < 0.0 {
-            offset = -offset;
-        }
-        let o = its.p + offset;
-        // TODO: offset with one offset in term of bits
+        // let d = crate::math::abs_vec(&its.n_g).dot(its.p_error);
+        // let mut offset = d * its.n_g;
+        // if d_out.dot(its.n_g) < 0.0 {
+        //     offset = -offset;
+        // }
+        // let o = its.p + offset * 100.0;
         Ray {
-            o,
+            o: its.p,
             d: d_out,
-            tnear: 0.0,
+            tnear: crate::constants::EPSILON, // Small epsilon avoiding self intersection
             tfar: std::f32::MAX,
         }
     }
@@ -972,7 +972,7 @@ impl<'a> Intersection<'a> {
             let b1 = hit_u;
             let b2 = hit_v;
 
-            let gamma_7 = 7.0 * std::f32::EPSILON * 0.5 / (1.0 - 7.0 * std::f32::EPSILON * 0.5);
+            let gamma_7 = (7.0 * std::f32::EPSILON * 0.5) / (1.0 - 7.0 * std::f32::EPSILON * 0.5);
             gamma_7
                 * Vector3::new(
                     (p0.x * b0).abs() + (p1.x * b1).abs() + (p2.x * b2).abs(),

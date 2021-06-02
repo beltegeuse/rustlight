@@ -251,3 +251,75 @@ impl Distribution2D {
         self.conditionals[i.y].func[i.x] / self.marginal.func_int
     }
 }
+
+////////// From rs_pbrt
+// Functions uses to avoid self interseciton
+// However, when using embree, this approach seems not working properly.
+
+// Use **unsafe**
+/// [std::mem::transmute_copy][transmute_copy]
+/// to convert *f32* to *u32*.
+///
+/// [transmute_copy]: https://doc.rust-lang.org/std/mem/fn.transmute_copy.html
+pub fn float_to_bits(f: f32) -> u32 {
+    // uint64_t ui;
+    // memcpy(&ui, &f, sizeof(double));
+    // return ui;
+    let rui: u32;
+    unsafe {
+        let ui: u32 = std::mem::transmute_copy(&f);
+        rui = ui;
+    }
+    rui
+}
+
+/// Use **unsafe**
+/// [std::mem::transmute_copy][transmute_copy]
+/// to convert *u32* to *f32*.
+///
+/// [transmute_copy]: https://doc.rust-lang.org/std/mem/fn.transmute_copy.html
+pub fn bits_to_float(ui: u32) -> f32 {
+    // float f;
+    // memcpy(&f, &ui, sizeof(uint32_t));
+    // return f;
+    let rf: f32;
+    unsafe {
+        let f: f32 = std::mem::transmute_copy(&ui);
+        rf = f;
+    }
+    rf
+}
+
+/// Bump a floating-point value up to the next greater representable
+/// floating-point value.
+pub fn next_float_up(v: f32) -> f32 {
+    if v.is_infinite() && v > 0.0 {
+        v
+    } else {
+        let new_v = if v == -0.0 { 0.0 } else { v };
+        let mut ui: u32 = float_to_bits(new_v);
+        if new_v >= 0.0 {
+            ui += 1;
+        } else {
+            ui -= 1;
+        }
+        bits_to_float(ui)
+    }
+}
+
+/// Bump a floating-point value down to the next smaller representable
+/// floating-point value.
+pub fn next_float_down(v: f32) -> f32 {
+    if v.is_infinite() && v < 0.0 {
+        v
+    } else {
+        let new_v = if v == 0.0 { -0.0 } else { v };
+        let mut ui: u32 = float_to_bits(new_v);
+        if new_v > 0.0 {
+            ui -= 1;
+        } else {
+            ui += 1;
+        }
+        bits_to_float(ui)
+    }
+}
