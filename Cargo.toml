@@ -17,7 +17,8 @@ cgmath = { version = "*" }
 #embree = { version = "*" , optional = true }
 embree = { git = "https://github.com/beltegeuse/embree-rs", optional = true }
 image = { version =  "*", optional = true }
-openexr = { version = "*", optional = true }
+# openexr = { version = "*", optional = true } # OpenEXR 2
+openexr = { git = "https://github.com/beltegeuse/openexr-rs", optional = true } # Contains Openexr 3 fix
 log = "*"
 rand = { version = "*", features = ["small_rng"] }
 rayon = "*"
