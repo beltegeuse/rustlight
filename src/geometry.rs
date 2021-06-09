@@ -249,12 +249,15 @@ impl Mesh {
                     n
                 };
 
+                // TODO: In the cornel-box, geometry normal seems not correct
+                //  Need to continue to check this case.
+
                 // Make shading normal facing geometric one
-                if n_g.dot(n) < 0.0 {
-                    -n
-                } else {
-                    n
-                }
+                // if n_g.dot(n) < 0.0 {
+                //     -n
+                // } else {
+                //     n
+                // }
             }
             None => n_g,
         };
