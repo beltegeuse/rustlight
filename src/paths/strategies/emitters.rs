@@ -29,8 +29,11 @@ impl LightSamplingStrategy {
                             o: ray.o,
                             p,
                             n,
+                            uv: None,
                             dir: ray.d,
                         },
+                        None,
+                        None,
                     ) {
                         Some(light_pdf)
                     } else {
@@ -46,17 +49,24 @@ impl LightSamplingStrategy {
                     Vertex::Surface { its, .. } => {
                         // We could create a emitter sampling
                         // if we have intersected the light source randomly
-                        if let PDF::SolidAngle(light_pdf) = scene
-                            .emitters()
-                            .direct_pdf(its.mesh, &LightSamplingPDF::new(&ray, its))
-                        {
+                        if let PDF::SolidAngle(light_pdf) = scene.emitters().direct_pdf(
+                            its.mesh,
+                            &LightSamplingPDF::new(&ray, its),
+                            None,
+                            its.primitive_id,
+                        ) {
                             Some(light_pdf)
                         } else {
                             None
                         }
                     }
                     Vertex::Light {
-                        emitter, pos, n, ..
+                        emitter,
+                        pos,
+                        uv,
+                        n,
+                        primitive_id,
+                        ..
                     } => {
                         if let PDF::SolidAngle(light_pdf) = scene.emitters().direct_pdf(
                             *emitter,
@@ -64,8 +74,11 @@ impl LightSamplingStrategy {
                                 o: ray.o,
                                 p: *pos,
                                 n: *n,
+                                uv: *uv,
                                 dir: ray.d,
                             },
+                            None,
+                            *primitive_id,
                         ) {
                             Some(light_pdf)
                         } else {
@@ -104,6 +117,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // will be computed.
                 let light_record = scene.emitters().sample_light(
                     &its.p,
+                    Some(&its.n_s),
                     sampler.next(),
                     sampler.next(),
                     sampler.next2d(),
@@ -114,6 +128,8 @@ impl SamplingStrategy for LightSamplingStrategy {
                     let next_vertex = Vertex::Light {
                         pos: light_record.p,
                         n: light_record.n,
+                        uv: light_record.uv,
+                        primitive_id: light_record.primitive_id,
                         emitter: light_record.emitter,
                         edge_in: None,
                         edge_out: None,
@@ -169,6 +185,7 @@ impl SamplingStrategy for LightSamplingStrategy {
                 // will be computed.
                 let light_record = scene.emitters().sample_light(
                     &pos,
+                    None,
                     sampler.next(),
                     sampler.next(),
                     sampler.next2d(),
@@ -178,6 +195,8 @@ impl SamplingStrategy for LightSamplingStrategy {
                     let next_vertex = Vertex::Light {
                         pos: light_record.p,
                         n: light_record.n,
+                        uv: light_record.uv,
+                        primitive_id: light_record.primitive_id,
                         emitter: light_record.emitter,
                         edge_in: None,
                         edge_out: None,

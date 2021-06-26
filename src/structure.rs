@@ -4,6 +4,7 @@ use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3};
+use core::f32;
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage, Pixel};
 #[cfg(feature = "openexr")]
@@ -94,7 +95,9 @@ impl Mul<f32> for PDF {
 pub struct SampledPosition {
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
+    pub uv: Option<Vector2<f32>>,
     pub pdf: PDF,
+    pub primitive_id: Option<usize>,
 }
 
 /// Pixel color representation
@@ -752,7 +755,7 @@ fn vec_min_coords(v: Vector3<f32>) -> f32 {
     v.x.min(v.y.min(v.z))
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AABB {
     pub p_min: Vector3<f32>,
     pub p_max: Vector3<f32>,
@@ -768,6 +771,10 @@ impl Default for AABB {
 }
 
 impl AABB {
+    pub fn is_valid(&self) -> bool {
+        self.p_max.x >= self.p_min.x && self.p_max.y >= self.p_min.y && self.p_max.z >= self.p_min.z
+    }
+
     pub fn union_aabb(&self, b: &AABB) -> AABB {
         AABB {
             p_min: vec_min(&self.p_min, &b.p_min),
@@ -782,10 +789,57 @@ impl AABB {
         }
     }
 
+    pub fn dist_squared(&self, p: &Point3<f32>) -> f32 {
+        let point = p - self.center();
+        let extent = self.size();
+        (0..3)
+            .map(|i| {
+                if point[i] < -extent[i] {
+                    let delta = point[i] + extent[i];
+                    delta * delta
+                } else if point[i] > extent[i] {
+                    let delta = point[i] - extent[i];
+                    delta * delta
+                } else {
+                    0.0
+                }
+            })
+            .sum()
+    }
+
+    pub fn offset(&self, v: &Vector3<f32>) -> Vector3<f32> {
+        assert!(self.is_valid());
+        let o = v - self.p_min;
+        let s = self.size();
+
+        let x = if s.x != 0.0 { o.x / s.x } else { 0.0 };
+        let y = if s.y != 0.0 { o.y / s.y } else { 0.0 };
+        let z = if s.z != 0.0 { o.z / s.z } else { 0.0 };
+        Vector3::new(x, y, z)
+    }
+
+    pub fn surface_area(&self) -> f32 {
+        let d = self.size();
+        (0..3)
+            .map(|i| {
+                let mut v = 1.0;
+                for j in 0..3 {
+                    if i == j {
+                        continue;
+                    }
+                    v *= d[j];
+                }
+                v
+            })
+            .sum()
+    }
+
+    #[inline]
     pub fn size(&self) -> Vector3<f32> {
         self.p_max - self.p_min
     }
 
+    #[inline]
     pub fn center(&self) -> Vector3<f32> {
         self.size() * 0.5 + self.p_min
     }
@@ -888,6 +942,8 @@ pub struct Intersection<'a> {
     pub frame: Frame,
     /// Incomming direction in the local coordinates
     pub wi: Vector3<f32>,
+    /// The primitive id
+    pub primitive_id: Option<usize>,
 }
 
 impl<'a> Intersection<'a> {
@@ -906,7 +962,7 @@ impl<'a> Intersection<'a> {
         hit_u: f32,
         hit_v: f32,
         ray: &Ray,
-        n_g: Vector3<f32>,
+        mut n_g: Vector3<f32>,
         dist: f32,
         p: Point3<f32>,
     ) -> Intersection<'a> {
@@ -916,9 +972,9 @@ impl<'a> Intersection<'a> {
             let d0 = &normals[index.x];
             let d1 = &normals[index.y];
             let d2 = &normals[index.z];
-            let mut n_s = d0 * (1.0 - hit_u - hit_v) + d1 * hit_u + d2 * hit_v;
+            let n_s = d0 * (1.0 - hit_u - hit_v) + d1 * hit_u + d2 * hit_v;
             if n_g.dot(n_s) < 0.0 {
-                n_s = -n_s;
+                n_g = -n_g;
             }
             // Normalize the shading normal
             // TODO: This can be costly, but we want to be sure that the normal are corrects
@@ -941,15 +997,14 @@ impl<'a> Intersection<'a> {
         // Note that we do not fix the surfaces if:
         //  - the bsdf is not two sided (like glass where the normal orientation gives us extra information)
         //  - if it is a light source
-        let (n_s, n_g) =
-            if mesh.bsdf.is_twosided() && mesh.emission.is_zero() && ray.d.dot(n_s) > 0.0 {
-                (
-                    Vector3::new(-n_s.x, -n_s.y, -n_s.z),
-                    Vector3::new(-n_g.x, -n_g.y, -n_g.z),
-                )
-            } else {
-                (n_s, n_g)
-            };
+        let (n_s, n_g) = if mesh.bsdf.is_twosided() && !mesh.is_light() && ray.d.dot(n_s) > 0.0 {
+            (
+                Vector3::new(-n_s.x, -n_s.y, -n_s.z),
+                Vector3::new(-n_g.x, -n_g.y, -n_g.z),
+            )
+        } else {
+            (n_s, n_g)
+        };
 
         // UV interpolation
         let uv = if let Some(uv_data) = &mesh.uv {
@@ -993,6 +1048,7 @@ impl<'a> Intersection<'a> {
             mesh,
             frame,
             wi,
+            primitive_id: Some(tri_id),
         }
     }
 }

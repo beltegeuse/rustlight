@@ -153,7 +153,11 @@ impl DirectionalSamplingStrategy {
                 (Some(edge), new_vertex)
             }
             Vertex::Light {
-                n, pos, emitter, ..
+                n,
+                pos,
+                uv,
+                emitter,
+                ..
             } => {
                 // For now, just computing the outgoing direction
                 // Using cosine base weighting as we know that the light source
@@ -162,7 +166,9 @@ impl DirectionalSamplingStrategy {
                     &SampledPosition {
                         p: *pos,
                         n: *n,
+                        uv: *uv,
                         pdf: PDF::SolidAngle(1.0),
+                        primitive_id: None,
                     },
                     sampler.next2d(),
                 );

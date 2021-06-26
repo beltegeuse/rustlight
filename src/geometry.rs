@@ -90,6 +90,13 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
     Ok(meshes)
 }
 
+pub enum EmissionType {
+    Zero,
+    Color { v: Color },
+    HSV { scale: f32 },
+    Texture { scale: f32, img: Bitmap },
+}
+
 /// (Triangle) Mesh information
 pub struct Mesh {
     // Name of the triangle mesh
@@ -101,7 +108,7 @@ pub struct Mesh {
     pub uv: Option<Vec<Vector2<f32>>>,
     // Other informations
     pub bsdf: Box<dyn bsdfs::BSDF>,
-    pub emission: Color,
+    pub emission: EmissionType,
     pub cdf: Option<Distribution1D>,
 }
 
@@ -162,9 +169,33 @@ impl Mesh {
                 bsdf: Box::new(bsdfs::diffuse::BSDFDiffuse {
                     diffuse: bsdfs::BSDFColor::Constant(Color::zero()),
                 }),
-                emission: Color::zero(),
+                emission: EmissionType::Zero,
                 cdf: Some(dist_const.normalize()),
             })
+        }
+    }
+
+    pub fn emit(&self, uv: &Option<Vector2<f32>>) -> Color {
+        match &self.emission {
+            EmissionType::Zero => Color::zero(),
+            EmissionType::Color { v } => *v,
+            EmissionType::HSV { scale } => {
+                let c1 = Color {
+                    r: 1.0,
+                    g: 0.0,
+                    b: 0.0,
+                };
+                let c2 = Color {
+                    r: 0.0,
+                    g: 1.0,
+                    b: 0.0,
+                };
+                let uv = uv.unwrap();
+                let x = uv.x.abs() % 1.0;
+                let c = x * c1 + (1.0 - x) * c2;
+                c * (*scale)
+            }
+            EmissionType::Texture { scale, img } => img.pixel_uv(uv.unwrap()) * (*scale),
         }
     }
 
@@ -185,6 +216,15 @@ impl Mesh {
 
     pub fn pdf(&self) -> f32 {
         1.0 / (self.cdf.as_ref().unwrap().total())
+    }
+    pub fn pdf_tri(&self, primitive_id: usize) -> f32 {
+        let id = self.indices[primitive_id];
+        let v0 = self.vertices[id.x];
+        let v1 = self.vertices[id.y];
+        let v2 = self.vertices[id.z];
+
+        let area_tri = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
+        1.0 / area_tri
     }
 
     pub fn naive_intersection(&self, ray: &Ray) -> Option<Intersection> {
@@ -212,10 +252,8 @@ impl Mesh {
         }
     }
 
-    // FIXME: reuse random number
-    pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
-        // Select a triangle
-        let id = self.indices[self.cdf.as_ref().unwrap().sample_discrete(s)];
+    pub fn sample_tri(&self, primitive_id: usize, v: Point2<f32>) -> SampledPosition {
+        let id = self.indices[primitive_id];
         let v0 = self.vertices[id.x];
         let v1 = self.vertices[id.y];
         let v2 = self.vertices[id.z];
@@ -223,7 +261,7 @@ impl Mesh {
         // Select barycentric coordinate on a triangle
         let b = uniform_sample_triangle(v);
 
-        // interpol the point
+        // Geometry normals
         let pos = v0 * b[0] + v1 * b[1] + v2 * (1.0 as f32 - b[0] - b[1]);
         let n_g = {
             let u = v1 - v0;
@@ -231,7 +269,8 @@ impl Mesh {
             v.cross(u).normalize()
         };
 
-        let normal = match &self.normals {
+        // Correct geometry normal if exist
+        let n_g = match &self.normals {
             Some(normals) => {
                 let n0 = normals[id.x];
                 let n1 = normals[id.y];
@@ -258,15 +297,48 @@ impl Mesh {
                 // } else {
                 //     n
                 // }
+
+                // Only gives the n_g for the moment
+                if n_g.dot(n) < 0.0 {
+                    -n_g
+                } else {
+                    n_g
+                }
             }
             None => n_g,
         };
 
+        let uv = match &self.uv {
+            Some(uv) => {
+                let n0 = uv[id.x];
+                let n1 = uv[id.y];
+                let n2 = uv[id.z];
+                let uv_0 = (n0 * b[0] + n1 * b[1] + n2 * (1.0 as f32 - b[0] - b[1])).normalize();
+                Some(uv_0)
+            }
+            None => None,
+        };
+
+        let area_tri = (v1 - v0).cross(v2 - v0).magnitude() * 0.5;
+
         SampledPosition {
             p: Point3::from_vec(pos),
-            n: normal,
-            pdf: PDF::Area(1.0 / (self.cdf.as_ref().unwrap().total())),
+            n: n_g,
+            uv,
+            pdf: PDF::Area(1.0 / area_tri),
+            primitive_id: Some(primitive_id),
         }
+    }
+
+    // FIXME: reuse random number
+    pub fn sample(&self, s: f32, v: Point2<f32>) -> SampledPosition {
+        // Select a triangle
+        let primitive_id = self.cdf.as_ref().unwrap().sample_discrete(s);
+        // Sample a point on the triangle
+        let mut res = self.sample_tri(primitive_id, v);
+        // Modify the pdf to show we pick triangle prop to their area
+        res.pdf = PDF::Area(1.0 / self.cdf.as_ref().unwrap().total());
+        res
     }
 
     // Triangle methods
@@ -332,7 +404,10 @@ impl Mesh {
     }
 
     pub fn is_light(&self) -> bool {
-        !self.emission.is_zero()
+        match &self.emission {
+            EmissionType::Zero => false,
+            _ => true,
+        }
     }
 
     pub fn discard_normals(&mut self) {

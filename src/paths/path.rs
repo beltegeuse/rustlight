@@ -45,6 +45,8 @@ impl<'scene, 'emitter> Path<'scene> {
         let emitter_vertex = Vertex::Light {
             pos: sampled_point.p,
             n: sampled_point.n,
+            uv: sampled_point.uv,
+            primitive_id: sampled_point.primitive_id,
             emitter,
             edge_in: None,
             edge_out: None,

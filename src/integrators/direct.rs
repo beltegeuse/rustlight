@@ -42,7 +42,7 @@ impl IntegratorMC for IntegratorDirect {
         }
 
         // Add the emission for the light intersection
-        l_i += &its.mesh.emission;
+        l_i += &its.mesh.emit(&its.uv);
 
         // Precompute for mis weights
         let weight_nb_bsdf = if self.nb_bsdf_samples == 0 {
@@ -63,6 +63,7 @@ impl IntegratorMC for IntegratorDirect {
         for _ in 0..self.nb_light_samples {
             let light_record = scene.emitters().sample_light(
                 &its.p,
+                Some(&its.n_s),
                 sampler.next(),
                 sampler.next(),
                 sampler.next2d(),
@@ -74,6 +75,26 @@ impl IntegratorMC for IntegratorDirect {
                 && accel.visible(&its.p, &light_record.p)
                 && !its.mesh.bsdf.bsdf_type().is_smooth()
             {
+                // DBG
+                // {
+                //     let v_t = scene
+                //     .emitters()
+                //     .direct_pdf(
+                //         light_record.emitter,
+                //         &LightSamplingPDF {
+                //             o: its.p,
+                //             p: light_record.p,
+                //             n: light_record.n,
+                //             dir: light_record.d
+                //         },
+                //         None,
+                //         None,
+                //     );
+                //     light_record.pdf = v_t;
+                //     // dbg!(v_t);
+                //     // dbg!(&light_record.pdf);
+                // }
+
                 let weight_light = {
                     let pdf_bsdf = its.mesh.bsdf.pdf(
                         &its.uv,
@@ -123,14 +144,22 @@ impl IntegratorMC for IntegratorDirect {
                 match accel.trace(&ray) {
                     Some(next_its) => {
                         // Check that we have intersected a light or not
-                        if next_its.mesh.is_light() && next_its.cos_theta() > 0.0 {
+                        if next_its.mesh.is_light() && next_its.n_g.dot(-ray.d) > 0.0 {
                             let weight_bsdf = match sampled_bsdf.pdf {
                                 PDF::SolidAngle(bsdf_pdf) => {
+                                    // DBG
+                                    // {
+                                    //     dbg!(bsdf_pdf);
+                                    //     dbg!(its.mesh.bsdf.pdf(&its.uv, &its.wi, &sampled_bsdf.d, Domain::SolidAngle, Transport::Importance));
+                                    // }
+
                                     let light_pdf = scene
                                         .emitters()
                                         .direct_pdf(
                                             next_its.mesh,
                                             &LightSamplingPDF::new(&ray, &next_its),
+                                            Some(&its.n_s),
+                                            next_its.primitive_id,
                                         )
                                         .value();
                                     mis_weight(
@@ -147,7 +176,7 @@ impl IntegratorMC for IntegratorDirect {
 
                             l_i += weight_bsdf
                                 * sampled_bsdf.weight
-                                * next_its.mesh.emission
+                                * next_its.mesh.emit(&next_its.uv)
                                 * weight_nb_bsdf;
                         }
                     }
@@ -169,8 +198,11 @@ impl IntegratorMC for IntegratorDirect {
                                             o: ray.o,
                                             p,
                                             n,
+                                            uv: None,
                                             dir: ray.d,
                                         },
+                                        None,
+                                        None,
                                     ) {
                                         mis_weight(
                                             bsdf_pdf * weight_nb_bsdf,

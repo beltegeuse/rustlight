@@ -94,13 +94,13 @@ impl Edge {
                     assert!(scene.emitter_environment.is_none());
 
                     // Sample the participating media
-                    let mrec = m.sample(ray, sampler.next2d());
+                    let mrec = m.sample(ray, sampler.next());
                     let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
                     // We are sure to suceed as the distance is infine...
                     // TODO: Note that this design decision makes the env map incompatible with participating media presence
                     assert_eq!(mrec.exited, false);
                     let new_vertex = Vertex::Volume {
-                        phase_function: PhaseFunction::Isotropic(),
+                        phase_function: m.phase.clone(),
                         pos,
                         d_in: -ray.d,
                         rr_weight: 1.0,
@@ -135,7 +135,7 @@ impl Edge {
             // the distance to the surface
             let mut ray_med = ray.clone();
             ray_med.tfar = intersection_distance;
-            let mrec = m.sample(&ray_med, sampler.next2d());
+            let mrec = m.sample(&ray_med, sampler.next());
             let new_vertex = if !mrec.exited {
                 // Hit the volume
                 // --- Update the distance
@@ -143,7 +143,7 @@ impl Edge {
                 // --- Create the volume vertex
                 let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
                 Vertex::Volume {
-                    phase_function: PhaseFunction::Isotropic(),
+                    phase_function: m.phase.clone(),
                     pos,
                     d_in: -ray.d,
                     rr_weight: 1.0,

@@ -5,7 +5,7 @@ authors = ["Adrien Gruson <adrien.gruson@gmail.com>"]
 edition = "2018"
 
 [features]
-default = ["image", "pbrt", "progress-bar", "mitsuba"]
+default = ["image", "pbrt", "mitsuba"] # "progress-bar"
 pbrt = ["pbrt_rs"]
 mitsuba = ["mitsuba_rs"]
 embree-accel = ["embree"]
@@ -31,6 +31,7 @@ mitsuba_rs = { git = "https://github.com/beltegeuse/mitsuba_rs", optional = true
 lazy_static = "1.4"
 assert_approx_eq = "1.1"
 bitflags = "*"
+itertools = "*" # For partition
 float_extras = "*" # For ldexp
 roots = "*"
 
@@ -38,3 +39,7 @@ roots = "*"
 clap = "*"
 num_cpus = "*"
 log4rs = "*"
+
+# For flamegraph if needed
+#[profile.release]
+#debug = true

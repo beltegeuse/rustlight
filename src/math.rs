@@ -1,5 +1,34 @@
+use crate::structure::Ray;
 use cgmath::*;
 use std;
+
+pub fn closest_squared_distance_ray_point(
+    ray: &Ray,
+    max_dist: Option<f32>,
+    p: &Point3<f32>,
+) -> (Point3<f32>, f32) {
+    let diff = p - ray.o;
+
+    // Compute t
+    let t = ray.d.dot(diff);
+    let t = if t > 0.0 {
+        match max_dist {
+            Some(max_dist) => {
+                if max_dist >= t {
+                    t
+                } else {
+                    max_dist
+                }
+            }
+            None => t,
+        }
+    } else {
+        0.0
+    };
+
+    let closest = ray.o + ray.d * t;
+    (closest, (p - closest).magnitude2())
+}
 
 pub fn abs_vec(v: &Vector3<f32>) -> Vector3<f32> {
     Vector3::new(v.x.abs(), v.y.abs(), v.z.abs())
@@ -40,6 +69,220 @@ pub fn sample_uniform_sphere(u: Point2<f32>) -> Vector3<f32> {
     let r = (1.0 - z * z).max(0.0).sqrt();
     let phi = 2.0 * std::f32::consts::PI * u.y;
     Vector3::new(r * phi.cos(), r * phi.sin(), z)
+}
+
+pub fn acos_fast(x: f32) -> f32 {
+    // From LTC realtime slides
+    let x1 = x.abs();
+    let x2 = x1 * x1;
+    let x3 = x2 * x1;
+    let s = -0.2121144 * x1 + std::f32::consts::FRAC_PI_2;
+    let s = 0.0742610 * x2 + s;
+    let s = -0.0187293 * x3 + s;
+    let s = (1.0 - x1).sqrt() * s;
+    if x >= 0.0 {
+        s
+    } else {
+        std::f32::consts::PI - s
+    }
+}
+
+pub struct NewtonSolverResult {
+    pub pos: f32,
+    pub nb_iter: u16,
+    pub early_quit: bool,
+    pub div_zero: bool,
+}
+
+// Pos: initial guess
+// [min, max]: the range (for bisection)
+// max_iter, digits: precision
+// f_derv and f: function used for newtow
+pub fn newton_raphson_iterate<F, G>(
+    pos: f32,
+    mut min: f32,
+    mut max: f32,
+    max_iter: u16,
+    digits: usize,
+    y: f32,
+    f_derv: F,
+    f: G,
+) -> NewtonSolverResult
+where
+    F: Fn(f32) -> f32,
+    G: Fn(f32) -> f32,
+{
+    let mut res = NewtonSolverResult {
+        pos,
+        nb_iter: 0,
+        early_quit: false,
+        div_zero: false,
+    };
+
+    let factor = float_extras::f64::ldexp(1.0, (1 - digits) as isize) as f32;
+    let mut delta = std::f32::MAX;
+    let mut delta1 = std::f32::MAX;
+
+    let mut count = max_iter;
+
+    loop {
+        // Normalized CDF
+        let f0 = f(res.pos) - y;
+        // Normalized PDF
+        let f1 = f_derv(res.pos);
+
+        let delta2 = delta1;
+        delta1 = delta;
+        count -= 1;
+        if 0.0 == f0 {
+            break; // Converged!
+        }
+        if f1 == 0.0 {
+            res.div_zero = true;
+            break;
+        } else {
+            delta = f0 / f1;
+        }
+
+        if (delta * 2.0).abs() > (delta2).abs() {
+            // last two steps haven't converged, try bisection:
+            delta = if delta > 0.0 {
+                (res.pos - min) / 2.0
+            } else {
+                (res.pos - max) / 2.0
+            };
+        }
+        let old_pos = res.pos;
+        res.pos -= delta; // Update the position
+
+        // Condition when we escape the domain
+        // Just go inside the middle
+        if res.pos <= min {
+            delta = 0.5 * (old_pos - min);
+            res.pos = old_pos - delta;
+            if (res.pos == min) || (res.pos == max) {
+                break;
+            }
+        } else if res.pos >= max {
+            delta = 0.5 * (old_pos - max);
+            res.pos = old_pos - delta;
+            if (res.pos == min) || (res.pos == max) {
+                break;
+            }
+        }
+
+        // update brackets:
+        if delta > 0.0 {
+            max = old_pos;
+        } else {
+            min = old_pos;
+        }
+
+        // Count the number of iterations
+        res.nb_iter += 1;
+        if count == 0 || (res.pos * factor).abs() >= delta.abs() {
+            break; // Finish (exceed number iter or delta is too small)
+        }
+    }
+    res.early_quit = res.nb_iter < max_iter;
+    res
+}
+
+#[derive(Debug)]
+pub enum SolutionCubic {
+    Reals3(f32, f32, f32),
+    Reals2(f32, f32),
+    Real1(f32),
+}
+
+// From: http://math.ivanovo.ac.ru/dalgebra/Khashin/poly/index.html
+// Solve:  x^3 + a*x^2 + b*x + c = 0
+pub fn solve_cubic(a: f32, b: f32, c: f32) -> SolutionCubic {
+    let a2 = a * a;
+    let q = (a2 - 3.0 * b) / 9.0;
+    let r = (a * (2.0 * a2 - 9.0 * b) + 27.0 * c) / 54.0;
+    // equation x^3 + q*x + r = 0
+    let r2 = r * r;
+    let q3 = q * q * q;
+    if r2 <= (q3 + 1.0e-14) {
+        let mut t = r / q3.sqrt();
+        if t < (-1.0) {
+            t = -1.0;
+        }
+        if t > 1.0 {
+            t = 1.0;
+        }
+        t = (t).acos();
+
+        let a = a / 3.0;
+        let q = -2.0 * q.sqrt();
+        let x_0 = q * (t / 3.0).cos() - a;
+        let x_1 = q * ((t + std::f32::consts::PI * 2.0) / 3.0).cos() - a;
+        let x_2 = q * ((t - std::f32::consts::PI * 2.0) / 3.0).cos() - a;
+        SolutionCubic::Reals3(x_0, x_1, x_2)
+    } else {
+        let root3 = |mut x: f32| {
+            // From:  http://prografix.narod.ru
+            if x == 0.0 {
+                // Early out
+                return 0.0;
+            } else if x < 0.0 {
+                x = -x;
+            }
+
+            let mut s = 1.;
+            while x < 1. {
+                x *= 8.;
+                s *= 0.5;
+            }
+            while x > 8. {
+                x *= 0.125;
+                s *= 2.;
+            }
+            let mut r = 1.5;
+            r -= 1. / 3. * (r - x / (r * r));
+            r -= 1. / 3. * (r - x / (r * r));
+            r -= 1. / 3. * (r - x / (r * r));
+            r -= 1. / 3. * (r - x / (r * r));
+            r -= 1. / 3. * (r - x / (r * r));
+            r -= 1. / 3. * (r - x / (r * r));
+            r * s
+        };
+
+        //A =-pow(fabs(r)+sqrt(r2-q3),1./3);
+        let mut a_prime = -root3(r.abs() + (r2 - q3).sqrt());
+        if r < 0.0 {
+            a_prime = -a_prime;
+        }
+        let b_prime = if a_prime == 0.0 { 0.0 } else { q / a_prime };
+
+        let a = a / 3.0;
+        let x_0 = (a_prime + b_prime) - a;
+        let x_1 = -0.5 * (a_prime + b_prime) - a;
+        let x_2 = 0.5 * (3.0f32).sqrt() * (a_prime - b_prime);
+        if x_2 < 1e-14 {
+            SolutionCubic::Reals2(x_0, x_1)
+        } else {
+            SolutionCubic::Real1(x_0)
+        }
+    }
+}
+
+pub fn solve_quadratic_no_opt(a: f32, b: f32, c: f32) -> f32 {
+    if a.abs() < 0.0001 {
+        return -c / b;
+    }
+    let rad = b * b - 4. * a * c;
+    if rad < 0. {
+        return 0.;
+    }
+    let rad = (rad).sqrt();
+    let tmp = (-b - rad) / (2. * a);
+    if tmp < 0. || tmp > 1. {
+        (-b + rad) / (2. * a)
+    } else {
+        tmp
+    }
 }
 
 pub fn solve_quadratic(a: f32, b: f32, c: f32) -> Option<(f32, f32)> {

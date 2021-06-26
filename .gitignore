@@ -9,7 +9,6 @@
 /*.pfm
 /*.exr
 /*.csv
-/*.sh
 /data/*.blend*
 /data/*.bak
 /data/*
@@ -20,3 +19,5 @@
 /*.tar.gz
 /*.zip
 /*.log
+/results-new/
+/tmp.*
