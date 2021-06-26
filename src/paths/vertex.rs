@@ -22,6 +22,8 @@ pub enum Vertex<'scene> {
     Light {
         pos: Point3<f32>,
         n: Vector3<f32>,
+        uv: Option<Vector2<f32>>,
+        primitive_id: Option<usize>,
         emitter: &'scene dyn Emitter,
         edge_in: Option<EdgeID>,
         edge_out: Option<EdgeID>,
@@ -58,7 +60,7 @@ impl<'scene> Vertex<'scene> {
     }
     pub fn on_light_source(&self) -> bool {
         match self {
-            Vertex::Surface { its, .. } => !its.mesh.emission.is_zero(),
+            Vertex::Surface { its, .. } => its.mesh.is_light(),
             Vertex::Sensor { .. } | Vertex::Volume { .. } => false,
             Vertex::Light { .. } => true,
         }
@@ -68,14 +70,14 @@ impl<'scene> Vertex<'scene> {
         match self {
             Vertex::Surface { its, .. } => {
                 if its.n_s.dot(-edge.d) >= 0.0 {
-                    its.mesh.emission
+                    its.mesh.emit(&its.uv)
                 } else {
                     Color::zero()
                 }
             }
             Vertex::Sensor { .. } | Vertex::Volume { .. } => Color::zero(),
             // FIXME: Check the normal orientation
-            Vertex::Light { emitter, .. } => emitter.eval(-edge.d),
+            Vertex::Light { emitter, uv, .. } => emitter.eval(-edge.d, *uv),
         }
     }
 }

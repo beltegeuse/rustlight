@@ -50,7 +50,7 @@ impl Scene {
         }
     }
 
-    pub fn build_emitters(&mut self) {
+    pub fn build_emitters(&mut self, build_ats: bool) {
         // Compute the bounding box
         let mut aabb = AABB::default();
         for m in &self.meshes {
@@ -62,7 +62,7 @@ impl Scene {
         // Append emission mesh to the emitter list
         let mut emitters: Vec<Arc<dyn Emitter>> = vec![];
         for e in &self.meshes {
-            if !e.emission.is_zero() {
+            if e.is_light() {
                 emitters.push(e.clone())
             }
         }
@@ -110,16 +110,22 @@ impl Scene {
             cdf_construct.normalize()
         };
 
-        self.emitters = Some(EmittersState::Build(EmitterSampler {
+        let mut emitter_sampler = EmitterSampler {
             emitters,
             emitters_cdf,
-        }));
+            ats: None,
+        };
+        if build_ats {
+            emitter_sampler.build_ats();
+        }
+
+        self.emitters = Some(EmittersState::Build(emitter_sampler));
     }
 
     pub fn enviroment_luminance(&self, d: Vector3<f32>) -> Color {
         match self.emitter_environment {
             None => Color::zero(),
-            Some(ref env) => env.eval(d),
+            Some(ref env) => env.eval(d, None),
         }
     }
 }

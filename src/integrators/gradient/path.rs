@@ -250,7 +250,7 @@ impl IntegratorGradientPath {
 
             // Add the emission for the light intersection
             if self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
-                l_i.very_direct += &main.its.mesh.emission; // TODO: Add throughput
+                l_i.very_direct += &main.its.mesh.emit(&main.its.uv); // TODO: Add throughput
             }
 
             /////////////////////////////////
@@ -263,7 +263,7 @@ impl IntegratorGradientPath {
                 let main_light_record =
                     scene
                         .emitters()
-                        .sample_light(&main.its.p, r_sel_rand, r_rand, uv_rand);
+                        .sample_light(&main.its.p, None, r_sel_rand, r_rand, uv_rand);
                 let main_light_visible = accel.visible(&main.its.p, &main_light_record.p);
                 let main_emitter_rad = if main_light_visible {
                     main_light_record.weight
@@ -374,7 +374,7 @@ impl IntegratorGradientPath {
                                     // Sample the light from the point
                                     let shift_light_record = scene
                                         .emitters()
-                                        .sample_light(&s.its.p, r_sel_rand, r_rand, uv_rand);
+                                        .sample_light(&s.its.p, None, r_sel_rand, r_rand, uv_rand);
                                     let shift_light_visible =
                                         accel.visible(&s.its.p, &shift_light_record.p);
                                     let shift_emitter_rad = if shift_light_visible {
@@ -485,10 +485,15 @@ impl IntegratorGradientPath {
                     let light_pdf = f64::from(
                         scene
                             .emitters()
-                            .direct_pdf(main.its.mesh, &LightSamplingPDF::new(&main.ray, &main.its))
+                            .direct_pdf(
+                                main.its.mesh,
+                                &LightSamplingPDF::new(&main.ray, &main.its),
+                                None,
+                                None,
+                            )
                             .value(),
                     );
-                    (light_pdf, main_next_mesh.emission)
+                    (light_pdf, main_next_mesh.emit(&main.its.uv))
                 } else {
                     (0.0, Color::zero())
                 }
@@ -665,8 +670,11 @@ impl IntegratorGradientPath {
                                                         o: s.its.p,
                                                         p: main.its.p,
                                                         n: main.its.n_g,
+                                                        uv: main.its.uv,
                                                         dir: shift_d_out_global,
                                                     },
+                                                    None,
+                                                    None,
                                                 )
                                                 .value();
                                             // FIXME: We return without the cos as the light
@@ -801,7 +809,7 @@ impl IntegratorGradientPath {
                                     if let Some(new_its) = new_its {
                                         s.its = new_its;
                                         let shift_emitter_rad = if s.its.mesh.is_light() {
-                                            s.its.mesh.emission
+                                            s.its.mesh.emit(&s.its.uv)
                                         } else {
                                             Color::zero()
                                         };

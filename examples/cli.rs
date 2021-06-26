@@ -102,6 +102,12 @@ fn main() {
                     .help("image scaling factor"),
             )
             .arg(
+                Arg::with_name("equal_time")
+                    .takes_value(true)
+                    .short("z")
+                    .help("equal_time"),
+            )
+            .arg(
                 Arg::with_name("output")
                     .takes_value(true)
                     .short("o")
@@ -114,7 +120,15 @@ fn main() {
                     .default_value("0.0")
                     .help("add medium with defined density"),
             )
+            .arg(
+                Arg::with_name("density_mult")
+                    .takes_value(true)
+                    .short("k")
+                    .default_value("1.0")
+                    .help("density_mult"),
+            )
             .arg(Arg::with_name("log").short("l").takes_value(true))
+            .arg(Arg::with_name("options").short("x").takes_value(true).help("optional behaviors: [ats, no_shading]"))
             .arg(
                 Arg::with_name("nbsamples")
                     .short("n")
@@ -246,9 +260,41 @@ fn main() {
                         .help("use_cdf"),
                 )
                 .arg(
+                    Arg::with_name("disable_aa")
+                        .short("z")
+                        .help("disable_aa"),
+                )
+                .arg(
+                    Arg::with_name("splitting")
+                        .takes_value(true)
+                        .short("k")
+                        .help("splitting"),
+                )
+                .arg(
                     Arg::with_name("use_mis")
                         .short("x")
                         .help("use_mis"),
+                )
+                .arg(
+                    Arg::with_name("warps")
+                    .takes_value(true)
+                    .short("w")
+                    .default_value("")
+                    .help("warps: P = Phase, T = Tr, N = PN"),
+                )
+                .arg( // Not used anymore
+                    Arg::with_name("order")
+                    .takes_value(true)
+                    .short("o")
+                    .default_value("4")
+                    .help("order"),
+                )
+                .arg(
+                    Arg::with_name("warps_strategy")
+                    .takes_value(true)
+                    .short("t")
+                    .default_value("L")
+                    .help("warps_type: L = Linear, B = Bezier, P = Poly"),
                 )
                 .arg(
                     Arg::with_name("strategy")
@@ -463,13 +509,24 @@ fn main() {
 
     //////////////// Load the rendering configuration
     let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), usize);
+    let options = match matches.value_of("options") {
+        Some(opt) => opt.split(" ").collect::<Vec<_>>(),
+        None => vec![],
+    };
+    let use_ats = options.contains(&"ats");
+    let remove_shading_normals = options.contains(&"no_shading");
+    let hsv_lights = options.contains(&"hvs_lights");
+    let texture_lights = options.contains(&"texture_lights");
+    info!("use_ats: {}", use_ats);
+    info!("remove_shading_normals: {}", remove_shading_normals);
 
     //////////////// Load the scene
+
     let scene = matches
         .value_of("scene")
         .expect("no scene parameter provided");
     let scene = rustlight::scene_loader::SceneLoaderManager::default()
-        .load(scene.to_string())
+        .load(scene.to_string(), !remove_shading_normals)
         .expect("error on loading the scene");
     let scene = match matches.value_of("nbthreads").unwrap() {
         "auto" => scene,
@@ -494,7 +551,6 @@ fn main() {
     let mut scene = scene.nb_samples(nb_samples).output_img(imgout_path_str);
 
     ///////////////// Medium
-    // TODO: Read from PBRT file
     {
         let medium_density = value_t_or_exit!(matches.value_of("medium"), String);
         let medium_density = medium_density
@@ -502,20 +558,36 @@ fn main() {
             .into_iter()
             .map(|v| v)
             .collect::<Vec<_>>();
-        let (sigma_s, sigma_a) = match &medium_density[..] {
-            [sigma_s] => (sigma_s.parse().unwrap(), 0.0),
-            [sigma_s, sigma_a] => (sigma_s.parse().unwrap(), sigma_a.parse().unwrap()),
+        let (sigma_s, sigma_a, phase) = match &medium_density[..] {
+            [sigma_s] => (
+                sigma_s.parse().unwrap(),
+                0.0,
+                rustlight::volume::PhaseFunction::Isotropic(),
+            ),
+            [sigma_s, sigma_a] => (
+                sigma_s.parse().unwrap(),
+                sigma_a.parse().unwrap(),
+                rustlight::volume::PhaseFunction::Isotropic(),
+            ),
+            [sigma_s, sigma_a, g] => (
+                sigma_s.parse().unwrap(),
+                sigma_a.parse().unwrap(),
+                rustlight::volume::PhaseFunction::HenyeyGreenstein(g.parse::<f32>().unwrap()),
+            ),
+
             _ => panic!("invalid medium_density: {:?}", medium_density),
         };
 
         if sigma_a + sigma_s != 0.0 {
+            let density_mult = value_t_or_exit!(matches.value_of("density_mult"), f32);
             let sigma_a = rustlight::structure::Color::value(sigma_a);
             let sigma_s = rustlight::structure::Color::value(sigma_s);
-            let sigma_t = sigma_a + sigma_s;
+            let sigma_t = (sigma_a + sigma_s) * density_mult;
             scene.volume = Some(rustlight::volume::HomogenousVolume {
                 sigma_a,
                 sigma_s,
                 sigma_t,
+                phase,
             });
 
             info!("Create volume with: ");
@@ -533,9 +605,30 @@ fn main() {
             scene.camera.scale_image(image_scale);
         }
     }
+    ///////////////// Overide light is needed
+    if hsv_lights || texture_lights {
+        for m in &mut scene.meshes {
+            if m.is_light() {
+                let scale = match m.emission {
+                    rustlight::geometry::EmissionType::Color { v } => v.luminance(),
+                    _ => 1.0,
+                };
+
+                let m = std::sync::Arc::get_mut(m).unwrap();
+                if hsv_lights {
+                    m.emission = rustlight::geometry::EmissionType::HSV { scale };
+                } else {
+                    m.emission = rustlight::geometry::EmissionType::Texture {
+                        scale,
+                        img: rustlight::structure::Bitmap::read("butterfly.jpg"),
+                    };
+                }
+            }
+        }
+    }
 
     // Build internal
-    scene.build_emitters();
+    scene.build_emitters(use_ats);
 
     ///////////////// Get the reconstruction algorithm
     let recons = match matches.subcommand() {
@@ -572,23 +665,78 @@ fn main() {
     let mut int = match matches.subcommand() {
         ("path_kulla", Some(m)) => {
             use rustlight::integrators::explicit::path_kulla::Strategies;
+            use rustlight::integrators::explicit::path_kulla::WrapStrategy;
+            let splitting = match m.value_of("splitting") {
+                Some(v) => Some(v.parse::<f32>().unwrap()),
+                None => None,
+            };
+            let disable_aa = m.is_present("disable_aa");
+            // let order = value_t_or_exit!(m.value_of("order"), usize);
+            let warps = value_t_or_exit!(m.value_of("warps"), String);
+            let warps_strategy = value_t_or_exit!(m.value_of("warps_strategy"), String);
+            let warps_strategy = match warps_strategy.as_ref() {
+                "L" => WrapStrategy::Linear,
+                "B" => WrapStrategy::Bezier,
+                _ => panic!("Need to choose between L and B"),
+            };
 
             let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+            info!("Strategy: {}", strategy);
             let strategy = match strategy.as_ref() {
-                "kulla_ex" => Strategies::KULLA | Strategies::EX,
+                // Kulla variants
                 "kulla_phase" => Strategies::KULLA | Strategies::PHASE,
+                "kulla_ex" => Strategies::KULLA | Strategies::EX,
+                "kulla_best_ex" => Strategies::KULLA | Strategies::EX | Strategies::BEST,
+                "kulla_warp_ex" => Strategies::KULLA | Strategies::EX | Strategies::WRAP,
+                "kulla_phase_taylor_ex" => {
+                    Strategies::KULLA | Strategies::TAYLOR_PHASE | Strategies::EX
+                }
+                "kulla_tr_taylor_ex" => Strategies::KULLA | Strategies::TAYLOR_TR | Strategies::EX,
+                // Kulla clamped
+                "kulla_clamped_phase" => Strategies::KULLA_CLAMPED | Strategies::PHASE, //< Biased
+                "kulla_clamped_ex" => Strategies::KULLA_CLAMPED | Strategies::EX,
+                "kulla_clamped_best_ex" => {
+                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::BEST
+                }
+                "kulla_clamped_warp_ex" => {
+                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::WRAP
+                }
+                "kulla_clamped_phase_taylor_ex" => {
+                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::TAYLOR_PHASE
+                }
+                "kulla_clamped_tr_taylor_ex" => {
+                    Strategies::KULLA_CLAMPED | Strategies::TAYLOR_TR | Strategies::EX
+                }
+                // TR
                 "tr_ex" => Strategies::TR | Strategies::EX,
                 "tr_phase" => Strategies::TR | Strategies::PHASE,
+                // PN
+                "pn_ex" => Strategies::POINT_NORMAL | Strategies::EX,
+                "pn_tr_taylor_ex" => {
+                    Strategies::POINT_NORMAL | Strategies::TAYLOR_TR | Strategies::EX
+                }
+                "pn_phase_taylor_ex" => {
+                    Strategies::POINT_NORMAL | Strategies::TAYLOR_PHASE | Strategies::EX
+                }
+                "pn_warp_ex" => Strategies::POINT_NORMAL | Strategies::WRAP | Strategies::EX,
+                "pn_best_ex" => Strategies::POINT_NORMAL | Strategies::EX | Strategies::BEST,
                 _ => panic!("invalid strategy: {}", strategy),
             };
-            let use_cdf = m.value_of("use_cdf").map(|v| v.parse().unwrap());
             let use_mis = m.is_present("use_mis");
+
+            info!(" - use_mis       : {}", use_mis);
+            info!(" - warps         : {}", warps);
+            info!(" - warps_strategy: {:?}", warps_strategy);
+            info!(" - splitting         : {:?}", splitting);
 
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
                     strategy,
-                    use_cdf,
                     use_mis,
+                    warps,
+                    warps_strategy,
+                    splitting,
+                    use_aa: !disable_aa,
                 },
             ))
         }
@@ -957,12 +1105,23 @@ fn main() {
         _ => panic!("Wrong sampler type provided {:?}", sampler),
     };
 
-    let img = if matches.is_present("average") {
+    let img = if matches.is_present("equal_time") {
+        let time_out = value_t_or_exit!(matches.value_of("equal_time"), f32) * 1000.0;
+        info!("Time out in ms: {}", time_out);
+        let mut int = IntegratorType::Primal(Box::new(
+            rustlight::integrators::equal_time::IntegratorEqualTime {
+                target_time_ms: time_out as u128,
+                integrator: int,
+            },
+        ));
+        int.compute(sampler.as_mut(), &scene)
+    } else if matches.is_present("average") {
         let time_out = match_infinity(matches.value_of("average").unwrap());
         let mut int =
             IntegratorType::Primal(Box::new(rustlight::integrators::avg::IntegratorAverage {
                 time_out,
                 integrator: int,
+                dump_all: true,
             }));
         int.compute(sampler.as_mut(), &scene)
     } else {
@@ -970,5 +1129,6 @@ fn main() {
     };
 
     // Save the image
+    info!("Save final image: {}", imgout_path_str);
     img.save("primal", imgout_path_str);
 }

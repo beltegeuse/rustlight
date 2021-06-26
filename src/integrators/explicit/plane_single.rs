@@ -57,6 +57,12 @@ impl RectangularLightSource {
 
         let n = u.cross(v);
         info!("Light source normal: {:?}", n);
+
+        let emission = match emitter.emission {
+            crate::geometry::EmissionType::Color { v } => v,
+            _ => panic!(),
+        };
+
         RectangularLightSource {
             o,
             n,
@@ -64,7 +70,7 @@ impl RectangularLightSource {
             v,
             u_l,
             v_l,
-            emission: emitter.emission,
+            emission,
         }
     }
 }
@@ -301,7 +307,7 @@ impl Integrator for IntegratorSinglePlane {
         let emitters = scene
             .meshes
             .iter()
-            .filter(|m| !m.emission.is_zero())
+            .filter(|m| m.is_light())
             .collect::<Vec<_>>();
         let rect_lights = {
             emitters
@@ -338,7 +344,7 @@ impl Integrator for IntegratorSinglePlane {
             // TODO: Check if it is the code
             // Need to check the intersection distance iff need to failed ...
             // ray_med.tfar = intersection_distance;
-            let mrec = m.sample(&ray_med, sampler.next2d());
+            let mrec = m.sample(&ray_med, sampler.next());
 
             // Sample planes
             let sample = sampler.next2d();

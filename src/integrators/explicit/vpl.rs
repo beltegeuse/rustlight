@@ -277,7 +277,7 @@ impl IntegratorVPL {
 
         // Self emission
         if its.cos_theta() > 0.0 {
-            l_i += &(its.mesh.emission);
+            l_i += its.mesh.emit(&its.uv);
         }
 
         for vpl in vpls {
@@ -477,10 +477,9 @@ impl IntegratorVPL {
             None => {
                 if let Some(m) = &scene.volume {
                     // Sample the participating media
-                    let mrec = m.sample(&ray, sampler.next2d());
+                    let mrec = m.sample(&ray, sampler.next());
                     assert!(!mrec.exited);
                     let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
-                    let phase_function = PhaseFunction::Isotropic(); // FIXME:
                     l_i *= self.gathering_volume(
                         scene.volume.as_ref(),
                         accel,
@@ -488,13 +487,13 @@ impl IntegratorVPL {
                         norm_vpl,
                         -ray.d,
                         pos,
-                        &phase_function,
+                        &m.phase,
                     ) * mrec.w;
                     return l_i;
                 } else {
                     return match &scene.emitter_environment {
                         None => l_i,
-                        Some(envmap) => l_i + envmap.eval(ray.d),
+                        Some(envmap) => l_i + envmap.eval(ray.d, None),
                     };
                 }
             }
@@ -503,10 +502,9 @@ impl IntegratorVPL {
         if let Some(m) = &scene.volume {
             let mut ray_med = ray.clone();
             ray_med.tfar = its.dist;
-            let mrec = m.sample(&ray_med, sampler.next2d());
+            let mrec = m.sample(&ray_med, sampler.next());
             if !mrec.exited {
                 let pos = Point3::from_vec(ray.o.to_vec() + ray.d * mrec.t);
-                let phase_function = PhaseFunction::Isotropic(); // FIXME:
                 l_i += self.gathering_volume(
                     scene.volume.as_ref(),
                     accel,
@@ -514,7 +512,7 @@ impl IntegratorVPL {
                     norm_vpl,
                     -ray.d,
                     pos,
-                    &phase_function,
+                    &m.phase,
                 ) * mrec.w;
                 l_i
             } else {

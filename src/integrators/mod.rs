@@ -373,6 +373,33 @@ pub fn generate_img_blocks(
     image_blocks
 }
 
+pub fn compute_mc_simple<T: IntegratorMC + Integrator>(
+    int: &T,
+    sampler: &mut dyn Sampler,
+    accel: &dyn Acceleration,
+    scene: &Scene,
+) -> BufferCollection {
+    // Here we can to the classical parallelisation
+    assert_ne!(scene.nb_samples, 0);
+    let buffernames = vec!["primal".to_string()];
+
+    // Render the image blocks
+    let mut image = BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
+
+    for iy in 0..image.size.y {
+        for ix in 0..image.size.x {
+            sampler.next_pixel(Point2::new(ix, iy));
+            for _ in 0..scene.nb_samples {
+                let c = int.compute_pixel((ix, iy), accel, scene, sampler);
+                image.accumulate(Point2 { x: ix, y: iy }, c, &"primal".to_string());
+                sampler.next_sample();
+            }
+        }
+    }
+    image.scale(1.0 / (scene.nb_samples as f32));
+    image
+}
+
 pub fn compute_mc<T: IntegratorMC + Integrator>(
     int: &T,
     sampler: &mut dyn Sampler,
@@ -453,6 +480,7 @@ pub fn mis_weight(pdf_a: f32, pdf_b: f32) -> f32 {
 pub mod ao;
 pub mod avg;
 pub mod direct;
+pub mod equal_time;
 pub mod explicit;
 pub mod gradient;
 pub mod mcmc;

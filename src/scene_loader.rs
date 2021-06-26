@@ -16,7 +16,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub trait SceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>>;
+    fn load(&self, filename: &str, use_shading_normal: bool) -> Result<Scene, Box<dyn Error>>;
 }
 pub struct SceneLoaderManager {
     loader: HashMap<String, Rc<dyn SceneLoader>>,
@@ -25,13 +25,17 @@ impl SceneLoaderManager {
     pub fn register(&mut self, name: &str, loader: Rc<dyn SceneLoader>) {
         self.loader.insert(name.to_string(), loader);
     }
-    pub fn load(&self, filename: String) -> Result<Scene, Box<dyn Error>> {
+    pub fn load(
+        &self,
+        filename: String,
+        use_shading_normal: bool,
+    ) -> Result<Scene, Box<dyn Error>> {
         let filename_ext = match std::path::Path::new(&filename).extension() {
             None => panic!("No file extension provided"),
             Some(x) => std::ffi::OsStr::to_str(x).expect("Issue to unpack the file"),
         };
         if let Some(loader) = self.loader.get(filename_ext) {
-            loader.load(&filename)
+            loader.load(&filename, use_shading_normal)
         } else {
             panic!(
                 "Impossible to found scene loader for {} extension",
@@ -78,12 +82,13 @@ impl PBRTSceneLoader {
         materials: &HashMap<String, pbrt_rs::BSDF>,
         textures: &HashMap<String, pbrt_rs::Texture>,
         matrix: Matrix4<f32>,
+        use_shading_normal: bool,
     ) -> Option<Mesh> {
         match m.data {
             pbrt_rs::Shape::Ply { filename, .. } => {
                 m.data =
                     pbrt_rs::ply::read_ply(std::path::Path::new(&filename), false).to_trimesh();
-                PBRTSceneLoader::transform_mesh(m, materials, textures, matrix)
+                PBRTSceneLoader::transform_mesh(m, materials, textures, matrix, use_shading_normal)
             }
             pbrt_rs::Shape::TriMesh {
                 uv,
@@ -93,19 +98,23 @@ impl PBRTSceneLoader {
             } => {
                 let mat = matrix * m.matrix;
                 let reverse_orientation = m.reverse_orientation;
-                let normals = match normals {
-                    Some(ref v) => Some(
-                        v.iter()
-                            .map(|n| {
-                                mat.transform_vector(if reverse_orientation {
-                                    -n.clone()
-                                } else {
-                                    n.clone()
+                let normals = if use_shading_normal {
+                    match normals {
+                        Some(ref v) => Some(
+                            v.iter()
+                                .map(|n| {
+                                    mat.transform_vector(if reverse_orientation {
+                                        -n.clone()
+                                    } else {
+                                        n.clone()
+                                    })
                                 })
-                            })
-                            .collect(),
-                    ),
-                    None => None,
+                                .collect(),
+                        ),
+                        None => None,
+                    }
+                } else {
+                    None
                 };
                 let points = points
                     .into_iter()
@@ -130,8 +139,9 @@ impl PBRTSceneLoader {
                 if let Some(mut mesh) = mesh {
                     mesh.bsdf = bsdf;
                     if m.emission.is_some() {
-                        mesh.emission =
-                            convert_spectrum_to_color(m.emission.as_ref().unwrap(), None);
+                        mesh.emission = geometry::EmissionType::Color {
+                            v: convert_spectrum_to_color(m.emission.as_ref().unwrap(), None),
+                        };
                     }
                     Some(mesh)
                 } else {
@@ -147,19 +157,11 @@ impl PBRTSceneLoader {
 }
 #[cfg(feature = "pbrt")]
 impl SceneLoader for PBRTSceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
+    fn load(&self, filename: &str, use_shading_normal: bool) -> Result<Scene, Box<dyn Error>> {
         let mut scene_info = pbrt_rs::Scene::default();
         let mut state = pbrt_rs::State::default();
         pbrt_rs::read_pbrt_file(filename, &mut scene_info, &mut state);
         let wk = std::path::Path::new(filename).parent().unwrap();
-
-        // Then do some transformation
-        // if it is necessary
-        for s in &mut scene_info.shapes {
-            match &mut s.data {
-                _ => (),
-            }
-        }
 
         // Load the data
         let materials = scene_info.materials;
@@ -167,7 +169,15 @@ impl SceneLoader for PBRTSceneLoader {
         let mut meshes = scene_info
             .shapes
             .into_iter()
-            .map(|m| PBRTSceneLoader::transform_mesh(m, &materials, &textures, Matrix4::identity()))
+            .map(|m| {
+                PBRTSceneLoader::transform_mesh(
+                    m,
+                    &materials,
+                    &textures,
+                    Matrix4::identity(),
+                    use_shading_normal,
+                )
+            })
             .filter(|x| x.is_some())
             .map(|m| m.unwrap())
             .collect::<Vec<_>>();
@@ -180,7 +190,13 @@ impl SceneLoader for PBRTSceneLoader {
                     .clone()
                     .into_iter()
                     .map(|m| {
-                        PBRTSceneLoader::transform_mesh(m, &materials, &textures, instance.matrix)
+                        PBRTSceneLoader::transform_mesh(
+                            m,
+                            &materials,
+                            &textures,
+                            instance.matrix,
+                            use_shading_normal,
+                        )
                     })
                     .filter(|x| x.is_some())
                     .map(|m| m.unwrap()),
@@ -301,7 +317,7 @@ impl SceneLoader for PBRTSceneLoader {
 pub struct MTSSceneLoader {}
 #[cfg(feature = "mitsuba")]
 impl SceneLoader for MTSSceneLoader {
-    fn load(&self, filename: &str) -> Result<Scene, Box<dyn Error>> {
+    fn load(&self, filename: &str, use_shading_normal: bool) -> Result<Scene, Box<dyn Error>> {
         // Load the scene
         let mut mts = mitsuba_rs::parse(filename)?;
         let wk = std::path::Path::new(filename).parent().unwrap();
@@ -386,7 +402,11 @@ impl SceneLoader for MTSSceneLoader {
                             name: "".to_owned(), // Does this is the name to use?
                             vertices,
                             indices: mesh_mts.indices,
-                            normals: if face_normal { None } else { mesh_mts.normals },
+                            normals: if face_normal || !use_shading_normal {
+                                None
+                            } else {
+                                mesh_mts.normals
+                            },
                             uv: mesh_mts.uv,
                             bsdf: match &option.bsdf {
                                 Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
@@ -397,13 +417,15 @@ impl SceneLoader for MTSSceneLoader {
                             emission: match &option.emitter {
                                 Some(emitter) => {
                                     let rgb = emitter.radiance.clone().as_rgb().unwrap();
-                                    Color {
-                                        r: rgb.r,
-                                        g: rgb.g,
-                                        b: rgb.b,
+                                    geometry::EmissionType::Color {
+                                        v: Color {
+                                            r: rgb.r,
+                                            g: rgb.g,
+                                            b: rgb.b,
+                                        },
                                     }
                                 }
-                                None => Color::zero(),
+                                None => geometry::EmissionType::Zero,
                             },
                             cdf: None,
                         }];
@@ -445,10 +467,12 @@ impl SceneLoader for MTSSceneLoader {
                         if let Some(v) = option.emitter {
                             for m in &mut meshes {
                                 let rgb = v.radiance.clone().as_rgb().unwrap();
-                                m.emission = Color {
-                                    r: rgb.r,
-                                    g: rgb.g,
-                                    b: rgb.b,
+                                m.emission = geometry::EmissionType::Color {
+                                    v: Color {
+                                        r: rgb.r,
+                                        g: rgb.g,
+                                        b: rgb.b,
+                                    },
                                 };
                             }
                         }
@@ -492,13 +516,15 @@ impl SceneLoader for MTSSceneLoader {
                             emission: match &shape.option.emitter {
                                 Some(emitter) => {
                                     let rgb = emitter.radiance.clone().as_rgb().unwrap();
-                                    Color {
-                                        r: rgb.r,
-                                        g: rgb.g,
-                                        b: rgb.b,
+                                    geometry::EmissionType::Color {
+                                        v: Color {
+                                            r: rgb.r,
+                                            g: rgb.g,
+                                            b: rgb.b,
+                                        },
                                     }
                                 }
-                                None => Color::zero(),
+                                None => geometry::EmissionType::Zero,
                             },
                             cdf: None,
                         }];
@@ -548,13 +574,15 @@ impl SceneLoader for MTSSceneLoader {
                             emission: match &option.emitter {
                                 Some(emitter) => {
                                     let rgb = emitter.radiance.clone().as_rgb().unwrap();
-                                    Color {
-                                        r: rgb.r,
-                                        g: rgb.g,
-                                        b: rgb.b,
+                                    geometry::EmissionType::Color {
+                                        v: Color {
+                                            r: rgb.r,
+                                            g: rgb.g,
+                                            b: rgb.b,
+                                        },
                                     }
                                 }
-                                None => Color::zero(),
+                                None => geometry::EmissionType::Zero,
                             },
                             cdf: None,
                         }];
@@ -577,6 +605,61 @@ impl SceneLoader for MTSSceneLoader {
 
         // Other
         let emitter_environment = None;
+        let mut emitters: Vec<Box<dyn Emitter>> = Vec::new();
+        {
+            for x in mts.emitters {
+                match x {
+                    mitsuba_rs::Emitter::Point {
+                        position,
+                        intensity,
+                        to_world,
+                        ..
+                    } => {
+                        let position = to_world.as_matrix().transform_point(position);
+                        let rgb = intensity.clone().as_rgb().unwrap();
+                        emitters.push(Box::new(crate::emitter::PointEmitter {
+                            intensity: Color {
+                                r: rgb.r,
+                                g: rgb.g,
+                                b: rgb.b,
+                            },
+                            position,
+                        }))
+                    }
+                    mitsuba_rs::Emitter::PointNormal {
+                        position,
+                        intensity,
+                        normal,
+                        to_world,
+                        ..
+                    } => {
+                        let trans = to_world.as_matrix();
+                        let position = trans.transform_point(position);
+
+                        // Get the normal and normalize it
+                        let normal = trans.transform_vector(normal);
+                        let normal_l = normal.magnitude();
+                        dbg!(&normal);
+                        assert!(normal_l != 0.0);
+                        let normal = normal / normal_l;
+
+                        let rgb = intensity.clone().as_rgb().unwrap();
+                        emitters.push(Box::new(crate::emitter::PointNormalEmitter {
+                            intensity: Color {
+                                r: rgb.r,
+                                g: rgb.g,
+                                b: rgb.b,
+                            },
+                            position,
+                            normal,
+                        }))
+                    }
+                    _ => {
+                        warn!("Ignoring emitter");
+                    }
+                }
+            }
+        };
 
         let meshes = meshes.into_iter().map(|v| Arc::new(v)).collect();
         let volume = if mts.medium.is_empty() {
@@ -589,7 +672,7 @@ impl SceneLoader for MTSSceneLoader {
                     sigma_s,
                     sigma_a,
                     scale,
-                    ..
+                    phase,
                 } => {
                     let sigma_a = sigma_a.clone().as_rgb().unwrap();
                     let sigma_a = Color {
@@ -608,11 +691,21 @@ impl SceneLoader for MTSSceneLoader {
                         sigma_a, sigma_s
                     );
 
+                    let phase = match phase {
+                        mitsuba_rs::PhaseFunction::Isotropic => {
+                            crate::volume::PhaseFunction::Isotropic()
+                        }
+                        mitsuba_rs::PhaseFunction::HG { g } => {
+                            crate::volume::PhaseFunction::HenyeyGreenstein(*g)
+                        }
+                    };
+
                     let sigma_t = sigma_a + sigma_s;
                     Some(crate::volume::HomogenousVolume {
                         sigma_a,
                         sigma_s,
                         sigma_t,
+                        phase,
                     })
                 }
             }
@@ -626,7 +719,7 @@ impl SceneLoader for MTSSceneLoader {
             output_img_path: "out.pfm".to_string(),
             emitter_environment,
             volume,
-            emitters: Some(EmittersState::Unbuild(vec![])),
+            emitters: Some(EmittersState::Unbuild(emitters)),
             bsphere: None,
         })
     }

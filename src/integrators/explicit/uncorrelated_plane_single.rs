@@ -24,7 +24,7 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
         let emitters = scene
             .meshes
             .iter()
-            .filter(|m| !m.emission.is_zero())
+            .filter(|m| m.is_light())
             .collect::<Vec<_>>();
 
         let rect_lights = {
@@ -62,7 +62,7 @@ impl Integrator for IntegratorSinglePlaneUncorrelated {
             // TODO: Check if it is the code
             // Need to check the intersection distance iff need to failed ...
             // ray_med.tfar = intersection_distance;
-            let mrec = m.sample(&ray_med, sampler.next2d());
+            let mrec = m.sample(&ray_med, sampler.next());
 
             // Sample planes
             let sample = sampler.next2d();
