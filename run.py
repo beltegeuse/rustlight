@@ -64,7 +64,7 @@ def run_variations(output, scene, media_config, variations, config, delete=True)
         command += [
             '-o', f'{output}/{variation["name"]}.exr',
             scene,
-            'path_kulla',
+            'point_normal',
         ]
         command += shlex.split(variation["options"])
         print('=======================')
@@ -114,37 +114,37 @@ def canonical_experiment():
     # Isotropic-point
     exp += ["iso-point"]
     variations = [
-        {"name": "kulla", "options": '-s kulla_ex'},
-        {"name": "kulla_warp_TB",
-            "options": '-s kulla_warp_ex -w "T" -t "B"'},
-        {"name": "kulla_tr_taylor_o6",
-            "options": '-s kulla_tr_taylor_ex -o 6'},
+        {"name": "eq", "options": '-s eq_ex'},
+        {"name": "eq_warp_TB",
+            "options": '-s eq_warp_ex -w "T" -t "B"'},
+        {"name": "eq_tr_taylor_o6",
+            "options": '-s eq_tr_taylor_ex -o 6'},
     ]
     infos.append(run_variations("results/point",
-                "../scene/point_no_default.xml", "0.5:0.2", variations, ISO_CONFIG))
+                "scene/point-normal/point.xml", "0.5:0.2", variations, ISO_CONFIG))
 
     # # Anisotropic-point
     exp += ["aniso-point"]
     variations = [
-        {"name": "kulla", "options": '-s kulla_ex'},
-        {"name": "kulla_warp_PB",
-            "options": '-s kulla_warp_ex -w "P" -t "B"'},
-        {"name": "kulla_warp_PTB",
-            "options": '-s kulla_warp_ex -w "PT" -t "B"'},
-        {"name": "kulla_warp_TPB",
-            "options": '-s kulla_warp_ex -w "TP" -t "B"'},
-        {"name": "kulla_phase_taylor_o6",
-            "options": '-s kulla_phase_taylor_ex -o 6'},
-        {"name": "kulla_best",
-            "options": '-s kulla_best_ex'},
+        {"name": "eq", "options": '-s eq_ex'},
+        {"name": "eq_warp_PB",
+            "options": '-s eq_warp_ex -w "P" -t "B"'},
+        {"name": "eq_warp_PTB",
+            "options": '-s eq_warp_ex -w "PT" -t "B"'},
+        {"name": "eq_warp_TPB",
+            "options": '-s eq_warp_ex -w "TP" -t "B"'},
+        {"name": "eq_phase_taylor_o6",
+            "options": '-s eq_phase_taylor_ex -o 6'},
+        {"name": "eq_best",
+            "options": '-s eq_best_ex'},
     ]
     infos.append(run_variations("results/point_g_9",
-                "../scene/point_no_default.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
+                "scene/point-normal/point.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
 
     # Isotropic-PN
     exp += ["iso-pn"]
     variations = [
-        {"name": "kulla", "options": '-s kulla_clamped_ex'},
+        {"name": "eq", "options": '-s eq_clamped_ex'},
         {"name": "pn",
             "options": '-s pn_ex'},
         {"name": "pn_warp_TB",
@@ -153,12 +153,12 @@ def canonical_experiment():
             "options": '-s pn_tr_taylor_ex -o 6'},
     ]
     infos.append(run_variations("results/point-normal",
-                "../scene/point_normal_no_default_up.xml", "0.5:0.2", variations, ISO_CONFIG))
+                "scene/point-normal/point_normal.xml", "0.5:0.2", variations, ISO_CONFIG))
 
     # Anisotropic-PN
     exp += ["aniso-pn"]
     variations = [
-        {"name": "kulla", "options": '-s kulla_clamped_ex'},
+        {"name": "eq", "options": '-s eq_clamped_ex'},
         {"name": "pn",
             "options": '-s pn_ex'},
         {"name": "pn_warp_PB",
@@ -173,7 +173,7 @@ def canonical_experiment():
             "options": '-s pn_best_ex'},
     ]
     infos.append(run_variations("results/point-normal_g_9",
-                "../scene/point_normal_no_default_up.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
+                "scene/point-normal/point_normal.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
 
     # Print informations
     for e, ins in zip(exp, infos):
@@ -192,11 +192,11 @@ def buddha_experiment():
     variations = [
         {"name": "splitting-pn", "options": '-s pn_ex -k 0.04 -z'},
         {"name": "splitting-pn-best", "options": '-s pn_best_ex -k 0.04 -z'},
-        {"name": "splitting-equiangular-clamped", "options": '-s kulla_clamped_ex -k 0.04 -z'},
+        {"name": "splitting-equiangular-clamped", "options": '-s eq_clamped_ex -k 0.04 -z'},
     ]
 
-    infos = run_variations("results/buddha_1thread_ats_splitting",
-                "../scene/blender/buddha_pbrt/buddha.pbrt", "0.7:0.2", variations, CONFIG)
+    infos = run_variations("results/buddha",
+                "scene/point-normal/buddha/scene.pbrt", "0.7:0.2", variations, CONFIG)
 
 def retro_experiment():
     CONFIG = {
@@ -208,11 +208,11 @@ def retro_experiment():
     variations = [
         {"name": "splitting-pn", "options": '-s pn_ex -k 0.04 -z'},
         {"name": "splitting-pn-best", "options": '-s pn_best_ex -k 0.04 -z'},
-        {"name": "splitting-equiangular-clamped", "options": '-s kulla_clamped_ex -k 0.04 -z'},
+        {"name": "splitting-equiangular-clamped", "options": '-s eq_clamped_ex -k 0.04 -z'},
     ]
 
-    infos = run_variations("results/retrowave_ats_splitting_plane",
-                "../scene/retrowave.pbrt", "0.1:0.1:0.8", variations, CONFIG, delete=False)
+    infos = run_variations("results/retrowave",
+                "scene/point-normal/retrowave/scene.pbrt", "0.1:0.1:0.8", variations, CONFIG, delete=False)
 
 canonical_experiment()
 buddha_experiment()

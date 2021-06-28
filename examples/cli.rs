@@ -251,14 +251,8 @@ fn main() {
                     ),
             )
             .subcommand(
-                SubCommand::with_name("path_kulla")
+                SubCommand::with_name("point_normal")
                 .about("path tracing for single scattering")
-                .arg(
-                    Arg::with_name("use_cdf")
-                        .takes_value(true)
-                        .short("c")
-                        .help("use_cdf"),
-                )
                 .arg(
                     Arg::with_name("disable_aa")
                         .short("z")
@@ -294,13 +288,13 @@ fn main() {
                     .takes_value(true)
                     .short("t")
                     .default_value("L")
-                    .help("warps_type: L = Linear, B = Bezier, P = Poly"),
+                    .help("warps_type: L = Linear, B = Bezier"),
                 )
                 .arg(
                     Arg::with_name("strategy")
                         .takes_value(true)
                         .short("s")
-                        .help("different sampling strategy: [tr_phase, tr_ex, kulla_phase, kulla_ex]")
+                        .help("different sampling strategy: [tr_phase, tr_ex, eq_phase, eq_ex, ...]")
                         .default_value("all"),
                 )
             )
@@ -663,9 +657,9 @@ fn main() {
 
     ///////////////// Create the main integrator
     let mut int = match matches.subcommand() {
-        ("path_kulla", Some(m)) => {
-            use rustlight::integrators::explicit::path_kulla::Strategies;
-            use rustlight::integrators::explicit::path_kulla::WrapStrategy;
+        ("point_normal", Some(m)) => {
+            use rustlight::integrators::explicit::point_normal::Strategies;
+            use rustlight::integrators::explicit::point_normal::WrapStrategy;
             let splitting = match m.value_of("splitting") {
                 Some(v) => Some(v.parse::<f32>().unwrap()),
                 None => None,
@@ -684,28 +678,28 @@ fn main() {
             info!("Strategy: {}", strategy);
             let strategy = match strategy.as_ref() {
                 // Kulla variants
-                "kulla_phase" => Strategies::KULLA | Strategies::PHASE,
-                "kulla_ex" => Strategies::KULLA | Strategies::EX,
-                "kulla_best_ex" => Strategies::KULLA | Strategies::EX | Strategies::BEST,
-                "kulla_warp_ex" => Strategies::KULLA | Strategies::EX | Strategies::WRAP,
-                "kulla_phase_taylor_ex" => {
-                    Strategies::KULLA | Strategies::TAYLOR_PHASE | Strategies::EX
+                "eq_phase" => Strategies::EQUIANGULAR | Strategies::PHASE,
+                "eq_ex" => Strategies::EQUIANGULAR | Strategies::EX,
+                "eq_best_ex" => Strategies::EQUIANGULAR | Strategies::EX | Strategies::BEST,
+                "eq_warp_ex" => Strategies::EQUIANGULAR | Strategies::EX | Strategies::WRAP,
+                "eq_phase_taylor_ex" => {
+                    Strategies::EQUIANGULAR | Strategies::TAYLOR_PHASE | Strategies::EX
                 }
-                "kulla_tr_taylor_ex" => Strategies::KULLA | Strategies::TAYLOR_TR | Strategies::EX,
+                "eq_tr_taylor_ex" => Strategies::EQUIANGULAR | Strategies::TAYLOR_TR | Strategies::EX,
                 // Kulla clamped
-                "kulla_clamped_phase" => Strategies::KULLA_CLAMPED | Strategies::PHASE, //< Biased
-                "kulla_clamped_ex" => Strategies::KULLA_CLAMPED | Strategies::EX,
-                "kulla_clamped_best_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::BEST
+                "eq_clamped_phase" => Strategies::EQUIANGULAR_CLAMPED | Strategies::PHASE, //< Biased
+                "eq_clamped_ex" => Strategies::EQUIANGULAR_CLAMPED | Strategies::EX,
+                "eq_clamped_best_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::EX | Strategies::BEST
                 }
-                "kulla_clamped_warp_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::WRAP
+                "eq_clamped_warp_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::EX | Strategies::WRAP
                 }
-                "kulla_clamped_phase_taylor_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::TAYLOR_PHASE
+                "eq_clamped_phase_taylor_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::EX | Strategies::TAYLOR_PHASE
                 }
-                "kulla_clamped_tr_taylor_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::TAYLOR_TR | Strategies::EX
+                "eq_clamped_tr_taylor_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::TAYLOR_TR | Strategies::EX
                 }
                 // TR
                 "tr_ex" => Strategies::TR | Strategies::EX,
@@ -730,7 +724,7 @@ fn main() {
             info!(" - splitting         : {:?}", splitting);
 
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
+                rustlight::integrators::explicit::point_normal::IntegratorPath {
                     strategy,
                     use_mis,
                     warps,
