@@ -30,7 +30,7 @@ impl Poly4 {
     }
 
     pub fn tr_phase(
-        pn: &crate::integrators::explicit::path_kulla::KullaSampling,
+        pn: &crate::integrators::explicit::point_normal::EquiAngularSampling,
         sigma_t: f32,
         g: f32,
     ) -> Self {
@@ -93,7 +93,10 @@ impl Poly4 {
         }
     }
 
-    pub fn tr(pn: &crate::integrators::explicit::path_kulla::KullaSampling, sigma_t: f32) -> Self {
+    pub fn tr(
+        pn: &crate::integrators::explicit::point_normal::EquiAngularSampling,
+        sigma_t: f32,
+    ) -> Self {
         // let delta = pn.delta;
         let d_norm = pn.d_l;
 
@@ -213,7 +216,7 @@ impl Poly6 {
 
     #[rustfmt::skip]
     pub fn tr_phase(
-        pn: &crate::integrators::explicit::path_kulla::KullaSampling,
+        pn: &crate::integrators::explicit::point_normal::EquiAngularSampling,
         sigma_t: f32,
         g: f32,
     ) -> Self {
@@ -280,10 +283,10 @@ impl Poly6 {
     }
 
     pub fn tr(
-        kulla: &crate::integrators::explicit::path_kulla::KullaSampling,
+        equiangular: &crate::integrators::explicit::point_normal::EquiAngularSampling,
         sigma_t: f32,
     ) -> Self {
-        let d_norm = kulla.d_l;
+        let d_norm = equiangular.d_l;
 
         // Note that this constant get cancel out
         // when normalizating the PDF

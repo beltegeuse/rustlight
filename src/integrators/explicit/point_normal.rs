@@ -1,7 +1,7 @@
 use crate::integrators::*;
 use crate::math::*;
 use crate::volume::*;
-use crate::{emitter::Emitter, integrators::explicit::poly::*};
+use crate::{emitter::Emitter, integrators::explicit::point_normal_poly::*};
 use cgmath::{InnerSpace, Point2, Point3, Vector3};
 
 // Trait responsible to distance sampling
@@ -12,7 +12,7 @@ pub trait DistanceSampling {
 }
 
 #[derive(Debug)]
-pub struct KullaSampling {
+pub struct EquiAngularSampling {
     // See original paper
     pub delta: f32,
     pub d_l: f32,
@@ -23,7 +23,7 @@ pub struct KullaSampling {
     pub clamped: bool,
 }
 
-impl KullaSampling {
+impl EquiAngularSampling {
     pub fn new(max_dist: Option<f32>, ray: &Ray, pos: &Point3<f32>) -> Self {
         // Compute distance on the ray
         let delta = ray.d.dot(pos - ray.o);
@@ -142,10 +142,10 @@ impl KullaSampling {
     }
 }
 
-impl DistanceSampling for KullaSampling {
+impl DistanceSampling for EquiAngularSampling {
     fn sample(&self, sample: f32) -> (f32, f32) {
         let t = self.d_l * ((1.0 - sample) * self.theta_a + sample * self.theta_b).tan();
-        let mut t_kulla = t + self.delta;
+        let mut t_equiangular = t + self.delta;
 
         // p(\theta) J(\theta) = 1/(range_angle) * D/(D^2 + t^2)
         let mut pdf = (self.theta_b - self.theta_a) * (self.d_l.powi(2) + t.powi(2));
@@ -154,15 +154,15 @@ impl DistanceSampling for KullaSampling {
         }
 
         // These case can happens due to numerical issues
-        if t_kulla < 0.0 {
-            t_kulla = 0.0;
+        if t_equiangular < 0.0 {
+            t_equiangular = 0.0;
         }
         if self.max_dist.is_some() {
-            if t_kulla > self.max_dist.unwrap() {
-                t_kulla = self.max_dist.unwrap();
+            if t_equiangular > self.max_dist.unwrap() {
+                t_equiangular = self.max_dist.unwrap();
             }
         }
-        (t_kulla, pdf)
+        (t_equiangular, pdf)
     }
 
     fn pdf(&self, distance: f32) -> f32 {
@@ -279,54 +279,56 @@ impl Wrap for BezierWrap {
     }
 }
 
-struct KullaWrap<T: Wrap> {
+struct EquiAngularWrap<T: Wrap> {
     pub wrap: T,
-    pub kulla: KullaSampling,
+    pub equiangular: EquiAngularSampling,
 }
-impl<T: Wrap> DistanceSampling for KullaWrap<T> {
+impl<T: Wrap> DistanceSampling for EquiAngularWrap<T> {
     fn sample(&self, sample: f32) -> (f32, f32) {
-        let theta = self.wrap.cdf_inv(sample) * (self.kulla.theta_b - self.kulla.theta_a)
-            + self.kulla.theta_a;
-        if theta < self.kulla.theta_a || theta > self.kulla.theta_b {
-            dbg!(theta, self.kulla.theta_a, self.kulla.theta_b);
+        let theta = self.wrap.cdf_inv(sample)
+            * (self.equiangular.theta_b - self.equiangular.theta_a)
+            + self.equiangular.theta_a;
+        if theta < self.equiangular.theta_a || theta > self.equiangular.theta_b {
+            dbg!(theta, self.equiangular.theta_a, self.equiangular.theta_b);
         }
 
-        let t = self.kulla.d_l * theta.tan();
-        let mut t_kulla = t + self.kulla.delta;
+        let t = self.equiangular.d_l * theta.tan();
+        let mut t_equiangular = t + self.equiangular.delta;
 
         // These case can happens due to numerical issues
-        if t_kulla < 0.0 {
-            t_kulla = 0.0;
+        if t_equiangular < 0.0 {
+            t_equiangular = 0.0;
         }
-        if self.kulla.max_dist.is_some() {
-            if t_kulla > self.kulla.max_dist.unwrap() {
-                t_kulla = self.kulla.max_dist.unwrap();
+        if self.equiangular.max_dist.is_some() {
+            if t_equiangular > self.equiangular.max_dist.unwrap() {
+                t_equiangular = self.equiangular.max_dist.unwrap();
             }
         }
 
         // Compute PDF
-        let pdf = self.pdf(t_kulla);
-        (t_kulla, pdf)
+        let pdf = self.pdf(t_equiangular);
+        (t_equiangular, pdf)
     }
 
     fn pdf(&self, distance: f32) -> f32 {
-        if !self.kulla.inside_bound(distance) {
+        if !self.equiangular.inside_bound(distance) {
             0.0
         } else {
-            let t = distance - self.kulla.delta;
-            let theta = (t / self.kulla.d_l).atan();
-            let x = (theta - self.kulla.theta_a) / (self.kulla.theta_b - self.kulla.theta_a);
-            let pdf = self.wrap.pdf(x) / (self.kulla.theta_b - self.kulla.theta_a);
-            pdf * self.kulla.d_l / (self.kulla.d_l.powi(2) + t.powi(2))
+            let t = distance - self.equiangular.delta;
+            let theta = (t / self.equiangular.d_l).atan();
+            let x = (theta - self.equiangular.theta_a)
+                / (self.equiangular.theta_b - self.equiangular.theta_a);
+            let pdf = self.wrap.pdf(x) / (self.equiangular.theta_b - self.equiangular.theta_a);
+            pdf * self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2))
         }
     }
 }
 
-struct KullaMultipleWrap<T: Wrap> {
+struct MultipleWrap<T: Wrap> {
     pub wraps: Vec<T>,
-    pub kulla: KullaSampling,
+    pub equiangular: EquiAngularSampling,
 }
-impl<T: Wrap> DistanceSampling for KullaMultipleWrap<T> {
+impl<T: Wrap> DistanceSampling for MultipleWrap<T> {
     fn sample(&self, sample: f32) -> (f32, f32) {
         let (theta, pdf) = {
             let mut pdf = 1.0;
@@ -336,49 +338,51 @@ impl<T: Wrap> DistanceSampling for KullaMultipleWrap<T> {
                 pdf *= w.pdf(pos);
             }
             (
-                pos * (self.kulla.theta_b - self.kulla.theta_a) + self.kulla.theta_a,
+                pos * (self.equiangular.theta_b - self.equiangular.theta_a)
+                    + self.equiangular.theta_a,
                 pdf,
             )
         };
-        let pdf = pdf / (self.kulla.theta_b - self.kulla.theta_a);
+        let pdf = pdf / (self.equiangular.theta_b - self.equiangular.theta_a);
 
-        if theta < self.kulla.theta_a || theta > self.kulla.theta_b {
-            dbg!(theta, self.kulla.theta_a, self.kulla.theta_b);
+        if theta < self.equiangular.theta_a || theta > self.equiangular.theta_b {
+            dbg!(theta, self.equiangular.theta_a, self.equiangular.theta_b);
         }
 
-        let t = self.kulla.d_l * theta.tan();
-        let mut t_kulla = t + self.kulla.delta;
+        let t = self.equiangular.d_l * theta.tan();
+        let mut t_equiangular = t + self.equiangular.delta;
 
         // These case can happens due to numerical issues
-        if t_kulla < 0.0 {
-            t_kulla = 0.0;
+        if t_equiangular < 0.0 {
+            t_equiangular = 0.0;
         }
-        if self.kulla.max_dist.is_some() {
-            if t_kulla > self.kulla.max_dist.unwrap() {
-                t_kulla = self.kulla.max_dist.unwrap();
+        if self.equiangular.max_dist.is_some() {
+            if t_equiangular > self.equiangular.max_dist.unwrap() {
+                t_equiangular = self.equiangular.max_dist.unwrap();
             }
         }
 
-        let jacobian = self.kulla.d_l / (self.kulla.d_l.powi(2) + t.powi(2));
+        let jacobian = self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2));
         let pdf = pdf * jacobian;
 
-        (t_kulla, pdf)
+        (t_equiangular, pdf)
     }
 
     fn pdf(&self, distance: f32) -> f32 {
-        if !self.kulla.inside_bound(distance) {
+        if !self.equiangular.inside_bound(distance) {
             0.0
         } else {
-            let t = distance - self.kulla.delta;
-            let theta = (t / self.kulla.d_l).atan();
-            let mut pos = (theta - self.kulla.theta_a) / (self.kulla.theta_b - self.kulla.theta_a);
+            let t = distance - self.equiangular.delta;
+            let theta = (t / self.equiangular.d_l).atan();
+            let mut pos = (theta - self.equiangular.theta_a)
+                / (self.equiangular.theta_b - self.equiangular.theta_a);
             let mut pdf = 1.0;
             for w in self.wraps.iter().rev() {
                 pdf *= w.pdf(pos);
                 pos = w.cdf(pos);
             }
-            let pdf = pdf / (self.kulla.theta_b - self.kulla.theta_a);
-            pdf * self.kulla.d_l / (self.kulla.d_l.powi(2) + t.powi(2))
+            let pdf = pdf / (self.equiangular.theta_b - self.equiangular.theta_a);
+            pdf * self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2))
         }
     }
 }
@@ -394,8 +398,8 @@ pub fn clamp_angle_phase(g: f32) -> f32 {
     clamp_angle
 }
 
-pub struct KullaTaylorSampling<T: Poly> {
-    pub kulla: KullaSampling,
+pub struct TaylorSampling<T: Poly> {
+    pub equiangular: EquiAngularSampling,
     pub norm: f32,
     pub cdf_a: f32,
     pub prob_poly: f32,
@@ -403,15 +407,15 @@ pub struct KullaTaylorSampling<T: Poly> {
     pub clamp_angle: f32,
 }
 
-impl<T: Poly> KullaTaylorSampling<T> {
-    pub fn new(poly: T, kulla: KullaSampling, mut clamp_angle: f32) -> Option<Self> {
-        let (prob_poly, norm, cdf_a) = if kulla.theta_a > clamp_angle {
+impl<T: Poly> TaylorSampling<T> {
+    pub fn new(poly: T, equiangular: EquiAngularSampling, mut clamp_angle: f32) -> Option<Self> {
+        let (prob_poly, norm, cdf_a) = if equiangular.theta_a > clamp_angle {
             // Make sure that the clamp angle is correctly set
             // So that the code doing the sampling is correctly set
-            clamp_angle = kulla.theta_a;
+            clamp_angle = equiangular.theta_a;
             (0.0, 0.0, 0.0)
-        } else if kulla.theta_b > clamp_angle {
-            let cdf_a = poly.cdf(kulla.theta_a);
+        } else if equiangular.theta_b > clamp_angle {
+            let cdf_a = poly.cdf(equiangular.theta_a);
             let cdf_clamped = poly.cdf(clamp_angle);
             let norm = cdf_clamped - cdf_a;
             if norm <= 0.0 {
@@ -420,7 +424,7 @@ impl<T: Poly> KullaTaylorSampling<T> {
 
             let prob_poly = {
                 let pdf_clamped = poly.pdf(clamp_angle);
-                let cdf_other = pdf_clamped * (kulla.theta_b - clamp_angle);
+                let cdf_other = pdf_clamped * (equiangular.theta_b - clamp_angle);
                 norm / (norm + cdf_other)
             };
 
@@ -428,9 +432,9 @@ impl<T: Poly> KullaTaylorSampling<T> {
             (prob_poly, norm, cdf_a)
         } else {
             // No uniform
-            let cdf_a = poly.cdf(kulla.theta_a);
-            let cdf_b = poly.cdf(kulla.theta_b);
-            clamp_angle = kulla.theta_b;
+            let cdf_a = poly.cdf(equiangular.theta_a);
+            let cdf_b = poly.cdf(equiangular.theta_b);
+            clamp_angle = equiangular.theta_b;
             let norm = cdf_b - cdf_a;
             if norm <= 0.0 {
                 return None;
@@ -439,8 +443,8 @@ impl<T: Poly> KullaTaylorSampling<T> {
             (1.0, norm, cdf_a)
         };
 
-        Some(KullaTaylorSampling {
-            kulla,
+        Some(TaylorSampling {
+            equiangular,
             norm,
             cdf_a,
             prob_poly,
@@ -450,14 +454,14 @@ impl<T: Poly> KullaTaylorSampling<T> {
     }
 }
 
-impl<T: Poly> DistanceSampling for KullaTaylorSampling<T> {
+impl<T: Poly> DistanceSampling for TaylorSampling<T> {
     fn sample(&self, sample: f32) -> (f32, f32) {
         // Middle of the interval
         let (theta1, pdf_angular) = if sample < self.prob_poly {
             let sample = sample / self.prob_poly;
 
             // Call newton step
-            let theta_0 = (self.clamp_angle + self.kulla.theta_a) * 0.5;
+            let theta_0 = (self.clamp_angle + self.equiangular.theta_a) * 0.5;
             let f = |v: f32| -> f32 {
                 let value = (self.poly.cdf(v) - self.cdf_a) / self.norm;
                 value
@@ -468,7 +472,7 @@ impl<T: Poly> DistanceSampling for KullaTaylorSampling<T> {
             };
             let res = crate::math::newton_raphson_iterate(
                 theta_0,
-                self.kulla.theta_a,
+                self.equiangular.theta_a,
                 self.clamp_angle,
                 30,
                 10,
@@ -485,7 +489,7 @@ impl<T: Poly> DistanceSampling for KullaTaylorSampling<T> {
         } else {
             // Rescale the sample
             let sample = (sample - self.prob_poly) / (1.0 - self.prob_poly);
-            let range = self.kulla.theta_b - self.clamp_angle;
+            let range = self.equiangular.theta_b - self.clamp_angle;
 
             // Uniform
             let theta = range * sample + self.clamp_angle;
@@ -493,19 +497,19 @@ impl<T: Poly> DistanceSampling for KullaTaylorSampling<T> {
             (theta, pdf * (1.0 - self.prob_poly))
         };
 
-        if theta1 < self.kulla.theta_a || theta1 > self.kulla.theta_b {
-            dbg!(theta1, self.kulla.theta_a, self.kulla.theta_b);
+        if theta1 < self.equiangular.theta_a || theta1 > self.equiangular.theta_b {
+            dbg!(theta1, self.equiangular.theta_a, self.equiangular.theta_b);
         }
 
         // Compute distances
-        let t = self.kulla.d_l * theta1.tan();
-        let t_kulla = t + self.kulla.delta;
+        let t = self.equiangular.d_l * theta1.tan();
+        let t_equiangular = t + self.equiangular.delta;
 
         // Compute PDF
-        let jacobian = self.kulla.d_l / (self.kulla.d_l.powi(2) + t.powi(2));
+        let jacobian = self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2));
         let pdf = pdf_angular * jacobian;
 
-        (t_kulla, pdf)
+        (t_equiangular, pdf)
     }
 
     fn pdf(&self, _distance: f32) -> f32 {
@@ -513,8 +517,8 @@ impl<T: Poly> DistanceSampling for KullaTaylorSampling<T> {
     }
 }
 
-pub struct KullaHybridSampling<T: Poly, W: Wrap> {
-    pub kulla: KullaSampling,
+pub struct HybridSampling<T: Poly, W: Wrap> {
+    pub equiangular: EquiAngularSampling,
     pub norm: f32,
     pub cdf_a: f32,
     pub poly: T,
@@ -523,14 +527,19 @@ pub struct KullaHybridSampling<T: Poly, W: Wrap> {
     pub clamp_angle: f32,
 }
 
-impl<T: Poly, W: Wrap> KullaHybridSampling<T, W> {
-    pub fn new(poly: T, kulla: KullaSampling, warp: W, mut clamp_angle: f32) -> Option<Self> {
-        let (prob_poly, norm, cdf_a) = if kulla.theta_a > clamp_angle {
+impl<T: Poly, W: Wrap> HybridSampling<T, W> {
+    pub fn new(
+        poly: T,
+        equiangular: EquiAngularSampling,
+        warp: W,
+        mut clamp_angle: f32,
+    ) -> Option<Self> {
+        let (prob_poly, norm, cdf_a) = if equiangular.theta_a > clamp_angle {
             // No taylor exp
-            clamp_angle = kulla.theta_a;
+            clamp_angle = equiangular.theta_a;
             (0.0, 0.0, 0.0)
-        } else if kulla.theta_b > clamp_angle {
-            let cdf_a = poly.cdf(kulla.theta_a);
+        } else if equiangular.theta_b > clamp_angle {
+            let cdf_a = poly.cdf(equiangular.theta_a);
             let norm = poly.cdf(clamp_angle) - cdf_a;
             if norm <= 0.0 {
                 return None;
@@ -539,15 +548,15 @@ impl<T: Poly, W: Wrap> KullaHybridSampling<T, W> {
             // Compute probability to generate poly
             let prob_poly = {
                 let pdf_clamped = poly.pdf(clamp_angle);
-                let cdf_other = pdf_clamped * (kulla.theta_b - clamp_angle);
+                let cdf_other = pdf_clamped * (equiangular.theta_b - clamp_angle);
                 norm / (norm + cdf_other)
             };
 
             (prob_poly, norm, cdf_a)
         } else {
             // No uniform
-            let cdf_a = poly.cdf(kulla.theta_a);
-            let cdf_b = poly.cdf(kulla.theta_b);
+            let cdf_a = poly.cdf(equiangular.theta_a);
+            let cdf_b = poly.cdf(equiangular.theta_b);
             let norm = cdf_b - cdf_a;
             if norm <= 0.0 {
                 return None;
@@ -556,8 +565,8 @@ impl<T: Poly, W: Wrap> KullaHybridSampling<T, W> {
             (1.0, norm, cdf_a)
         };
 
-        Some(KullaHybridSampling {
-            kulla,
+        Some(HybridSampling {
+            equiangular,
             norm,
             cdf_a,
             prob_poly,
@@ -568,14 +577,14 @@ impl<T: Poly, W: Wrap> KullaHybridSampling<T, W> {
     }
 }
 
-impl<T: Poly, W: Wrap> DistanceSampling for KullaHybridSampling<T, W> {
+impl<T: Poly, W: Wrap> DistanceSampling for HybridSampling<T, W> {
     fn sample(&self, sample: f32) -> (f32, f32) {
         // Middle of the interval
         let (theta1, pdf_angular) = if sample < self.prob_poly {
             let sample = sample / self.prob_poly; // Rescale
-            let clamped_theta_b = self.kulla.theta_b.min(self.clamp_angle); // TODO: Change this
+            let clamped_theta_b = self.equiangular.theta_b.min(self.clamp_angle); // TODO: Change this
 
-            let theta_0 = (clamped_theta_b + self.kulla.theta_a) * 0.5;
+            let theta_0 = (clamped_theta_b + self.equiangular.theta_a) * 0.5;
 
             let f = |v: f32| -> f32 {
                 let value = (self.poly.cdf(v) - self.cdf_a) / self.norm;
@@ -587,7 +596,7 @@ impl<T: Poly, W: Wrap> DistanceSampling for KullaHybridSampling<T, W> {
             };
             let res = crate::math::newton_raphson_iterate(
                 theta_0,
-                self.kulla.theta_a,
+                self.equiangular.theta_a,
                 clamped_theta_b,
                 30,
                 10,
@@ -602,7 +611,7 @@ impl<T: Poly, W: Wrap> DistanceSampling for KullaHybridSampling<T, W> {
             (res.pos, self.prob_poly * self.poly.pdf(res.pos) / self.norm)
         } else {
             let sample = (sample - self.prob_poly) / (1.0 - self.prob_poly); // Rescale
-            let range = self.kulla.theta_b - self.clamp_angle;
+            let range = self.equiangular.theta_b - self.clamp_angle;
 
             // Uniform
             let theta = range * sample + self.clamp_angle;
@@ -611,24 +620,26 @@ impl<T: Poly, W: Wrap> DistanceSampling for KullaHybridSampling<T, W> {
         };
 
         let (theta2, pdf_warp) = {
-            let pos = (theta1 - self.kulla.theta_a) / (self.kulla.theta_b - self.kulla.theta_a);
+            let pos = (theta1 - self.equiangular.theta_a)
+                / (self.equiangular.theta_b - self.equiangular.theta_a);
             let pos = self.warp.cdf_inv(pos);
             let pdf = self.warp.pdf(pos);
             (
-                pos * (self.kulla.theta_b - self.kulla.theta_a) + self.kulla.theta_a,
+                pos * (self.equiangular.theta_b - self.equiangular.theta_a)
+                    + self.equiangular.theta_a,
                 pdf,
             )
         };
 
         // Compute distances
-        let t = self.kulla.d_l * theta2.tan();
-        let t_kulla = t + self.kulla.delta;
+        let t = self.equiangular.d_l * theta2.tan();
+        let t_equiangular = t + self.equiangular.delta;
 
         // Compute PDF
-        let jacobian = self.kulla.d_l / (self.kulla.d_l.powi(2) + t.powi(2));
+        let jacobian = self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2));
         let pdf = pdf_angular * pdf_warp * jacobian;
 
-        (t_kulla, pdf)
+        (t_equiangular, pdf)
     }
 
     fn pdf(&self, _distance: f32) -> f32 {
@@ -640,7 +651,7 @@ impl<T: Poly, W: Wrap> DistanceSampling for KullaHybridSampling<T, W> {
  * Point normal implementation
  */
 pub struct PointNormalSampling {
-    pub kulla: KullaSampling,
+    pub equiangular: EquiAngularSampling,
     pub a: f32,
     pub b: f32,
     pub norm: f32,
@@ -653,26 +664,26 @@ impl PointNormalSampling {
         pos: &Point3<f32>,
         n: &Vector3<f32>,
     ) -> Option<Self> {
-        let kulla = KullaSampling::new_clamping(max_dist, ray, pos, n);
-        if kulla.is_none() {
+        let equiangular = EquiAngularSampling::new_clamping(max_dist, ray, pos, n);
+        if equiangular.is_none() {
             return None;
         }
-        let kulla = kulla.unwrap();
+        let equiangular = equiangular.unwrap();
 
-        if kulla.theta_b <= kulla.theta_a {
+        if equiangular.theta_b <= equiangular.theta_a {
             warn!(
-                "Wrong kulla angle clamp: {} > {}",
-                kulla.theta_a, kulla.theta_b
+                "Wrong equiangular angle clamp: {} > {}",
+                equiangular.theta_a, equiangular.theta_b
             );
             return None;
         }
 
         /////////////////////
-        let d = ((ray.o + ray.d * kulla.delta) - pos) / kulla.d_l;
+        let d = ((ray.o + ray.d * equiangular.delta) - pos) / equiangular.d_l;
         let a = n.dot(d);
         let b = n.dot(ray.d);
-        let norm = a * (kulla.theta_b.sin() - kulla.theta_a.sin())
-            - b * (kulla.theta_b.cos() - kulla.theta_a.cos());
+        let norm = a * (equiangular.theta_b.sin() - equiangular.theta_a.sin())
+            - b * (equiangular.theta_b.cos() - equiangular.theta_a.cos());
 
         let a = a / norm;
         let b = b / norm;
@@ -682,7 +693,12 @@ impl PointNormalSampling {
         if norm <= 0.0 {
             None
         } else {
-            Some(PointNormalSampling { kulla, a, b, norm })
+            Some(PointNormalSampling {
+                equiangular,
+                a,
+                b,
+                norm,
+            })
         }
     }
 }
@@ -694,7 +710,8 @@ impl DistanceSampling for PointNormalSampling {
             let a = self.a;
             let b = self.b;
 
-            let sample = sample + a * self.kulla.theta_a.sin() - b * self.kulla.theta_a.cos();
+            let sample =
+                sample + a * self.equiangular.theta_a.sin() - b * self.equiangular.theta_a.cos();
             let v = (a * a + b * b - (sample).powi(2)).max(0.0).sqrt();
             let q = a * sample;
             let r = b * v / a.signum();
@@ -702,34 +719,34 @@ impl DistanceSampling for PointNormalSampling {
             let t = v * a.abs();
 
             let sol1 = (q + r).atan2(s + t);
-            if sol1 >= self.kulla.theta_a && sol1 <= self.kulla.theta_b {
+            if sol1 >= self.equiangular.theta_a && sol1 <= self.equiangular.theta_b {
                 sol1
             } else {
                 (q - r).atan2(s - t)
             }
         };
 
-        let theta = crate::clamp(theta, self.kulla.theta_a, self.kulla.theta_b);
-        let t = self.kulla.d_l * theta.tan();
-        let t_kulla = t + self.kulla.delta;
+        let theta = crate::clamp(theta, self.equiangular.theta_a, self.equiangular.theta_b);
+        let t = self.equiangular.d_l * theta.tan();
+        let t_equiangular = t + self.equiangular.delta;
 
         // Compute PDF
         let pdf_angular = self.a * theta.cos() + self.b * theta.sin();
-        let jacobian = self.kulla.d_l / (self.kulla.d_l.powi(2) + t.powi(2));
+        let jacobian = self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2));
         let pdf = pdf_angular * jacobian;
 
-        (t_kulla, pdf.abs())
+        (t_equiangular, pdf.abs())
     }
 
     fn pdf(&self, distance: f32) -> f32 {
-        if !self.kulla.inside_bound(distance) {
+        if !self.equiangular.inside_bound(distance) {
             0.0
         } else {
             // Compute angle & PDF & Jacobian
-            let t = distance - self.kulla.delta;
-            let theta = (t / self.kulla.d_l).atan();
+            let t = distance - self.equiangular.delta;
+            let theta = (t / self.equiangular.d_l).atan();
             let pdf_angular = self.a * theta.cos() + self.b * theta.sin();
-            let jacobian = self.kulla.d_l / (self.kulla.d_l.powi(2) + t.powi(2));
+            let jacobian = self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2));
             let pdf = pdf_angular * jacobian;
 
             pdf.abs()
@@ -768,18 +785,19 @@ impl<T: Poly, W: Wrap> PointNormalTaylorSampling<T, W> {
         warp: Option<W>,
         mut clamp_angle: f32,
     ) -> Option<Self> {
-        let (other_a, other_b, prob_poly, norm_poly, other_norm) = if pn.kulla.theta_a > clamp_angle
+        let (other_a, other_b, prob_poly, norm_poly, other_norm) = if pn.equiangular.theta_a
+            > clamp_angle
         {
-            clamp_angle = pn.kulla.theta_a;
+            clamp_angle = pn.equiangular.theta_a;
             // Only uses PN for the rest of the domain
             (pn.a, pn.b, 0.0, 0.0, pn.norm)
-        } else if pn.kulla.theta_b > clamp_angle {
+        } else if pn.equiangular.theta_b > clamp_angle {
             // New a b for the PN between [Pi/4, theta_b]
             // -- Remove normalized factor
             let a = pn.a * pn.norm;
             let b = pn.b * pn.norm;
             // -- Renormalize a and b (with the new bounds)
-            let theta_b_new = pn.kulla.theta_b;
+            let theta_b_new = pn.equiangular.theta_b;
             let theta_a_new = clamp_angle;
             let norm_new = a * (theta_b_new.sin() - theta_a_new.sin())
                 - b * (theta_b_new.cos() - theta_a_new.cos());
@@ -787,8 +805,8 @@ impl<T: Poly, W: Wrap> PointNormalTaylorSampling<T, W> {
             let b_new = b / norm_new;
 
             // Change a and b for poly [a, clampAngle]
-            let norm_poly_pn = a * (clamp_angle.sin() - pn.kulla.theta_a.sin())
-                - b * (clamp_angle.cos() - pn.kulla.theta_a.cos());
+            let norm_poly_pn = a * (clamp_angle.sin() - pn.equiangular.theta_a.sin())
+                - b * (clamp_angle.cos() - pn.equiangular.theta_a.cos());
             // - Need to renormalize as the PN bounds get changed
             pn.a = a / norm_poly_pn;
             pn.b = b / norm_poly_pn;
@@ -798,7 +816,7 @@ impl<T: Poly, W: Wrap> PointNormalTaylorSampling<T, W> {
             }
 
             // Now compute poly
-            let norm_poly = poly.cdf_pn(pn.a, pn.b, pn.kulla.theta_a, clamp_angle);
+            let norm_poly = poly.cdf_pn(pn.a, pn.b, pn.equiangular.theta_a, clamp_angle);
 
             // prob_poly: (1-Tr(..)*Pn) => Yes
             let prob_poly = {
@@ -808,7 +826,7 @@ impl<T: Poly, W: Wrap> PointNormalTaylorSampling<T, W> {
                     cos_theta * p
                 };
 
-                let cdf_other = pdf_clamped * (pn.kulla.theta_b - clamp_angle);
+                let cdf_other = pdf_clamped * (pn.equiangular.theta_b - clamp_angle);
                 norm_poly / (norm_poly + cdf_other)
             };
 
@@ -817,7 +835,7 @@ impl<T: Poly, W: Wrap> PointNormalTaylorSampling<T, W> {
         } else {
             // No uniform -> Just compute the normalization factor
             // the a and b get unchanged
-            let norm_poly = poly.cdf_pn(pn.a, pn.b, pn.kulla.theta_a, pn.kulla.theta_b);
+            let norm_poly = poly.cdf_pn(pn.a, pn.b, pn.equiangular.theta_a, pn.equiangular.theta_b);
             if norm_poly <= 0.0 {
                 return None;
             }
@@ -843,16 +861,16 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
         // Sample decision for which part of the integral we sample
         let use_poly = sample < self.prob_poly;
         let (theta1, pdf_angular) = if use_poly {
-            let clamped_theta_b = self.pn.kulla.theta_b.min(self.clamp_angle);
+            let clamped_theta_b = self.pn.equiangular.theta_b.min(self.clamp_angle);
             let sample = sample / self.prob_poly; // Rescale
 
             // Middle of the interval
-            let theta_0 = (clamped_theta_b + self.pn.kulla.theta_a) * 0.5;
+            let theta_0 = (clamped_theta_b + self.pn.equiangular.theta_a) * 0.5;
 
             // Do numerical inversion
             let f = |v: f32| -> f32 {
                 self.poly
-                    .cdf_pn(self.pn.a, self.pn.b, self.pn.kulla.theta_a, v)
+                    .cdf_pn(self.pn.a, self.pn.b, self.pn.equiangular.theta_a, v)
                     / self.norm_poly
             };
             let f_derv = |v: f32| -> f32 {
@@ -862,7 +880,7 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
             };
             let res = crate::math::newton_raphson_iterate(
                 theta_0,
-                self.pn.kulla.theta_a,
+                self.pn.equiangular.theta_a,
                 clamped_theta_b,
                 30,
                 10,
@@ -897,14 +915,18 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
 
             // !!! atan2 different order
             let sol1 = (q + r).atan2(s + t);
-            let sol = if sol1 >= clamped_theta_a && sol1 <= self.pn.kulla.theta_b {
+            let sol = if sol1 >= clamped_theta_a && sol1 <= self.pn.equiangular.theta_b {
                 sol1
             } else {
                 (q - r).atan2(s - t)
             };
 
             // Do PN sampling
-            let theta = crate::clamp(sol, self.pn.kulla.theta_a, self.pn.kulla.theta_b);
+            let theta = crate::clamp(
+                sol,
+                self.pn.equiangular.theta_a,
+                self.pn.equiangular.theta_b,
+            );
             let pdf_angular = self.other_a * sol.cos() + self.other_b * sol.sin();
 
             ///////////////////
@@ -912,16 +934,21 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
             let pdf_warp = 1.0; // No warp performed.
             (theta, (1.0 - self.prob_poly) * pdf_angular * pdf_warp)
         };
-        let theta1 = crate::clamp(theta1, self.pn.kulla.theta_a, self.pn.kulla.theta_b);
+        let theta1 = crate::clamp(
+            theta1,
+            self.pn.equiangular.theta_a,
+            self.pn.equiangular.theta_b,
+        );
 
         // Do the wrap
         let (theta2, pdf_warp) = match &self.warp {
             Some(w) => {
-                let pos = (theta1 - self.pn.kulla.theta_a)
-                    / (self.pn.kulla.theta_b - self.pn.kulla.theta_a);
+                let pos = (theta1 - self.pn.equiangular.theta_a)
+                    / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
                 let pos = w.cdf_inv(pos);
                 (
-                    pos * (self.pn.kulla.theta_b - self.pn.kulla.theta_a) + self.pn.kulla.theta_a,
+                    pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a)
+                        + self.pn.equiangular.theta_a,
                     w.pdf(pos),
                 )
             }
@@ -929,18 +956,18 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
         };
 
         // Compute distances
-        let t = self.pn.kulla.d_l * theta2.tan();
-        let t_kulla = t + self.pn.kulla.delta;
+        let t = self.pn.equiangular.d_l * theta2.tan();
+        let t_equiangular = t + self.pn.equiangular.delta;
 
         // Compute PDF
-        let jacobian = self.pn.kulla.d_l / (self.pn.kulla.d_l.powi(2) + t.powi(2));
+        let jacobian = self.pn.equiangular.d_l / (self.pn.equiangular.d_l.powi(2) + t.powi(2));
         let pdf = pdf_warp * pdf_angular * jacobian;
 
         if pdf == 0.0 {
             dbg!(pdf, pdf_warp, pdf_angular);
         }
 
-        (t_kulla, pdf)
+        (t_equiangular, pdf)
     }
 
     fn pdf(&self, _distance: f32) -> f32 {
@@ -959,7 +986,8 @@ impl<W: Wrap> DistanceSampling for PointNormalWarpSampling<W> {
             let a = self.pn.a;
             let b = self.pn.b;
 
-            let sample = sample + a * self.pn.kulla.theta_a.sin() - b * self.pn.kulla.theta_a.cos();
+            let sample = sample + a * self.pn.equiangular.theta_a.sin()
+                - b * self.pn.equiangular.theta_a.cos();
             let v = (a * a + b * b - (sample).powi(2)).max(0.0).sqrt();
             let q = a * sample;
             let r = b * v / a.signum();
@@ -970,67 +998,76 @@ impl<W: Wrap> DistanceSampling for PointNormalWarpSampling<W> {
             // Float sol1 = ArcTan2(S + T, Q + R);
             // Float sol2 = ArcTan2(S - T, Q - R);
             let sol1 = (q + r).atan2(s + t);
-            if sol1 >= self.pn.kulla.theta_a && sol1 <= self.pn.kulla.theta_b {
+            if sol1 >= self.pn.equiangular.theta_a && sol1 <= self.pn.equiangular.theta_b {
                 sol1
             } else {
                 (q - r).atan2(s - t)
             }
         };
         let pdf_angular = self.pn.a * theta1.cos() + self.pn.b * theta1.sin();
-        let theta1 = crate::clamp(theta1, self.pn.kulla.theta_a, self.pn.kulla.theta_b);
+        let theta1 = crate::clamp(
+            theta1,
+            self.pn.equiangular.theta_a,
+            self.pn.equiangular.theta_b,
+        );
 
         let (theta2, pdf_warp) = {
             let mut pdf = 1.0;
-            let mut pos =
-                (theta1 - self.pn.kulla.theta_a) / (self.pn.kulla.theta_b - self.pn.kulla.theta_a);
+            let mut pos = (theta1 - self.pn.equiangular.theta_a)
+                / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
             for w in &self.warps {
                 pos = w.cdf_inv(pos);
                 pdf *= w.pdf(pos);
             }
             (
-                pos * (self.pn.kulla.theta_b - self.pn.kulla.theta_a) + self.pn.kulla.theta_a,
+                pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a)
+                    + self.pn.equiangular.theta_a,
                 pdf,
             )
         };
 
         // For debug
-        if theta2 < self.pn.kulla.theta_a || theta2 > self.pn.kulla.theta_b {
+        if theta2 < self.pn.equiangular.theta_a || theta2 > self.pn.equiangular.theta_b {
             warn!(
                 "Theta2 out range: {} [{}, {}]",
-                theta2, self.pn.kulla.theta_a, self.pn.kulla.theta_b
+                theta2, self.pn.equiangular.theta_a, self.pn.equiangular.theta_b
             );
         }
-        let theta = crate::clamp(theta2, self.pn.kulla.theta_a, self.pn.kulla.theta_b);
+        let theta = crate::clamp(
+            theta2,
+            self.pn.equiangular.theta_a,
+            self.pn.equiangular.theta_b,
+        );
 
         // Compute distances
-        let t = self.pn.kulla.d_l * theta.tan();
-        let t_kulla = t + self.pn.kulla.delta;
+        let t = self.pn.equiangular.d_l * theta.tan();
+        let t_equiangular = t + self.pn.equiangular.delta;
 
         // Compute PDF
-        let jacobian = self.pn.kulla.d_l / (self.pn.kulla.d_l.powi(2) + t.powi(2));
+        let jacobian = self.pn.equiangular.d_l / (self.pn.equiangular.d_l.powi(2) + t.powi(2));
         let pdf = pdf_warp * pdf_angular * jacobian;
 
-        (t_kulla, pdf)
+        (t_equiangular, pdf)
     }
 
     fn pdf(&self, distance: f32) -> f32 {
-        let theta = ((distance - self.pn.kulla.delta) / self.pn.kulla.d_l).atan();
-        if theta >= self.pn.kulla.theta_a && theta <= self.pn.kulla.theta_b {
+        let theta = ((distance - self.pn.equiangular.delta) / self.pn.equiangular.d_l).atan();
+        if theta >= self.pn.equiangular.theta_a && theta <= self.pn.equiangular.theta_b {
             // Warps
-            let mut pos =
-                (theta - self.pn.kulla.theta_a) / (self.pn.kulla.theta_b - self.pn.kulla.theta_a);
+            let mut pos = (theta - self.pn.equiangular.theta_a)
+                / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
             let mut pdf = 1.0;
             for w in self.warps.iter().rev() {
                 pdf *= w.pdf(pos);
                 pos = w.cdf(pos);
             }
-            let theta =
-                pos * (self.pn.kulla.theta_b - self.pn.kulla.theta_a) + self.pn.kulla.theta_a;
+            let theta = pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a)
+                + self.pn.equiangular.theta_a;
 
             // PN and jacobian
-            let t = distance - self.pn.kulla.delta;
+            let t = distance - self.pn.equiangular.delta;
             let pdf_angular = self.pn.a * theta.cos() + self.pn.b * theta.sin();
-            let jacobian = self.pn.kulla.d_l / (self.pn.kulla.d_l.powi(2) + t.powi(2));
+            let jacobian = self.pn.equiangular.d_l / (self.pn.equiangular.d_l.powi(2) + t.powi(2));
             pdf * pdf_angular * jacobian
         } else {
             0.0
@@ -1108,10 +1145,10 @@ bitflags! {
     /// That the user have given through the command line
     pub struct Strategies: u16 {
         // Distance sampling
-        const TR            = 0b000000001;  // Transmittance distance sampling
-        const KULLA         = 0b000000010;  // Kulla distance sampling
-        const KULLA_CLAMPED = 0b000000100;  // Kulla with cos clamped
-        const POINT_NORMAL  = 0b000001000;  // PN sampling
+        const TR                  = 0b000000001;  // Transmittance distance sampling
+        const EQUIANGULAR         = 0b000000010;  // Equi-angular distance sampling
+        const EQUIANGULAR_CLAMPED = 0b000000100;  // Equi-angular with cos clamped
+        const POINT_NORMAL        = 0b000001000;  // PN sampling
         // Flavors
         const TAYLOR_PHASE  = 0b000000010000; // Phase function
         const TAYLOR_TR     = 0b000000100000; // Tr (all distance)
@@ -1131,7 +1168,7 @@ pub enum WrapStrategy {
     Bezier, // Only bezier warps
 }
 
-pub struct IntegratorPathKulla {
+pub struct IntegratorPointNormal {
     pub strategy: Strategies,         // Sampling strategy
     pub use_mis: bool,                // If want to use MIS (experimental)
     pub warps: String,                // Which term we want apply warp
@@ -1140,7 +1177,7 @@ pub struct IntegratorPathKulla {
     pub use_aa: bool,                 // Disable or not AA
 }
 
-impl Integrator for IntegratorPathKulla {
+impl Integrator for IntegratorPointNormal {
     fn compute(
         &mut self,
         sampler: &mut dyn Sampler,
@@ -1191,7 +1228,7 @@ fn fix_random_sample_emitter<'a>(
     }
 }
 
-impl IntegratorPathKulla {
+impl IntegratorPointNormal {
     pub fn create_distance_sampling(
         &self,
         ray: &Ray,
@@ -1200,17 +1237,17 @@ impl IntegratorPathKulla {
         m: &HomogenousVolume,
         max_dist: Option<f32>,
     ) -> Option<Box<dyn DistanceSampling>> {
-        if self.strategy.intersects(Strategies::KULLA)
-            || self.strategy.intersects(Strategies::KULLA_CLAMPED)
+        if self.strategy.intersects(Strategies::EQUIANGULAR)
+            || self.strategy.intersects(Strategies::EQUIANGULAR_CLAMPED)
         {
-            let kulla = if self.strategy.intersects(Strategies::KULLA_CLAMPED) {
-                let res = KullaSampling::new_clamping(max_dist, &ray, p, n);
+            let equiangular = if self.strategy.intersects(Strategies::EQUIANGULAR_CLAMPED) {
+                let res = EquiAngularSampling::new_clamping(max_dist, &ray, p, n);
                 if res.is_none() {
                     return None;
                 }
                 res.unwrap()
             } else {
-                KullaSampling::new(max_dist, &ray, p)
+                EquiAngularSampling::new(max_dist, &ray, p)
             };
 
             // Helpers for evaluating terms
@@ -1224,30 +1261,31 @@ impl IntegratorPathKulla {
                 1.0 / (tmp * tmp.sqrt())
             };
             let pn = |v: f32| {
-                let d = ((ray.o + ray.d * kulla.delta) - p) / kulla.d_l;
+                let d = ((ray.o + ray.d * equiangular.delta) - p) / equiangular.d_l;
                 let a = n.dot(d);
                 let b = n.dot(ray.d);
                 a * v.cos() + b * v.sin()
             };
             let tr = |v: f32| {
                 let s_t = m.sigma_t.avg();
-                (-s_t * (kulla.d_l * v.tan() + kulla.delta + kulla.d_l / v.cos())).exp()
+                (-s_t * (equiangular.d_l * v.tan() + equiangular.delta + equiangular.d_l / v.cos()))
+                    .exp()
             };
 
             if self.strategy.intersects(Strategies::TAYLOR_PHASE) {
                 match m.phase {
-                    PhaseFunction::Isotropic() => Some(Box::new(kulla)),
+                    PhaseFunction::Isotropic() => Some(Box::new(equiangular)),
                     PhaseFunction::HenyeyGreenstein(g) => {
                         let poly = Poly6::phase(g); //  TODO: Change order
                         let clamp_angle = clamp_angle_phase(g);
-                        KullaTaylorSampling::new(poly, kulla, clamp_angle)
+                        TaylorSampling::new(poly, equiangular, clamp_angle)
                             .map_or(None, |r| Some(Box::new(r)))
                     }
                 }
             } else if self.strategy.intersects(Strategies::TAYLOR_TR) {
-                let poly = Poly6::tr(&kulla, m.sigma_t.avg());
-                let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), kulla.d_l);
-                KullaTaylorSampling::new(poly, kulla, clamp_angle)
+                let poly = Poly6::tr(&equiangular, m.sigma_t.avg());
+                let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), equiangular.d_l);
+                TaylorSampling::new(poly, equiangular, clamp_angle)
                     .map_or(None, |r| Some(Box::new(r)))
             } else if self.strategy.intersects(Strategies::WRAP) {
                 match &self.warps_strategy {
@@ -1257,68 +1295,68 @@ impl IntegratorPathKulla {
                             .chars()
                             .map(|c| match c {
                                 'T' => LinearWrap {
-                                    v0: tr(kulla.theta_a),
-                                    v1: tr(kulla.theta_b),
+                                    v0: tr(equiangular.theta_a),
+                                    v1: tr(equiangular.theta_b),
                                 },
                                 'N' => LinearWrap {
-                                    v0: pn(kulla.theta_a),
-                                    v1: pn(kulla.theta_b),
+                                    v0: pn(equiangular.theta_a),
+                                    v1: pn(equiangular.theta_b),
                                 },
                                 'P' => LinearWrap {
-                                    v0: phase(kulla.theta_a),
-                                    v1: phase(kulla.theta_b),
+                                    v0: phase(equiangular.theta_a),
+                                    v1: phase(equiangular.theta_b),
                                 },
                                 _ => panic!(),
                             })
                             .collect::<Vec<_>>();
 
                         if warps.len() == 1 {
-                            Some(Box::new(KullaWrap {
+                            Some(Box::new(EquiAngularWrap {
                                 wrap: warps.into_iter().nth(0).unwrap(),
-                                kulla,
+                                equiangular,
                             }))
                         } else {
-                            Some(Box::new(KullaMultipleWrap {
+                            Some(Box::new(MultipleWrap {
                                 wraps: warps,
-                                kulla,
+                                equiangular,
                             }))
                         }
                     }
                     WrapStrategy::Bezier => {
-                        let mid = (kulla.theta_b + kulla.theta_a) / 2.0;
+                        let mid = (equiangular.theta_b + equiangular.theta_a) / 2.0;
 
                         let warps = self
                             .warps
                             .chars()
                             .map(|c| match c {
                                 'T' => BezierWrap {
-                                    v0: tr(kulla.theta_a),
+                                    v0: tr(equiangular.theta_a),
                                     v1: tr(mid),
-                                    v2: tr(kulla.theta_b),
+                                    v2: tr(equiangular.theta_b),
                                 },
                                 'N' => BezierWrap {
-                                    v0: pn(kulla.theta_a),
+                                    v0: pn(equiangular.theta_a),
                                     v1: pn(mid),
-                                    v2: pn(kulla.theta_b),
+                                    v2: pn(equiangular.theta_b),
                                 },
                                 'P' => BezierWrap {
-                                    v0: phase(kulla.theta_a),
+                                    v0: phase(equiangular.theta_a),
                                     v1: phase(mid),
-                                    v2: phase(kulla.theta_b),
+                                    v2: phase(equiangular.theta_b),
                                 },
                                 _ => panic!(),
                             })
                             .collect::<Vec<_>>();
 
                         if warps.len() == 1 {
-                            Some(Box::new(KullaWrap {
+                            Some(Box::new(EquiAngularWrap {
                                 wrap: warps.into_iter().nth(0).unwrap(),
-                                kulla,
+                                equiangular,
                             }))
                         } else {
-                            Some(Box::new(KullaMultipleWrap {
+                            Some(Box::new(MultipleWrap {
                                 wraps: warps,
-                                kulla,
+                                equiangular,
                             }))
                         }
                     }
@@ -1328,30 +1366,30 @@ impl IntegratorPathKulla {
                 assert!(g != 0.0);
 
                 // This variation can be interesting also
-                // let mid = (kulla.theta_b + kulla.theta_a) / 2.0;
+                // let mid = (equiangular.theta_b + equiangular.theta_a) / 2.0;
                 // let warp = BezierWrap {
-                //     v0: phase(kulla.theta_a),
+                //     v0: phase(equiangular.theta_a),
                 //     v1: phase(mid),
-                //     v2: phase(kulla.theta_b),
+                //     v2: phase(equiangular.theta_b),
                 // };
-                // let poly = Poly6::tr(&kulla, m.sigma_t.avg());
-                // let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), kulla.d_l);
-                // KullaHybridSampling::new(poly, kulla, warp, clamp_angle)
+                // let poly = Poly6::tr(&equiangular, m.sigma_t.avg());
+                // let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), equiangular.d_l);
+                // KullaHybridSampling::new(poly, equiangular, warp, clamp_angle)
                 //     .map_or(None, |r| Some(Box::new(r)))
 
                 // TR Warp then Phase
-                let mid = (kulla.theta_b + kulla.theta_a) / 2.0;
+                let mid = (equiangular.theta_b + equiangular.theta_a) / 2.0;
                 let warp = BezierWrap {
-                    v0: tr(kulla.theta_a),
+                    v0: tr(equiangular.theta_a),
                     v1: tr(mid),
-                    v2: tr(kulla.theta_b),
+                    v2: tr(equiangular.theta_b),
                 };
                 let poly = Poly6::phase(g);
                 let clamp_angle = clamp_angle_phase(g);
-                KullaHybridSampling::new(poly, kulla, warp, clamp_angle)
+                HybridSampling::new(poly, equiangular, warp, clamp_angle)
                     .map_or(None, |r| Some(Box::new(r)))
             } else {
-                Some(Box::new(kulla))
+                Some(Box::new(equiangular))
             }
         } else if self.strategy.intersects(Strategies::POINT_NORMAL) {
             // We are in point normal
@@ -1363,8 +1401,8 @@ impl IntegratorPathKulla {
 
             // See the flavor
             if self.strategy.intersects(Strategies::TAYLOR_TR) {
-                let poly = Poly6::tr(&pn.kulla, m.sigma_t.avg());
-                let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), pn.kulla.d_l);
+                let poly = Poly6::tr(&pn.equiangular, m.sigma_t.avg());
+                let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), pn.equiangular.d_l);
                 PointNormalTaylorSampling::<_, LinearWrap>::new(pn, poly, None, clamp_angle)
                     .map_or(None, |r| Some(Box::new(r)))
             } else if self.strategy.intersects(Strategies::TAYLOR_PHASE) {
@@ -1390,8 +1428,11 @@ impl IntegratorPathKulla {
                 };
                 let tr = |v: f32| {
                     let s_t = m.sigma_t.avg();
-                    (-s_t * (pn.kulla.d_l * v.tan() + pn.kulla.delta + pn.kulla.d_l / v.cos()))
-                        .exp()
+                    (-s_t
+                        * (pn.equiangular.d_l * v.tan()
+                            + pn.equiangular.delta
+                            + pn.equiangular.d_l / v.cos()))
+                    .exp()
                 };
 
                 match &self.warps_strategy {
@@ -1401,12 +1442,12 @@ impl IntegratorPathKulla {
                             .chars()
                             .map(|c| match c {
                                 'T' => LinearWrap {
-                                    v0: tr(pn.kulla.theta_a),
-                                    v1: tr(pn.kulla.theta_b),
+                                    v0: tr(pn.equiangular.theta_a),
+                                    v1: tr(pn.equiangular.theta_b),
                                 },
                                 'P' => LinearWrap {
-                                    v0: phase(pn.kulla.theta_a),
-                                    v1: phase(pn.kulla.theta_b),
+                                    v0: phase(pn.equiangular.theta_a),
+                                    v1: phase(pn.equiangular.theta_b),
                                 },
                                 _ => panic!(),
                             })
@@ -1414,21 +1455,21 @@ impl IntegratorPathKulla {
                         Some(Box::new(PointNormalWarpSampling { pn, warps }))
                     }
                     WrapStrategy::Bezier => {
-                        let mid = (pn.kulla.theta_b + pn.kulla.theta_a) / 2.0;
+                        let mid = (pn.equiangular.theta_b + pn.equiangular.theta_a) / 2.0;
 
                         let warps = self
                             .warps
                             .chars()
                             .map(|c| match c {
                                 'T' => BezierWrap {
-                                    v0: tr(pn.kulla.theta_a),
+                                    v0: tr(pn.equiangular.theta_a),
                                     v1: tr(mid),
-                                    v2: tr(pn.kulla.theta_b),
+                                    v2: tr(pn.equiangular.theta_b),
                                 },
                                 'P' => BezierWrap {
-                                    v0: phase(pn.kulla.theta_a),
+                                    v0: phase(pn.equiangular.theta_a),
                                     v1: phase(mid),
-                                    v2: phase(pn.kulla.theta_b),
+                                    v2: phase(pn.equiangular.theta_b),
                                 },
                                 _ => panic!(),
                             })
@@ -1451,15 +1492,15 @@ impl IntegratorPathKulla {
                 //         let tmp = 1.0 + g * g + 2.0 * g * v.sin();
                 //         1.0 / (tmp * tmp.sqrt())
                 //     };
-                //     let mid = (pn.kulla.theta_a + pn.kulla.theta_b) / 2.0;
+                //     let mid = (pn.equiangular.theta_a + pn.equiangular.theta_b) / 2.0;
                 //     Some(BezierWrap {
-                //         v0: phase(pn.kulla.theta_a),
+                //         v0: phase(pn.equiangular.theta_a),
                 //         v1: phase(mid),
-                //         v2: phase(pn.kulla.theta_b),
+                //         v2: phase(pn.equiangular.theta_b),
                 //     })
                 // };
-                // let poly_tr = Poly6::tr(&pn.kulla, m.sigma_t.avg());
-                // let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), pn.kulla.d_l);
+                // let poly_tr = Poly6::tr(&pn.equiangular, m.sigma_t.avg());
+                // let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), pn.equiangular.d_l);
                 // Some(Box::new(PointNormalTaylorSampling::<_, _>::new(
                 //     pn,
                 //     poly_tr,
@@ -1470,22 +1511,25 @@ impl IntegratorPathKulla {
                 // Inverse condition
                 if g == 0.0 {
                     // Do the transmittance in this case.
-                    let poly_tr = Poly6::tr(&pn.kulla, m.sigma_t.avg());
-                    let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), pn.kulla.d_l);
+                    let poly_tr = Poly6::tr(&pn.equiangular, m.sigma_t.avg());
+                    let clamp_angle = clamp_angle_tr(m.sigma_t.avg(), pn.equiangular.d_l);
                     PointNormalTaylorSampling::<_, BezierWrap>::new(pn, poly_tr, None, clamp_angle)
                         .map_or(None, |r| Some(Box::new(r)))
                 } else {
                     // Use bezier for the transmittance
                     let tr = |v: f32| {
                         let s_t = m.sigma_t.avg();
-                        (-s_t * (pn.kulla.d_l * v.tan() + pn.kulla.delta + pn.kulla.d_l / v.cos()))
-                            .exp()
+                        (-s_t
+                            * (pn.equiangular.d_l * v.tan()
+                                + pn.equiangular.delta
+                                + pn.equiangular.d_l / v.cos()))
+                        .exp()
                     };
-                    let mid = (pn.kulla.theta_a + pn.kulla.theta_b) / 2.0;
+                    let mid = (pn.equiangular.theta_a + pn.equiangular.theta_b) / 2.0;
                     let warp = Some(BezierWrap {
-                        v0: tr(pn.kulla.theta_a),
+                        v0: tr(pn.equiangular.theta_a),
                         v1: tr(mid),
-                        v2: tr(pn.kulla.theta_b),
+                        v2: tr(pn.equiangular.theta_b),
                     });
 
                     let poly_phase = Poly6::phase(g);
@@ -1557,7 +1601,7 @@ impl IntegratorPathKulla {
             max_dist,
             ray: ray.clone(),
         };
-        let sampling_other = KullaSampling::new(max_dist, &ray, &sampled_pos.p);
+        let sampling_other = EquiAngularSampling::new(max_dist, &ray, &sampled_pos.p);
 
         // Generate the direction from the phase function
         let sample_phase = m.phase.sample(&-ray.d, sampler.next2d());
@@ -1638,7 +1682,7 @@ impl IntegratorPathKulla {
                         .value();
                     let pdf_current = pdf_phase * res_tr.pdf;
 
-                    let pdf_other = KullaSampling::new(max_dist, ray, &its.p).pdf(res_tr.t);
+                    let pdf_other = EquiAngularSampling::new(max_dist, ray, &its.p).pdf(res_tr.t);
                     let pdf_other_clamped = compute_pdf_other_clamped(&its.p, &its.n_g, res_tr.t);
 
                     // Compute the set of PDFs
@@ -1686,7 +1730,8 @@ impl IntegratorPathKulla {
                         )
                         .value();
 
-                    let pdf_other = KullaSampling::new(max_dist, ray, &its.p).pdf(res_other.t);
+                    let pdf_other =
+                        EquiAngularSampling::new(max_dist, ray, &its.p).pdf(res_other.t);
                     let pdf_other_clamped =
                         compute_pdf_other_clamped(&its.p, &its.n_g, res_other.t);
 
@@ -1732,7 +1777,8 @@ impl IntegratorPathKulla {
                     // Compute MIS
                     let pdf_phase = m.phase.pdf(&-ray.d, &d_light);
                     let pdf_current = pdf_ex * res_tr.pdf;
-                    let pdf_other = KullaSampling::new(max_dist, ray, &sampled_pos.p).pdf(res_tr.t);
+                    let pdf_other =
+                        EquiAngularSampling::new(max_dist, ray, &sampled_pos.p).pdf(res_tr.t);
                     let pdf_other_clamped =
                         compute_pdf_other_clamped(&sampled_pos.p, &sampled_pos.n, res_tr.t);
 
@@ -1776,8 +1822,8 @@ impl IntegratorPathKulla {
                     // Compute MIS
                     let pdf_phase = m.phase.pdf(&-ray.d, &d_light);
                     let pdf_current = pdf_ex * res_other_clamped.pdf;
-                    let pdf_other =
-                        KullaSampling::new(max_dist, ray, &sampled_pos.p).pdf(res_other_clamped.t);
+                    let pdf_other = EquiAngularSampling::new(max_dist, ray, &sampled_pos.p)
+                        .pdf(res_other_clamped.t);
                     let pdf_tr = sampling_tr.pdf(res_other_clamped.t);
 
                     // Compute the set of PDFs
@@ -1799,7 +1845,7 @@ impl IntegratorPathKulla {
         contrib_phase_tr + contrib_phase_other + contrib_ex_tr + contrib_ex_other
     }
 
-    fn compute_multiple_kulla(
+    fn compute_multiple_equiangular(
         &self,
         accel: &dyn Acceleration,
         scene: &Scene,
@@ -1842,20 +1888,26 @@ impl IntegratorPathKulla {
             )),
         };
 
-        let (t_kulla, transmittance_kulla, pdf_kulla, pdf_kulla_prime) =
+        let (t_equiangular, transmittance_equiangular, pdf_equiangular, pdf_equiangular_prime) =
             if let Some((_, sampled_pos, _)) = &res {
-                let kulla_strategy = KullaSampling::new(max_dist, ray, &sampled_pos.p);
-                let (t_kulla, pdf_kulla) = kulla_strategy.sample(sampler.next());
-                let transmittance_kulla = transmittance(t_kulla, ray.clone()) / pdf_kulla;
-                let pdf_kulla_prime = kulla_strategy.pdf(t_tr);
-                (t_kulla, transmittance_kulla, pdf_kulla, pdf_kulla_prime)
+                let equiangular_strategy = EquiAngularSampling::new(max_dist, ray, &sampled_pos.p);
+                let (t_equiangular, pdf_equiangular) = equiangular_strategy.sample(sampler.next());
+                let transmittance_equiangular =
+                    transmittance(t_equiangular, ray.clone()) / pdf_equiangular;
+                let pdf_equiangular_prime = equiangular_strategy.pdf(t_tr);
+                (
+                    t_equiangular,
+                    transmittance_equiangular,
+                    pdf_equiangular,
+                    pdf_equiangular_prime,
+                )
             } else {
                 (0.0, Color::zero(), 0.0, 0.0)
             };
-        let p_kulla = ray.o + ray.d * t_kulla;
+        let p_equiangular = ray.o + ray.d * t_equiangular;
 
         // Other pdf for MIS
-        let pdf_tr_prime = tr_strategy.pdf(t_kulla);
+        let pdf_tr_prime = tr_strategy.pdf(t_equiangular);
 
         // Sample direction
         let sample_phase = m.phase.sample(&-ray.d, sampler.next2d());
@@ -1892,8 +1944,8 @@ impl IntegratorPathKulla {
                     let pdfs = vec![
                         pdf_current,
                         pdf_ex * pdf_tr,
-                        pdf_phase * pdf_kulla_prime,
-                        pdf_ex * pdf_kulla_prime,
+                        pdf_phase * pdf_equiangular_prime,
+                        pdf_ex * pdf_equiangular_prime,
                     ];
                     let w = pdf_current.powi(2) / pdfs.into_iter().map(|v| v.powi(2)).sum::<f32>();
 
@@ -1907,7 +1959,7 @@ impl IntegratorPathKulla {
         // Phase function sampling (with other)
         let contrib_phase_other = if res.is_some() {
             // Generate a direction from the point p
-            let new_ray = Ray::new(p_kulla, sample_phase.d);
+            let new_ray = Ray::new(p_equiangular, sample_phase.d);
 
             // Check if we intersect an emitter
             let its = accel.trace(&new_ray);
@@ -1918,7 +1970,7 @@ impl IntegratorPathKulla {
                 if !its.mesh.is_light() || its.n_g.dot(-new_ray.d) < 0.0 {
                     Color::zero()
                 } else {
-                    let t_light = (its.p - p_kulla).magnitude();
+                    let t_light = (its.p - p_equiangular).magnitude();
                     let light_trans = transmittance(t_light, new_ray.clone());
 
                     // Compute MIS
@@ -1933,10 +1985,10 @@ impl IntegratorPathKulla {
                             its.primitive_id,
                         )
                         .value();
-                    let pdf_current = pdf_phase * pdf_kulla;
+                    let pdf_current = pdf_phase * pdf_equiangular;
                     let pdfs = vec![
                         pdf_current,
-                        pdf_ex * pdf_kulla,
+                        pdf_ex * pdf_equiangular,
                         pdf_phase * pdf_tr_prime,
                         pdf_ex * pdf_tr_prime,
                     ];
@@ -1944,7 +1996,7 @@ impl IntegratorPathKulla {
 
                     // Compute contrib
                     let value = its.mesh.emit(&its.uv) * m.sigma_s * sample_phase.weight;
-                    w * value * transmittance_kulla * light_trans
+                    w * value * transmittance_equiangular * light_trans
                 }
             }
         } else {
@@ -1979,8 +2031,8 @@ impl IntegratorPathKulla {
                     let pdfs = vec![
                         pdf_current,
                         pdf_phase * pdf_tr,
-                        pdf_phase * pdf_kulla_prime,
-                        pdf_ex * pdf_kulla_prime,
+                        pdf_phase * pdf_equiangular_prime,
+                        pdf_ex * pdf_equiangular_prime,
                     ];
                     let w = pdf_current.powi(2) / pdfs.into_iter().map(|v| v.powi(2)).sum::<f32>();
 
@@ -1996,7 +2048,7 @@ impl IntegratorPathKulla {
         let contrib_ex_other = if let Some((_, sampled_pos, flux_pi)) = &res {
             let flux = *flux_pi * std::f32::consts::FRAC_1_PI;
 
-            let d_light = sampled_pos.p - p_kulla;
+            let d_light = sampled_pos.p - p_equiangular;
             let t_light = d_light.magnitude();
             if t_light == 0.0 || !t_light.is_finite() {
                 Color::zero()
@@ -2009,23 +2061,25 @@ impl IntegratorPathKulla {
                 let flux = flux * sampled_pos.n.dot(-d_light) / t_light.powi(2);
 
                 // Backface the light or not visible
-                if sampled_pos.n.dot(-d_light) <= 0.0 || !accel.visible(&p_kulla, &sampled_pos.p) {
+                if sampled_pos.n.dot(-d_light) <= 0.0
+                    || !accel.visible(&p_equiangular, &sampled_pos.p)
+                {
                     Color::zero()
                 } else {
                     let light_trans = transmittance(t_light, ray.clone());
 
                     // Compute MIS
                     let pdf_phase = m.phase.pdf(&-ray.d, &d_light);
-                    let pdf_current = pdf_ex * pdf_kulla;
+                    let pdf_current = pdf_ex * pdf_equiangular;
                     let pdfs = vec![
                         pdf_current,
-                        pdf_phase * pdf_kulla,
+                        pdf_phase * pdf_equiangular,
                         pdf_phase * pdf_tr_prime,
                         pdf_ex * pdf_tr_prime,
                     ];
                     let w = pdf_current.powi(2) / pdfs.into_iter().map(|v| v.powi(2)).sum::<f32>();
                     let value = flux * m.sigma_s * m.phase.eval(&-ray.d, &d_light);
-                    w * value * transmittance_kulla * light_trans
+                    w * value * transmittance_equiangular * light_trans
                 }
             }
         } else {
@@ -2526,7 +2580,7 @@ impl IntegratorPathKulla {
     }
 }
 
-impl IntegratorMC for IntegratorPathKulla {
+impl IntegratorMC for IntegratorPointNormal {
     fn compute_pixel(
         &self,
         (ix, iy): (u32, u32),
@@ -2550,8 +2604,8 @@ impl IntegratorMC for IntegratorPathKulla {
         if self.use_mis {
             if self.strategy.intersects(Strategies::TR) {
                 self.compute_multiple_tr(accel, scene, sampler, &ray, max_dist)
-            } else if self.strategy.intersects(Strategies::KULLA) {
-                self.compute_multiple_kulla(accel, scene, sampler, &ray, max_dist)
+            } else if self.strategy.intersects(Strategies::EQUIANGULAR) {
+                self.compute_multiple_equiangular(accel, scene, sampler, &ray, max_dist)
             } else {
                 self.compute_multiple_strategy(accel, scene, sampler, &ray, max_dist)
             }
