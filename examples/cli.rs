@@ -685,7 +685,9 @@ fn main() {
                 "eq_phase_taylor_ex" => {
                     Strategies::EQUIANGULAR | Strategies::TAYLOR_PHASE | Strategies::EX
                 }
-                "eq_tr_taylor_ex" => Strategies::EQUIANGULAR | Strategies::TAYLOR_TR | Strategies::EX,
+                "eq_tr_taylor_ex" => {
+                    Strategies::EQUIANGULAR | Strategies::TAYLOR_TR | Strategies::EX
+                }
                 // Kulla clamped
                 "eq_clamped_phase" => Strategies::EQUIANGULAR_CLAMPED | Strategies::PHASE, //< Biased
                 "eq_clamped_ex" => Strategies::EQUIANGULAR_CLAMPED | Strategies::EX,

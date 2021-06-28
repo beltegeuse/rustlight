@@ -285,7 +285,8 @@ struct EquiAngularWrap<T: Wrap> {
 }
 impl<T: Wrap> DistanceSampling for EquiAngularWrap<T> {
     fn sample(&self, sample: f32) -> (f32, f32) {
-        let theta = self.wrap.cdf_inv(sample) * (self.equiangular.theta_b - self.equiangular.theta_a)
+        let theta = self.wrap.cdf_inv(sample)
+            * (self.equiangular.theta_b - self.equiangular.theta_a)
             + self.equiangular.theta_a;
         if theta < self.equiangular.theta_a || theta > self.equiangular.theta_b {
             dbg!(theta, self.equiangular.theta_a, self.equiangular.theta_b);
@@ -315,7 +316,8 @@ impl<T: Wrap> DistanceSampling for EquiAngularWrap<T> {
         } else {
             let t = distance - self.equiangular.delta;
             let theta = (t / self.equiangular.d_l).atan();
-            let x = (theta - self.equiangular.theta_a) / (self.equiangular.theta_b - self.equiangular.theta_a);
+            let x = (theta - self.equiangular.theta_a)
+                / (self.equiangular.theta_b - self.equiangular.theta_a);
             let pdf = self.wrap.pdf(x) / (self.equiangular.theta_b - self.equiangular.theta_a);
             pdf * self.equiangular.d_l / (self.equiangular.d_l.powi(2) + t.powi(2))
         }
@@ -336,7 +338,8 @@ impl<T: Wrap> DistanceSampling for EquiAngularMultipleWrap<T> {
                 pdf *= w.pdf(pos);
             }
             (
-                pos * (self.equiangular.theta_b - self.equiangular.theta_a) + self.equiangular.theta_a,
+                pos * (self.equiangular.theta_b - self.equiangular.theta_a)
+                    + self.equiangular.theta_a,
                 pdf,
             )
         };
@@ -371,7 +374,8 @@ impl<T: Wrap> DistanceSampling for EquiAngularMultipleWrap<T> {
         } else {
             let t = distance - self.equiangular.delta;
             let theta = (t / self.equiangular.d_l).atan();
-            let mut pos = (theta - self.equiangular.theta_a) / (self.equiangular.theta_b - self.equiangular.theta_a);
+            let mut pos = (theta - self.equiangular.theta_a)
+                / (self.equiangular.theta_b - self.equiangular.theta_a);
             let mut pdf = 1.0;
             for w in self.wraps.iter().rev() {
                 pdf *= w.pdf(pos);
@@ -524,7 +528,12 @@ pub struct EquiAngularHybridSampling<T: Poly, W: Wrap> {
 }
 
 impl<T: Poly, W: Wrap> EquiAngularHybridSampling<T, W> {
-    pub fn new(poly: T, equiangular: EquiAngularSampling, warp: W, mut clamp_angle: f32) -> Option<Self> {
+    pub fn new(
+        poly: T,
+        equiangular: EquiAngularSampling,
+        warp: W,
+        mut clamp_angle: f32,
+    ) -> Option<Self> {
         let (prob_poly, norm, cdf_a) = if equiangular.theta_a > clamp_angle {
             // No taylor exp
             clamp_angle = equiangular.theta_a;
@@ -611,11 +620,13 @@ impl<T: Poly, W: Wrap> DistanceSampling for EquiAngularHybridSampling<T, W> {
         };
 
         let (theta2, pdf_warp) = {
-            let pos = (theta1 - self.equiangular.theta_a) / (self.equiangular.theta_b - self.equiangular.theta_a);
+            let pos = (theta1 - self.equiangular.theta_a)
+                / (self.equiangular.theta_b - self.equiangular.theta_a);
             let pos = self.warp.cdf_inv(pos);
             let pdf = self.warp.pdf(pos);
             (
-                pos * (self.equiangular.theta_b - self.equiangular.theta_a) + self.equiangular.theta_a,
+                pos * (self.equiangular.theta_b - self.equiangular.theta_a)
+                    + self.equiangular.theta_a,
                 pdf,
             )
         };
@@ -682,7 +693,12 @@ impl PointNormalSampling {
         if norm <= 0.0 {
             None
         } else {
-            Some(PointNormalSampling { equiangular, a, b, norm })
+            Some(PointNormalSampling {
+                equiangular,
+                a,
+                b,
+                norm,
+            })
         }
     }
 }
@@ -694,7 +710,8 @@ impl DistanceSampling for PointNormalSampling {
             let a = self.a;
             let b = self.b;
 
-            let sample = sample + a * self.equiangular.theta_a.sin() - b * self.equiangular.theta_a.cos();
+            let sample =
+                sample + a * self.equiangular.theta_a.sin() - b * self.equiangular.theta_a.cos();
             let v = (a * a + b * b - (sample).powi(2)).max(0.0).sqrt();
             let q = a * sample;
             let r = b * v / a.signum();
@@ -768,7 +785,8 @@ impl<T: Poly, W: Wrap> PointNormalTaylorSampling<T, W> {
         warp: Option<W>,
         mut clamp_angle: f32,
     ) -> Option<Self> {
-        let (other_a, other_b, prob_poly, norm_poly, other_norm) = if pn.equiangular.theta_a > clamp_angle
+        let (other_a, other_b, prob_poly, norm_poly, other_norm) = if pn.equiangular.theta_a
+            > clamp_angle
         {
             clamp_angle = pn.equiangular.theta_a;
             // Only uses PN for the rest of the domain
@@ -904,7 +922,11 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
             };
 
             // Do PN sampling
-            let theta = crate::clamp(sol, self.pn.equiangular.theta_a, self.pn.equiangular.theta_b);
+            let theta = crate::clamp(
+                sol,
+                self.pn.equiangular.theta_a,
+                self.pn.equiangular.theta_b,
+            );
             let pdf_angular = self.other_a * sol.cos() + self.other_b * sol.sin();
 
             ///////////////////
@@ -912,7 +934,11 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
             let pdf_warp = 1.0; // No warp performed.
             (theta, (1.0 - self.prob_poly) * pdf_angular * pdf_warp)
         };
-        let theta1 = crate::clamp(theta1, self.pn.equiangular.theta_a, self.pn.equiangular.theta_b);
+        let theta1 = crate::clamp(
+            theta1,
+            self.pn.equiangular.theta_a,
+            self.pn.equiangular.theta_b,
+        );
 
         // Do the wrap
         let (theta2, pdf_warp) = match &self.warp {
@@ -921,7 +947,8 @@ impl<T: Poly, W: Wrap> DistanceSampling for PointNormalTaylorSampling<T, W> {
                     / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
                 let pos = w.cdf_inv(pos);
                 (
-                    pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a) + self.pn.equiangular.theta_a,
+                    pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a)
+                        + self.pn.equiangular.theta_a,
                     w.pdf(pos),
                 )
             }
@@ -959,7 +986,8 @@ impl<W: Wrap> DistanceSampling for PointNormalWarpSampling<W> {
             let a = self.pn.a;
             let b = self.pn.b;
 
-            let sample = sample + a * self.pn.equiangular.theta_a.sin() - b * self.pn.equiangular.theta_a.cos();
+            let sample = sample + a * self.pn.equiangular.theta_a.sin()
+                - b * self.pn.equiangular.theta_a.cos();
             let v = (a * a + b * b - (sample).powi(2)).max(0.0).sqrt();
             let q = a * sample;
             let r = b * v / a.signum();
@@ -977,18 +1005,23 @@ impl<W: Wrap> DistanceSampling for PointNormalWarpSampling<W> {
             }
         };
         let pdf_angular = self.pn.a * theta1.cos() + self.pn.b * theta1.sin();
-        let theta1 = crate::clamp(theta1, self.pn.equiangular.theta_a, self.pn.equiangular.theta_b);
+        let theta1 = crate::clamp(
+            theta1,
+            self.pn.equiangular.theta_a,
+            self.pn.equiangular.theta_b,
+        );
 
         let (theta2, pdf_warp) = {
             let mut pdf = 1.0;
-            let mut pos =
-                (theta1 - self.pn.equiangular.theta_a) / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
+            let mut pos = (theta1 - self.pn.equiangular.theta_a)
+                / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
             for w in &self.warps {
                 pos = w.cdf_inv(pos);
                 pdf *= w.pdf(pos);
             }
             (
-                pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a) + self.pn.equiangular.theta_a,
+                pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a)
+                    + self.pn.equiangular.theta_a,
                 pdf,
             )
         };
@@ -1000,7 +1033,11 @@ impl<W: Wrap> DistanceSampling for PointNormalWarpSampling<W> {
                 theta2, self.pn.equiangular.theta_a, self.pn.equiangular.theta_b
             );
         }
-        let theta = crate::clamp(theta2, self.pn.equiangular.theta_a, self.pn.equiangular.theta_b);
+        let theta = crate::clamp(
+            theta2,
+            self.pn.equiangular.theta_a,
+            self.pn.equiangular.theta_b,
+        );
 
         // Compute distances
         let t = self.pn.equiangular.d_l * theta.tan();
@@ -1017,15 +1054,15 @@ impl<W: Wrap> DistanceSampling for PointNormalWarpSampling<W> {
         let theta = ((distance - self.pn.equiangular.delta) / self.pn.equiangular.d_l).atan();
         if theta >= self.pn.equiangular.theta_a && theta <= self.pn.equiangular.theta_b {
             // Warps
-            let mut pos =
-                (theta - self.pn.equiangular.theta_a) / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
+            let mut pos = (theta - self.pn.equiangular.theta_a)
+                / (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a);
             let mut pdf = 1.0;
             for w in self.warps.iter().rev() {
                 pdf *= w.pdf(pos);
                 pos = w.cdf(pos);
             }
-            let theta =
-                pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a) + self.pn.equiangular.theta_a;
+            let theta = pos * (self.pn.equiangular.theta_b - self.pn.equiangular.theta_a)
+                + self.pn.equiangular.theta_a;
 
             // PN and jacobian
             let t = distance - self.pn.equiangular.delta;
@@ -1231,7 +1268,8 @@ impl IntegratorPath {
             };
             let tr = |v: f32| {
                 let s_t = m.sigma_t.avg();
-                (-s_t * (equiangular.d_l * v.tan() + equiangular.delta + equiangular.d_l / v.cos())).exp()
+                (-s_t * (equiangular.d_l * v.tan() + equiangular.delta + equiangular.d_l / v.cos()))
+                    .exp()
             };
 
             if self.strategy.intersects(Strategies::TAYLOR_PHASE) {
@@ -1390,8 +1428,11 @@ impl IntegratorPath {
                 };
                 let tr = |v: f32| {
                     let s_t = m.sigma_t.avg();
-                    (-s_t * (pn.equiangular.d_l * v.tan() + pn.equiangular.delta + pn.equiangular.d_l / v.cos()))
-                        .exp()
+                    (-s_t
+                        * (pn.equiangular.d_l * v.tan()
+                            + pn.equiangular.delta
+                            + pn.equiangular.d_l / v.cos()))
+                    .exp()
                 };
 
                 match &self.warps_strategy {
@@ -1478,8 +1519,11 @@ impl IntegratorPath {
                     // Use bezier for the transmittance
                     let tr = |v: f32| {
                         let s_t = m.sigma_t.avg();
-                        (-s_t * (pn.equiangular.d_l * v.tan() + pn.equiangular.delta + pn.equiangular.d_l / v.cos()))
-                            .exp()
+                        (-s_t
+                            * (pn.equiangular.d_l * v.tan()
+                                + pn.equiangular.delta
+                                + pn.equiangular.d_l / v.cos()))
+                        .exp()
                     };
                     let mid = (pn.equiangular.theta_a + pn.equiangular.theta_b) / 2.0;
                     let warp = Some(BezierWrap {
@@ -1686,7 +1730,8 @@ impl IntegratorPath {
                         )
                         .value();
 
-                    let pdf_other = EquiAngularSampling::new(max_dist, ray, &its.p).pdf(res_other.t);
+                    let pdf_other =
+                        EquiAngularSampling::new(max_dist, ray, &its.p).pdf(res_other.t);
                     let pdf_other_clamped =
                         compute_pdf_other_clamped(&its.p, &its.n_g, res_other.t);
 
@@ -1732,7 +1777,8 @@ impl IntegratorPath {
                     // Compute MIS
                     let pdf_phase = m.phase.pdf(&-ray.d, &d_light);
                     let pdf_current = pdf_ex * res_tr.pdf;
-                    let pdf_other = EquiAngularSampling::new(max_dist, ray, &sampled_pos.p).pdf(res_tr.t);
+                    let pdf_other =
+                        EquiAngularSampling::new(max_dist, ray, &sampled_pos.p).pdf(res_tr.t);
                     let pdf_other_clamped =
                         compute_pdf_other_clamped(&sampled_pos.p, &sampled_pos.n, res_tr.t);
 
@@ -1776,8 +1822,8 @@ impl IntegratorPath {
                     // Compute MIS
                     let pdf_phase = m.phase.pdf(&-ray.d, &d_light);
                     let pdf_current = pdf_ex * res_other_clamped.pdf;
-                    let pdf_other =
-                        EquiAngularSampling::new(max_dist, ray, &sampled_pos.p).pdf(res_other_clamped.t);
+                    let pdf_other = EquiAngularSampling::new(max_dist, ray, &sampled_pos.p)
+                        .pdf(res_other_clamped.t);
                     let pdf_tr = sampling_tr.pdf(res_other_clamped.t);
 
                     // Compute the set of PDFs
@@ -1846,9 +1892,15 @@ impl IntegratorPath {
             if let Some((_, sampled_pos, _)) = &res {
                 let equiangular_strategy = EquiAngularSampling::new(max_dist, ray, &sampled_pos.p);
                 let (t_equiangular, pdf_equiangular) = equiangular_strategy.sample(sampler.next());
-                let transmittance_equiangular = transmittance(t_equiangular, ray.clone()) / pdf_equiangular;
+                let transmittance_equiangular =
+                    transmittance(t_equiangular, ray.clone()) / pdf_equiangular;
                 let pdf_equiangular_prime = equiangular_strategy.pdf(t_tr);
-                (t_equiangular, transmittance_equiangular, pdf_equiangular, pdf_equiangular_prime)
+                (
+                    t_equiangular,
+                    transmittance_equiangular,
+                    pdf_equiangular,
+                    pdf_equiangular_prime,
+                )
             } else {
                 (0.0, Color::zero(), 0.0, 0.0)
             };
@@ -2009,7 +2061,9 @@ impl IntegratorPath {
                 let flux = flux * sampled_pos.n.dot(-d_light) / t_light.powi(2);
 
                 // Backface the light or not visible
-                if sampled_pos.n.dot(-d_light) <= 0.0 || !accel.visible(&p_equiangular, &sampled_pos.p) {
+                if sampled_pos.n.dot(-d_light) <= 0.0
+                    || !accel.visible(&p_equiangular, &sampled_pos.p)
+                {
                     Color::zero()
                 } else {
                     let light_trans = transmittance(t_light, ray.clone());

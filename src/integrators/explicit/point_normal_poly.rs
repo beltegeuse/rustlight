@@ -93,7 +93,10 @@ impl Poly4 {
         }
     }
 
-    pub fn tr(pn: &crate::integrators::explicit::point_normal::EquiAngularSampling, sigma_t: f32) -> Self {
+    pub fn tr(
+        pn: &crate::integrators::explicit::point_normal::EquiAngularSampling,
+        sigma_t: f32,
+    ) -> Self {
         // let delta = pn.delta;
         let d_norm = pn.d_l;
 
