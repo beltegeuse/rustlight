@@ -21,5 +21,8 @@
 /*.log
 /results-new/
 /tmp.*
+
+# Point-normal specific files
 /results/
 /scenes/
+point_normal_scenes.tar.xz

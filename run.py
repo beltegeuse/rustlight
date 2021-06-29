@@ -121,7 +121,7 @@ def canonical_experiment():
             "options": '-s eq_tr_taylor_ex -o 6'},
     ]
     infos.append(run_variations("results/point",
-                "scene/point-normal/point.xml", "0.5:0.2", variations, ISO_CONFIG))
+                "scenes/point-normal/point.xml", "0.5:0.2", variations, ISO_CONFIG))
 
     # # Anisotropic-point
     exp += ["aniso-point"]
@@ -139,7 +139,7 @@ def canonical_experiment():
             "options": '-s eq_best_ex'},
     ]
     infos.append(run_variations("results/point_g_9",
-                "scene/point-normal/point.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
+                "scenes/point-normal/point.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
 
     # Isotropic-PN
     exp += ["iso-pn"]
@@ -153,7 +153,7 @@ def canonical_experiment():
             "options": '-s pn_tr_taylor_ex -o 6'},
     ]
     infos.append(run_variations("results/point-normal",
-                "scene/point-normal/point_normal.xml", "0.5:0.2", variations, ISO_CONFIG))
+                "scenes/point-normal/point_normal.xml", "0.5:0.2", variations, ISO_CONFIG))
 
     # Anisotropic-PN
     exp += ["aniso-pn"]
@@ -173,7 +173,7 @@ def canonical_experiment():
             "options": '-s pn_best_ex'},
     ]
     infos.append(run_variations("results/point-normal_g_9",
-                "scene/point-normal/point_normal.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
+                "scenes/point-normal/point_normal.xml", "0.5:0.2:0.9", variations, ANISO_CONFIG))
 
     # Print informations
     for e, ins in zip(exp, infos):
@@ -196,7 +196,7 @@ def buddha_experiment():
     ]
 
     infos = run_variations("results/buddha",
-                "scene/point-normal/buddha/scene.pbrt", "0.7:0.2", variations, CONFIG)
+                "scenes/point-normal/buddha/scene.pbrt", "0.7:0.2", variations, CONFIG)
 
 def retro_experiment():
     CONFIG = {
@@ -212,7 +212,7 @@ def retro_experiment():
     ]
 
     infos = run_variations("results/retrowave",
-                "scene/point-normal/retrowave/scene.pbrt", "0.1:0.1:0.8", variations, CONFIG, delete=False)
+                "scenes/point-normal/retrowave/scene.pbrt", "0.1:0.1:0.8", variations, CONFIG, delete=False)
 
 canonical_experiment()
 buddha_experiment()
