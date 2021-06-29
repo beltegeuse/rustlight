@@ -17,20 +17,20 @@ Dependencies needed to be installed on your system (tested only on Linux):
 ## Reproducing results
 
 ```shell
-$ echo "Download code..."
-$ git clone https://github.com/beltegeuse/rustlight.git
-$ cd rustlight
-$ git checkout point-normal
-$ echo "Building code ..."
-$ cargo build --release --example=cli --features="embree openexr" --
-$ echo "Get scenes and references..." 
-$ wget http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/research/2021_PointNormal/point_normal_scenes.tar.xz
-$ tar -xvf point_normal_scenes.tar.xz 
-$ echo "Run results Fig. 3, 6, 7..."
-$ mkdir results
-$ python run.py
-$ echo "Run results Fig. 5..."
-$ sh run_plane_exp.sh
+echo "Download code..."
+git clone https://github.com/beltegeuse/rustlight.git
+cd rustlight
+git checkout point-normal
+echo "Building code ..."
+cargo build --release --example=cli --features="embree openexr" --
+echo "Get scenes and references..." 
+wget http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/research/2021_PointNormal/point_normal_scenes.tar.xz
+tar -xvf point_normal_scenes.tar.xz 
+echo "Run results Fig. 3, 6, 7..."
+mkdir results
+python run.py
+echo "Run results Fig. 5..."
+sh run_plane_exp.sh
 ```
 
 ## Code organization
