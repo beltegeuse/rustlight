@@ -24,7 +24,7 @@ git checkout point-normal
 echo "Building code ..."
 cargo build --release --example=cli --features="embree openexr" --
 echo "Get scenes and references..." 
-wget http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/research/2021_PointNormal/point_normal_scenes.tar.xz
+wget http://adrien-gruson.com/research/2021_PointNormal/point_normal_scenes.tar.xz
 tar -xvf point_normal_scenes.tar.xz 
 echo "Run results Fig. 3, 6, 7..."
 mkdir results
