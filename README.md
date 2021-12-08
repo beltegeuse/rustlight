@@ -15,7 +15,7 @@ These are the instructions to reproduce "Continuous Multiple Importance Sampling
 $ git clone https://github.com/beltegeuse/rustlight.git
 $ cd rustlight
 $ git checkout smis-planes
-$ wget http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/research/2020_CMIS/plane_scene.zip
+$ wget http://adrien-gruson.com/research/2020_CMIS/plane_scene.zip
 $ unzip plane_scene.zip
 ```
 
@@ -28,7 +28,7 @@ $ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o smis_jacobian_k
 $ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o smis_all_k2_stratified.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s smis_all -k 2 -x
 $ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o cmis.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s cmis
 ```
-The precomputed reference is available at: http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/research/2020_CMIS/plane_reference.exr
+The precomputed reference is available at: http://adrien-gruson.com/research/2020_CMIS/plane_reference.exr
 
 For more information about the available options for this particular integrator:
 ```shell
