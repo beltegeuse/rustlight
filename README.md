@@ -15,7 +15,7 @@ These are the instructions to reproduce "Continuous Multiple Importance Sampling
 $ git clone https://github.com/beltegeuse/rustlight.git
 $ cd rustlight
 $ git checkout smis-planes
-$ wget http://adrien-gruson.com/research/2020_CMIS/plane_scene.zip
+$ wget https://data.adrien-gruson.com/research/2020_CMIS/plane_scene.zip
 $ unzip plane_scene.zip
 ```
 
