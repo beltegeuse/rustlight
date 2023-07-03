@@ -503,6 +503,11 @@ fn main() {
             info!(" - warps_strategy: {:?}", warps_strategy);
             info!(" - splitting         : {:?}", splitting);
 
+            info!(" - use_mis       : {}", use_mis);
+            info!(" - warps         : {}", warps);
+            info!(" - warps_strategy: {:?}", warps_strategy);
+            info!(" - splitting         : {:?}", splitting);
+
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::point_normal::IntegratorPointNormal {
                     strategy,
