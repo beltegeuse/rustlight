@@ -137,6 +137,7 @@ pub struct SampledDirection {
 }
 
 bitflags! {
+    #[derive(Clone)]
     pub struct BSDFEvent: u8 {
         const REFLECTION       = 0b00000001;
         const TRANSMISSION     = 0b00000010;
@@ -144,6 +145,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Clone)]
     pub struct BSDFType: u8 {
         const NULL              = 0b00000001;
         const DIFFUSE           = 0b00000010;

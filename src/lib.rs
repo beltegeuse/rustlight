@@ -46,8 +46,6 @@ extern crate assert_approx_eq;
 // For flag bit implementation (C++)
 #[macro_use]
 extern crate bitflags;
-// For matrix inversion
-extern crate nalgebra;
 
 mod constants {
     pub const EPSILON: f32 = 0.0001;

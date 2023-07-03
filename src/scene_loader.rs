@@ -283,6 +283,7 @@ impl SceneLoader for PBRTSceneLoader {
                     pbrt_rs::Camera::Perspective {
                         world_to_camera,
                         fov,
+                        ..
                     } => {
                         let mat = world_to_camera.inverse_transform().unwrap();
                         info!("camera matrix: {:?}", mat);

@@ -6,7 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3};
 use core::f32;
 #[cfg(feature = "image")]
-use image::{DynamicImage, GenericImage, Pixel};
+use image::{DynamicImage, GenericImage};
 #[cfg(feature = "openexr")]
 use openexr;
 use std;
@@ -70,7 +70,7 @@ pub enum Transport {
 impl PDF {
     pub fn is_zero(&self) -> bool {
         match self {
-            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => (*v == 0.0),
+            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => *v == 0.0,
         }
     }
 
@@ -158,12 +158,12 @@ impl Color {
 
     #[cfg(feature = "image")]
     pub fn to_rgba(&self) -> image::Rgba<u8> {
-        image::Rgba::from_channels(
+        image::Rgba([
             (self.r.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             (self.g.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             255,
-        )
+        ])
     }
     pub fn channel_max(&self) -> f32 {
         self.r.max(self.g.max(self.b))

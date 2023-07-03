@@ -66,17 +66,22 @@ pub fn load_obj(file_name: &std::path::Path) -> Result<Vec<Mesh>, tobj::LoadErro
             if let Some(id) = mesh.material_id {
                 info!(" - BSDF id: {}", id);
                 let mat = &materials[id];
-                if !mat.diffuse_texture.is_empty() {
-                    let path_texture = wk.join(&mat.diffuse_texture);
+                if let Some(tx) = &mat.diffuse_texture {
+                    let path_texture = wk.join(&tx);
                     Box::new(bsdfs::diffuse::BSDFDiffuse {
                         diffuse: bsdfs::BSDFColor::Bitmap {
                             img: Bitmap::read(&path_texture.to_str().unwrap()),
                         },
                     })
-                } else {
-                    let diffuse_color = Color::new(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
+                } else if let Some(kd) = mat.diffuse {
+                    let diffuse_color = Color::new(kd[0], kd[1], kd[2]);
                     Box::new(bsdfs::diffuse::BSDFDiffuse {
                         diffuse: bsdfs::BSDFColor::Constant(diffuse_color),
+                    })
+                } else {
+                    // Default?
+                    Box::new(bsdfs::diffuse::BSDFDiffuse {
+                        diffuse: bsdfs::BSDFColor::Constant(Color::zero()),
                     })
                 }
             } else {

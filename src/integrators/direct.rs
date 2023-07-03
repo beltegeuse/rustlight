@@ -3,8 +3,8 @@ use crate::integrators::*;
 use cgmath::InnerSpace;
 
 pub struct IntegratorDirect {
-    pub nb_bsdf_samples: u32,
-    pub nb_light_samples: u32,
+    pub nb_bsdf_samples: usize,
+    pub nb_light_samples: usize,
 }
 
 impl Integrator for IntegratorDirect {

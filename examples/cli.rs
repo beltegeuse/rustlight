@@ -5,17 +5,17 @@
 #![allow(clippy::cognitive_complexity)]
 
 extern crate cgmath;
-extern crate num_cpus;
-#[macro_use]
 extern crate clap;
 extern crate log4rs;
+extern crate num_cpus;
 #[macro_use]
 extern crate log;
 extern crate rand;
 extern crate rayon;
 extern crate rustlight;
 
-use clap::{App, Arg, SubCommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
 use log::LevelFilter;
 use log4rs::{
     append::{
@@ -28,8 +28,8 @@ use log4rs::{
 };
 use rand::SeedableRng;
 use rustlight::integrators::IntegratorType;
-fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
-    match input {
+fn match_infinity<T: std::str::FromStr>(input: String) -> Option<T> {
+    match input.as_str() {
         "inf" => None,
         _ => match input.parse::<T>() {
             Ok(x) => Some(x),
@@ -38,430 +38,244 @@ fn match_infinity<T: std::str::FromStr>(input: &str) -> Option<T> {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum ExtraOptions {
+    /// Use adaptive tree splitting
+    ATS,
+    /// Remove shading normals
+    NoShading,
+    /// HVS Lights (hard coded)
+    HVSLight,
+    /// Texture Lights
+    TextureLight,
+}
+
+#[derive(Debug, Args)]
+pub struct PathLength {
+    #[arg(long, short = 'm', default_value = "inf")]
+    max_depth: String,
+    #[arg(long, short = 'n', default_value = "0")]
+    min_depth: String,
+    #[arg(long, short = 'r', default_value = "0")]
+    rr_depth: String,
+}
+impl PathLength {
+    pub fn parse<T: std::str::FromStr>(self) -> (Option<T>, Option<T>, Option<T>) {
+        (
+            match_infinity(self.min_depth),
+            match_infinity(self.max_depth),
+            match_infinity(self.rr_depth),
+        )
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct Reconstruction {
+    #[arg(long, short = 'i', default_value_t = 50)]
+    iterations: usize,
+    #[arg(long, default_value = "uniform")]
+    strategy: String,
+}
+impl Reconstruction {
+    pub fn parse(
+        self,
+        nb_samples: usize,
+    ) -> Box<dyn rustlight::integrators::PoissonReconstruction + Sync> {
+        match self.strategy.as_str() {
+            "uniform" => Box::new(
+                rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
+                    iterations: self.iterations,
+                },
+            ),
+            "weighted" => Box::new(
+                rustlight::integrators::gradient::recons::WeightedPoissonReconstruction::new(
+                    self.iterations,
+                ),
+            ),
+            "bagging" => Box::new(
+                rustlight::integrators::gradient::recons::BaggingPoissonReconstruction {
+                    iterations: self.iterations,
+                    nb_buffers: if nb_samples <= 8 { nb_samples } else { 8 },
+                },
+            ),
+            _ => panic!("Impossible to found a reconstruction_type"),
+        }
+    }
+}
+
+#[derive(Debug, Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    /// Scene description file
+    #[arg(value_name = "FILE", default_value = "test.pfm")]
+    scene: String,
+    /// Number of samples
+    #[arg(long, short, default_value_t = 1)]
+    nbsamples: usize,
+    /// Number averaging pass ('inf' possible)
+    #[arg(long, short)]
+    average: Option<String>,
+    /// Number of threads
+    #[arg(long, short, allow_hyphen_values(true))]
+    threads: Option<i32>,
+    /// Random number generator
+    #[arg(long, short, default_value = "independent")]
+    random_number_generator: String,
+    /// Image scale (to faster or slower rendering)
+    #[arg(long, short, default_value_t = 1_f32)]
+    scale_image: f32,
+    /// Equal time comparison
+    #[arg(long, short)]
+    equal_time: Option<f32>, // False as default?
+    /// Output image file
+    #[arg(long, short, value_name = "FILE")]
+    output: String,
+    /// Infinite medium with density
+    #[arg(long, short, default_value = "0.0")]
+    medium: String,
+    /// Logs
+    #[arg(long, short)]
+    log: Option<String>,
+    /// Options
+    #[arg(long, short)]
+    xtra_options: Vec<ExtraOptions>,
+
+    #[clap(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    // Regular rendering algorithms
+    AO {
+        #[arg(long, short, default_value = "1.0")]
+        distance: String,
+        #[arg(long, short)]
+        normal_correction: bool,
+    },
+    Direct {
+        #[arg(long, short = 'b', default_value_t = 1)]
+        nb_bsdf_samples: usize,
+        #[arg(long, short = 'l', default_value_t = 1)]
+        nb_light_samples: usize,
+    },
+    Path {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[arg(long, short = 'x')]
+        single_scattering: bool,
+        #[arg(long, short, default_value = "all")]
+        strategy: String,
+    },
+    LightTracing {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[arg(long, short, default_value = "all")]
+        strategy: String,
+    },
+    VPL {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[arg(long, short = 'b', default_value_t = 0.0)]
+        clamping: f32,
+        #[arg(long, short, default_value_t = 128)]
+        nb_vpl: usize,
+        #[arg(long, short = 'l', default_value = "all")]
+        option_lt: String,
+        #[arg(long, short = 'v', default_value = "all")]
+        option_vpl: String,
+    },
+    // Volume
+    VolPrimitivies {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[arg(long, short, default_value_t = 128)]
+        nb_primitive: usize,
+        #[arg(long, short, default_value = "BRE")]
+        primitives: String,
+    },
+    PlaneSingle {
+        #[arg(long, short, default_value_t = 128)]
+        nb_primitive: usize,
+        #[arg(long, short, default_value = "average")]
+        strategy: String,
+    },
+    UncorrelatedPlaneSingle {
+        #[arg(long, short, default_value_t = 128)]
+        nb_primitive: usize,
+        #[arg(long, short, default_value = "average")]
+        strategy: String,
+    },
+    PointNormal {
+        #[arg(long, short = 'z')]
+        disable_aa: bool,
+        #[arg(long, short = 'k')]
+        splitting: Option<f32>,
+        #[arg(long, short = 'x')]
+        use_mis: bool,
+        /// warps: P = Phase, T = Tr, N = PN
+        #[arg(long, short = 'w')]
+        warps: String,
+        /// warps_type: L = Linear, B = Bezier
+        #[arg(long, short = 'w', default_value = "L")]
+        warps_strategy: String,
+        #[arg(long, short, default_value = "tr_ex")]
+        strategy: String,
+    },
+    // Gradient
+    GradientPath {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[command(flatten)]
+        recons: Reconstruction,
+    },
+    GradientPathExplicit {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[command(flatten)]
+        recons: Reconstruction,
+        #[arg(long, short = 's', default_value_t = 1.0)]
+        min_survival: f32,
+    },
+    // MCMC
+    PSSMLT {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[arg(long, short, default_value = "all")]
+        strategy: String,
+        #[arg(long, short, default_value_t = 0.3)]
+        large_prob: f32,
+        #[arg(long, short = 'b', default_value_t = 100000)]
+        nb_samples_norm: usize,
+    },
+    SMCMC {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[arg(long, short, default_value = "all")]
+        strategy: String,
+        #[arg(long, short, default_value_t = 0.3)]
+        large_prob: f32,
+        #[arg(long, short, default_value = "irls")]
+        recons: String,
+        #[arg(long, short, default_value = "mcmc")]
+        init: String,
+    },
+    ERPT {
+        #[command(flatten)]
+        path_length: PathLength,
+        #[arg(long, short = 'k')]
+        stratified: bool,
+        #[arg(long, short, default_value = "all")]
+        strategy: String,
+        #[arg(long, short = 'e', default_value_t = 1)]
+        nb_mc: usize,
+        #[arg(long, short, default_value_t = 100)]
+        chain_samples: usize,
+    },
+}
+
 fn main() {
-    // Read input args
-    let max_arg = Arg::with_name("max")
-        .takes_value(true)
-        .short("m")
-        .help("max path depth")
-        .default_value("inf");
-    let rr_arg = Arg::with_name("rr")
-        .takes_value(true)
-        .short("r")
-        .help("russian roulette")
-        .default_value("inf");
-    let min_arg = Arg::with_name("min")
-        .takes_value(true)
-        .short("n")
-        .help("min path depth")
-        .default_value("inf");
-    let iterations_arg = Arg::with_name("iterations")
-        .takes_value(true)
-        .short("r")
-        .help("number of iteration used to reconstruct an image")
-        .default_value("50");
-    let recons_type_arg = Arg::with_name("reconstruction_type")
-        .takes_value(true)
-        .short("t")
-        .default_value("uniform");
-    let matches =
-        App::new("rustlight")
-            .version("0.2.0")
-            .author("Adrien Gruson <adrien.gruson@gmail.com>")
-            .about("A Rusty Light Transport simulation program")
-            .arg(
-                Arg::with_name("scene")
-                    .required(true)
-                    .takes_value(true)
-                    .index(1)
-                    .help("JSON/PBRT file path (scene description)"),
-            )
-            .arg(Arg::with_name("average").short("a").takes_value(true).help(
-                "average several pass of the integrator with a time limit ('inf' is possible)",
-            ))
-            .arg(
-                Arg::with_name("nbthreads")
-                    .takes_value(true)
-                    .allow_hyphen_values(true)
-                    .short("t")
-                    .default_value("auto")
-                    .help("number of thread for the computation (could be negative)"),
-            )
-            .arg(
-                Arg::with_name("random_number_generator")
-                .takes_value(true)
-                .short("r")
-                .default_value("independent")
-                .help("the random number generator used"),
-            )
-            .arg(
-                Arg::with_name("image_scale")
-                    .takes_value(true)
-                    .short("s")
-                    .default_value("1.0")
-                    .help("image scaling factor"),
-            )
-            .arg(
-                Arg::with_name("equal_time")
-                    .takes_value(true)
-                    .short("z")
-                    .help("equal_time"),
-            )
-            .arg(
-                Arg::with_name("output")
-                    .takes_value(true)
-                    .short("o")
-                    .help("output image file"),
-            )
-            .arg(
-                Arg::with_name("medium")
-                    .short("m")
-                    .takes_value(true)
-                    .default_value("0.0")
-                    .help("add medium with defined density"),
-            )
-            .arg(
-                Arg::with_name("density_mult")
-                    .takes_value(true)
-                    .short("k")
-                    .default_value("1.0")
-                    .help("density_mult"),
-            )
-            .arg(Arg::with_name("log").short("l").takes_value(true))
-            .arg(Arg::with_name("options").short("x").takes_value(true).help("optional behaviors: [ats, no_shading]"))
-            .arg(
-                Arg::with_name("nbsamples")
-                    .short("n")
-                    .takes_value(true)
-                    .help("number of sample from the sensor (if applicable)"),
-            )
-            .subcommand(
-                SubCommand::with_name("gradient-path")
-                    .about("gradient path tracing")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(&iterations_arg)
-                    .arg(&recons_type_arg),
-            )
-            .subcommand(
-                SubCommand::with_name("gradient-path-explicit")
-                    .about("gradient path tracing")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(&iterations_arg)
-                    .arg(&recons_type_arg)
-                    .arg(
-                        Arg::with_name("min_survival")
-                            .takes_value(true)
-                            .short("s")
-                            .default_value("1.0"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("pssmlt")
-                    .about("path tracing with MCMC sampling")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(&rr_arg)
-                    .arg(
-                        Arg::with_name("strategy")
-                            .takes_value(true)
-                            .short("s")
-                            .help("different sampling strategy: [all, bsdf, emitter]")
-                            .default_value("all"),
-                    )
-                    .arg(
-                        Arg::with_name("large_prob")
-                            .help("probability to perform a large step")
-                            .takes_value(true)
-                            .short("p")
-                            .default_value("0.3"),
-                    )
-                    .arg(
-                        Arg::with_name("nb_samples_norm")
-                            .help("number of samples to compute to sample X0")
-                            .takes_value(true)
-                            .short("b")
-                            .default_value("100000"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("smcmc")
-                    .about("Stratified MCMC")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(
-                        Arg::with_name("strategy")
-                            .takes_value(true)
-                            .short("s")
-                            .help("different sampling strategy: [all, bsdf, emitter]")
-                            .default_value("all"),
-                    )
-                    .arg(
-                        Arg::with_name("large_prob")
-                            .help("probability to perform a large step")
-                            .takes_value(true)
-                            .short("p")
-                            .default_value("0.3"),
-                    ).arg(
-                        Arg::with_name("recons")
-                            .takes_value(true)
-                            .short("r")
-                            .help("recons image: [naive,irls]")
-                            .default_value("irls"),
-                    )
-                    .arg(
-                        Arg::with_name("init")
-                            .takes_value(true)
-                            .short("i")
-                            .help("init algorithm: [independent,mcmc]")
-                            .default_value("mcmc"),
-                    )
-            )
-            .subcommand(
-                SubCommand::with_name("erpt")
-                    .about("path tracing with MCMC sampling")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(&rr_arg)
-                    .arg(
-                        Arg::with_name("no_stratified")
-                        .short("k")
-                        .help("remove stratification of ERPT")
-                    )
-                    .arg(
-                        Arg::with_name("strategy")
-                            .takes_value(true)
-                            .short("s")
-                            .help("difefrent sampling strategy: [all, bsdf, emitter]")
-                            .default_value("all"),
-                    )
-                    .arg(
-                        Arg::with_name("nb_mc")
-                            .takes_value(true)
-                            .short("e")
-                            .help("number of MC samples")
-                            .default_value("1"),
-                    ).arg(
-                        Arg::with_name("chain_samples")
-                            .takes_value(true)
-                            .short("c")
-                            .help("number of chains samples")
-                            .default_value("100"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("path_kulla")
-                .about("path tracing for single scattering")
-                .arg(
-                    Arg::with_name("use_cdf")
-                        .takes_value(true)
-                        .short("c")
-                        .help("use_cdf"),
-                )
-                .arg(
-                    Arg::with_name("disable_aa")
-                        .short("z")
-                        .help("disable_aa"),
-                )
-                .arg(
-                    Arg::with_name("splitting")
-                        .takes_value(true)
-                        .short("k")
-                        .help("splitting"),
-                )
-                .arg(
-                    Arg::with_name("use_mis")
-                        .short("x")
-                        .help("use_mis"),
-                )
-                .arg(
-                    Arg::with_name("warps")
-                    .takes_value(true)
-                    .short("w")
-                    .default_value("")
-                    .help("warps: P = Phase, T = Tr, N = PN"),
-                )
-                .arg( // Not used anymore
-                    Arg::with_name("order")
-                    .takes_value(true)
-                    .short("o")
-                    .default_value("4")
-                    .help("order"),
-                )
-                .arg(
-                    Arg::with_name("warps_strategy")
-                    .takes_value(true)
-                    .short("t")
-                    .default_value("L")
-                    .help("warps_type: L = Linear, B = Bezier, P = Poly"),
-                )
-                .arg(
-                    Arg::with_name("strategy")
-                        .takes_value(true)
-                        .short("s")
-                        .help("different sampling strategy: [tr_phase, tr_ex, kulla_phase, kulla_ex]")
-                        .default_value("all"),
-                )
-            )
-            .subcommand(
-                SubCommand::with_name("path")
-                    .about("path tracing generating path from the sensor")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(&rr_arg)
-                    .arg(
-                        Arg::with_name("strategy")
-                            .takes_value(true)
-                            .short("s")
-                            .help("difefrent sampling strategy: [all, bsdf, emitter]")
-                            .default_value("all"),
-                    ).arg(
-                        Arg::with_name("single")
-                            .help("to only compute single scattering")
-                            .short("x"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("light")
-                    .about("light tracing generating path from the lights")
-                    .arg(&max_arg)
-                    .arg(&min_arg)
-                    .arg(&rr_arg)
-                    .arg(
-                        Arg::with_name("lightpaths")
-                            .takes_value(true)
-                            .help("number of light path generated from the light sources")
-                            .short("p")
-                            .default_value("all"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("vpl")
-                    .about("brute force virtual point light integrator")
-                    .arg(&max_arg)
-                    .arg(&rr_arg)
-                    .arg(
-                        Arg::with_name("clamping")
-                            .takes_value(true)
-                            .short("b")
-                            .help("clamping factor")
-                            .default_value("0.0"),
-                    )
-                    .arg(
-                        Arg::with_name("nb_vpl")
-                            .takes_value(true)
-                            .help("number of VPL at least generated")
-                            .short("n")
-                            .default_value("128"),
-                    )
-                    .arg(
-                        Arg::with_name("option_lt")
-                        .takes_value(true)
-                        .help("option to select light transport: [all, surface, volume]")
-                        .short("l")
-                        .default_value("all")
-                    )
-                    .arg(
-                        Arg::with_name("option_vpl")
-                        .takes_value(true)
-                        .help("option to select generated VPL: [all, surface, volume]")
-                        .short("v")
-                        .default_value("all")
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("vol_primitives")
-                    .about("BRE/Beam/Planes estimators")
-                    .arg(&max_arg)
-                    .arg(&rr_arg)
-                    .arg(
-                        Arg::with_name("nb_primitive")
-                            .takes_value(true)
-                            .help("number of primitive generated")
-                            .short("n")
-                            .default_value("128"),
-                    )
-                    .arg(
-                        Arg::with_name("primitives")
-                            .takes_value(true)
-                            .help("type of primitives: [beam, bre, planes, vrl]")
-                            .short("p")
-                            .default_value("bre"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("plane_single")
-                    .about("Prototype implementation of 'Photon surfaces for robust, unbiased volumetric density estimation'")
-                    .arg(
-                        Arg::with_name("nb_primitive")
-                            .takes_value(true)
-                            .help("number of primitive generated")
-                            .short("n")
-                            .default_value("128"),
-                    )
-                    .arg(
-                        Arg::with_name("strategy")
-                            .takes_value(true)
-                            .help("sampling strategy: [uv, vt, st, cmis, dmis, average]")
-                            .short("s")
-                            .default_value("average"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("uncorrelated_plane_single")
-                    .about("Prototype implementation of 'Photon surfaces for robust, unbiased volumetric density estimation'")
-                    .arg(
-                        Arg::with_name("nb_primitive")
-                            .takes_value(true)
-                            .help("number of primitive generated (per pixel)")
-                            .short("n")
-                            .default_value("128"),
-                    )
-                    .arg(
-                        Arg::with_name("strategy")
-                            .takes_value(true)
-                            .short("s")
-                            .help("sampling strategy: [uv, vt, st, cmis, dmis, average]")
-                            .default_value("average"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("ao")
-                    .about("ambiant occlusion")
-                    .arg(
-                        Arg::with_name("distance")
-                            .takes_value(true)
-                            .short("d")
-                            .help("distance threshold for AO")
-                            .default_value("inf"),
-                    )
-                    .arg(
-                        Arg::with_name("normal-correction")
-                            .takes_value(false)
-                            .help("apply normal correction")
-                            .short("n"),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("direct")
-                    .about("direct lighting")
-                    .arg(
-                        Arg::with_name("bsdf")
-                            .takes_value(true)
-                            .help("number of samples from the BSDF")
-                            .short("b")
-                            .default_value("1"),
-                    )
-                    .arg(
-                        Arg::with_name("light")
-                            .takes_value(true)
-                            .help("number of samples from the emitter")
-                            .short("l")
-                            .default_value("1"),
-                    ),
-            )
-            .get_matches();
+    let cli = Cli::parse();
 
     /////////////// Setup logging system
     let _handle = {
@@ -470,11 +284,11 @@ fn main() {
             .target(Target::Stderr)
             .encoder(Box::new(PatternEncoder::new("{l} {M} - {m}\n")))
             .build();
-        let config = if matches.is_present("log") {
+        let config = if let Some(log) = cli.log {
             let logfile = FileAppender::builder()
                 // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
                 .encoder(Box::new(PatternEncoder::new("{l} {M} - {m}\n")))
-                .build(matches.value_of("log").unwrap())
+                .build(log)
                 .unwrap();
 
             Config::builder()
@@ -504,55 +318,42 @@ fn main() {
 
         log4rs::init_config(config).unwrap()
     };
-    /////////////// Check output extension
-    let imgout_path_str = matches.value_of("output").unwrap_or("test.pfm");
 
     //////////////// Load the rendering configuration
-    let nb_samples = value_t_or_exit!(matches.value_of("nbsamples"), usize);
-    let options = match matches.value_of("options") {
-        Some(opt) => opt.split(" ").collect::<Vec<_>>(),
-        None => vec![],
-    };
-    let use_ats = options.contains(&"ats");
-    let remove_shading_normals = options.contains(&"no_shading");
-    let hsv_lights = options.contains(&"hvs_lights");
-    let texture_lights = options.contains(&"texture_lights");
-    info!("use_ats: {}", use_ats);
-    info!("remove_shading_normals: {}", remove_shading_normals);
+    let options = cli.xtra_options;
+    info!("Extra options: {:?}", options);
+    let use_ats = options.contains(&ExtraOptions::ATS);
+    let remove_shading_normals = options.contains(&ExtraOptions::NoShading);
+    let hsv_lights = options.contains(&ExtraOptions::HVSLight);
+    let texture_lights = options.contains(&ExtraOptions::TextureLight);
 
     //////////////// Load the scene
 
-    let scene = matches
-        .value_of("scene")
-        .expect("no scene parameter provided");
     let scene = rustlight::scene_loader::SceneLoaderManager::default()
-        .load(scene.to_string(), !remove_shading_normals)
+        .load(cli.scene.to_string(), !remove_shading_normals)
         .expect("error on loading the scene");
-    let scene = match matches.value_of("nbthreads").unwrap() {
-        "auto" => scene,
-        x => {
-            let v = x.parse::<i32>().expect("Wrong number of thread");
-            match v {
-                v if v > 0 => scene.nb_threads(v as usize),
-                v if v < 0 => {
-                    let nb_threads = num_cpus::get() as i32 + v;
-                    if nb_threads < 0 {
-                        panic!("Not enough threads: {} removing {}", num_cpus::get(), v);
-                    }
-                    info!("Run with {} threads", nb_threads);
-                    scene.nb_threads(nb_threads as usize)
+    let scene = match cli.threads {
+        None => scene,
+        Some(v) => match v {
+            v if v > 0 => scene.nb_threads(v as usize),
+            v if v < 0 => {
+                let nb_threads = num_cpus::get() as i32 + v;
+                if nb_threads < 0 {
+                    panic!("Not enough threads: {} removing {}", num_cpus::get(), v);
                 }
-                _ => {
-                    panic!("Impossible to use 0 thread for the computation");
-                }
+                info!("Run with {} threads", nb_threads);
+                scene.nb_threads(nb_threads as usize)
             }
-        }
+            _ => {
+                panic!("Impossible to use 0 thread for the computation");
+            }
+        },
     };
-    let mut scene = scene.nb_samples(nb_samples).output_img(imgout_path_str);
+    let mut scene = scene.nb_samples(cli.nbsamples).output_img(&cli.output);
 
     ///////////////// Medium
     {
-        let medium_density = value_t_or_exit!(matches.value_of("medium"), String);
+        let medium_density = cli.medium;
         let medium_density = medium_density
             .split(":")
             .into_iter()
@@ -579,7 +380,7 @@ fn main() {
         };
 
         if sigma_a + sigma_s != 0.0 {
-            let density_mult = value_t_or_exit!(matches.value_of("density_mult"), f32);
+            let density_mult = 1.0; //*matches.get_one::<f32>("density_mult").expect("density_mult");
             let sigma_a = rustlight::structure::Color::value(sigma_a);
             let sigma_s = rustlight::structure::Color::value(sigma_s);
             let sigma_t = (sigma_a + sigma_s) * density_mult;
@@ -598,14 +399,14 @@ fn main() {
     }
     ///////////////// Tweak the image size
     {
-        let image_scale = value_t_or_exit!(matches.value_of("image_scale"), f32);
+        let image_scale = cli.scale_image;
         if image_scale != 1.0 {
             info!("Scale the image: {:?}", image_scale);
             assert!(image_scale != 0.0);
             scene.camera.scale_image(image_scale);
         }
     }
-    ///////////////// Overide light is needed
+    // ///////////////// Overide light is needed
     if hsv_lights || texture_lights {
         for m in &mut scene.meshes {
             if m.is_light() {
@@ -630,82 +431,51 @@ fn main() {
     // Build internal
     scene.build_emitters(use_ats);
 
-    ///////////////// Get the reconstruction algorithm
-    let recons = match matches.subcommand() {
-        ("gradient-path", Some(m)) | ("gradient-path-explicit", Some(m)) => {
-            let iterations = value_t_or_exit!(m.value_of("iterations"), usize);
-            let recons: Box<dyn rustlight::integrators::PoissonReconstruction + Sync> = match m
-                .value_of("reconstruction_type")
-                .unwrap()
-            {
-                "uniform" => Box::new(
-                    rustlight::integrators::gradient::recons::UniformPoissonReconstruction {
-                        iterations,
-                    },
-                ),
-                "weighted" => Box::new(
-                    rustlight::integrators::gradient::recons::WeightedPoissonReconstruction::new(
-                        iterations,
-                    ),
-                ),
-                "bagging" => Box::new(
-                    rustlight::integrators::gradient::recons::BaggingPoissonReconstruction {
-                        iterations,
-                        nb_buffers: if nb_samples <= 8 { nb_samples } else { 8 },
-                    },
-                ),
-                _ => panic!("Impossible to found a reconstruction_type"),
-            };
-            Some(recons)
-        }
-        _ => None,
-    };
-
-    ///////////////// Create the main integrator
-    let mut int = match matches.subcommand() {
-        ("path_kulla", Some(m)) => {
-            use rustlight::integrators::explicit::path_kulla::Strategies;
-            use rustlight::integrators::explicit::path_kulla::WrapStrategy;
-            let splitting = match m.value_of("splitting") {
-                Some(v) => Some(v.parse::<f32>().unwrap()),
-                None => None,
-            };
-            let disable_aa = m.is_present("disable_aa");
-            // let order = value_t_or_exit!(m.value_of("order"), usize);
-            let warps = value_t_or_exit!(m.value_of("warps"), String);
-            let warps_strategy = value_t_or_exit!(m.value_of("warps_strategy"), String);
+    // ///////////////// Create the main integrator
+    let mut int = match cli.command {
+        Commands::PointNormal {
+            disable_aa,
+            splitting,
+            use_mis,
+            warps,
+            warps_strategy,
+            strategy,
+        } => {
+            use rustlight::integrators::explicit::point_normal::Strategies;
+            use rustlight::integrators::explicit::point_normal::WrapStrategy;
+            // let order = m.get_one::<>("order"), usize);
             let warps_strategy = match warps_strategy.as_ref() {
                 "L" => WrapStrategy::Linear,
                 "B" => WrapStrategy::Bezier,
                 _ => panic!("Need to choose between L and B"),
             };
-
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
             info!("Strategy: {}", strategy);
             let strategy = match strategy.as_ref() {
-                // Kulla variants
-                "kulla_phase" => Strategies::KULLA | Strategies::PHASE,
-                "kulla_ex" => Strategies::KULLA | Strategies::EX,
-                "kulla_best_ex" => Strategies::KULLA | Strategies::EX | Strategies::BEST,
-                "kulla_warp_ex" => Strategies::KULLA | Strategies::EX | Strategies::WRAP,
-                "kulla_phase_taylor_ex" => {
-                    Strategies::KULLA | Strategies::TAYLOR_PHASE | Strategies::EX
+                // Equi-angular variants
+                "eq_phase" => Strategies::EQUIANGULAR | Strategies::PHASE,
+                "eq_ex" => Strategies::EQUIANGULAR | Strategies::EX,
+                "eq_best_ex" => Strategies::EQUIANGULAR | Strategies::EX | Strategies::BEST,
+                "eq_warp_ex" => Strategies::EQUIANGULAR | Strategies::EX | Strategies::WRAP,
+                "eq_phase_taylor_ex" => {
+                    Strategies::EQUIANGULAR | Strategies::TAYLOR_PHASE | Strategies::EX
                 }
-                "kulla_tr_taylor_ex" => Strategies::KULLA | Strategies::TAYLOR_TR | Strategies::EX,
-                // Kulla clamped
-                "kulla_clamped_phase" => Strategies::KULLA_CLAMPED | Strategies::PHASE, //< Biased
-                "kulla_clamped_ex" => Strategies::KULLA_CLAMPED | Strategies::EX,
-                "kulla_clamped_best_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::BEST
+                "eq_tr_taylor_ex" => {
+                    Strategies::EQUIANGULAR | Strategies::TAYLOR_TR | Strategies::EX
                 }
-                "kulla_clamped_warp_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::WRAP
+                // Equi-angular with clamped angles
+                "eq_clamped_phase" => Strategies::EQUIANGULAR_CLAMPED | Strategies::PHASE, //< Biased
+                "eq_clamped_ex" => Strategies::EQUIANGULAR_CLAMPED | Strategies::EX,
+                "eq_clamped_best_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::EX | Strategies::BEST
                 }
-                "kulla_clamped_phase_taylor_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::EX | Strategies::TAYLOR_PHASE
+                "eq_clamped_warp_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::EX | Strategies::WRAP
                 }
-                "kulla_clamped_tr_taylor_ex" => {
-                    Strategies::KULLA_CLAMPED | Strategies::TAYLOR_TR | Strategies::EX
+                "eq_clamped_phase_taylor_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::EX | Strategies::TAYLOR_PHASE
+                }
+                "eq_clamped_tr_taylor_ex" => {
+                    Strategies::EQUIANGULAR_CLAMPED | Strategies::TAYLOR_TR | Strategies::EX
                 }
                 // TR
                 "tr_ex" => Strategies::TR | Strategies::EX,
@@ -722,7 +492,11 @@ fn main() {
                 "pn_best_ex" => Strategies::POINT_NORMAL | Strategies::EX | Strategies::BEST,
                 _ => panic!("invalid strategy: {}", strategy),
             };
-            let use_mis = m.is_present("use_mis");
+
+            info!(" - use_mis       : {}", use_mis);
+            info!(" - warps         : {}", warps);
+            info!(" - warps_strategy: {:?}", warps_strategy);
+            info!(" - splitting         : {:?}", splitting);
 
             info!(" - use_mis       : {}", use_mis);
             info!(" - warps         : {}", warps);
@@ -730,22 +504,22 @@ fn main() {
             info!(" - splitting         : {:?}", splitting);
 
             IntegratorType::Primal(Box::new(
-                rustlight::integrators::explicit::path_kulla::IntegratorPathKulla {
+                rustlight::integrators::explicit::point_normal::IntegratorPointNormal {
                     strategy,
                     use_mis,
-                    warps,
+                    warps: warps.to_string(),
                     warps_strategy,
                     splitting,
                     use_aa: !disable_aa,
                 },
             ))
         }
-        ("path", Some(m)) => {
-            let single_scattering = m.is_present("single");
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let rr_depth = match_infinity(m.value_of("rr").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+        Commands::Path {
+            path_length,
+            single_scattering,
+            strategy,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
             let strategy = match strategy.as_ref() {
                 "all" => {
                     rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
@@ -768,11 +542,11 @@ fn main() {
                 },
             ))
         }
-        ("light", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            let rr_depth = match_infinity(m.value_of("rr").unwrap());
-            let strategy = value_t_or_exit!(m.value_of("lightpaths"), String);
+        Commands::LightTracing {
+            path_length,
+            strategy,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
             let (render_surface, render_volume) = match strategy.as_ref() {
                 "all" => (true, true),
                 "surface" => (true, false),
@@ -789,51 +563,55 @@ fn main() {
                 },
             ))
         }
-        ("gradient-path", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-
+        Commands::GradientPath {
+            path_length,
+            recons,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
+            let recons = recons.parse(cli.nbsamples);
             IntegratorType::Gradient(Box::new(
                 rustlight::integrators::gradient::path::IntegratorGradientPath {
                     max_depth,
                     min_depth,
-                    recons: recons.unwrap(),
+                    recons,
                 },
             ))
         }
-        ("gradient-path-explicit", Some(m)) => {
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let min_survival = value_t_or_exit!(m.value_of("min_survival"), f32);
+        Commands::GradientPathExplicit {
+            path_length,
+            recons,
+            min_survival,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
             if min_survival <= 0.0 || min_survival > 1.0 {
                 panic!("need to specify min_survival in ]0.0,1.0]");
             }
+            let recons = recons.parse(cli.nbsamples);
             IntegratorType::Gradient(Box::new(
                 rustlight::integrators::gradient::explicit::IntegratorGradientPathTracing {
                     max_depth,
-                    recons: recons.unwrap(),
+                    recons: recons,
                     min_survival: Some(min_survival),
                 },
             ))
         }
-        ("vpl", Some(m)) => {
-            let get_option = |name: &'static str| {
-                let options = value_t_or_exit!(m.value_of(name), String);
-                match options.as_ref() {
-                    "all" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::All,
-                    "surface" => {
-                        rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface
-                    }
-                    "volume" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Volume,
-                    _ => panic!("Invalid options: [all, surface, volume]"),
-                }
+        Commands::VPL {
+            path_length,
+            clamping,
+            nb_vpl,
+            option_lt,
+            option_vpl,
+        } => {
+            let get_option = |value: String| match value.as_str() {
+                "all" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::All,
+                "surface" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Surface,
+                "volume" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Volume,
+                _ => panic!("Invalid options: [all, surface, volume]"),
             };
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
 
-            let rr_depth = match_infinity(m.value_of("rr").unwrap());
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let nb_vpl = value_t_or_exit!(m.value_of("nb_vpl"), usize);
-            let clamping = value_t_or_exit!(m.value_of("clamping"), f32);
-            let option_vpl = get_option("option_vpl");
-            let option_lt = get_option("option_lt");
+            let option_vpl = get_option(option_vpl);
+            let option_lt = get_option(option_lt);
 
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::explicit::vpl::IntegratorVPL {
@@ -850,9 +628,10 @@ fn main() {
                 },
             ))
         }
-        ("uncorrelated_plane_single", Some(m)) => {
-            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+        Commands::UncorrelatedPlaneSingle {
+            nb_primitive,
+            strategy,
+        } => {
             let strategy = match strategy.as_ref() {
                 "uv" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UV,
                 "ut" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UT,
@@ -877,9 +656,10 @@ fn main() {
                 },
             ))
         }
-        ("plane_single", Some(m)) => {
-            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+        Commands::PlaneSingle {
+            nb_primitive,
+            strategy,
+        } => {
             let strategy = match strategy.as_ref() {
                 "uv" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UV,
                 "ut" => rustlight::integrators::explicit::plane_single::SinglePlaneStrategy::UT,
@@ -904,11 +684,12 @@ fn main() {
                 },
             ))
         }
-        ("vol_primitives", Some(m)) => {
-            let rr_depth = match_infinity(m.value_of("rr").unwrap());
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let nb_primitive = value_t_or_exit!(m.value_of("nb_primitive"), usize);
-            let primitives = value_t_or_exit!(m.value_of("primitives"), String);
+        Commands::VolPrimitivies {
+            path_length,
+            nb_primitive,
+            primitives,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
             let primitives = match primitives.as_ref() {
                 "bre" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::BRE,
                 "beam" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Beams,
@@ -928,13 +709,13 @@ fn main() {
                 },
             ))
         }
-        ("pssmlt", Some(m)) => {
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let rr_depth = match_infinity(m.value_of("rr").unwrap());
-            let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
-            let nb_samples_norm = value_t_or_exit!(m.value_of("nb_samples_norm"), usize);
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+        Commands::PSSMLT {
+            path_length,
+            strategy,
+            large_prob,
+            nb_samples_norm,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
             let strategy = match strategy.as_ref() {
                 "all" => {
                     rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
@@ -964,11 +745,14 @@ fn main() {
                 },
             ))
         }
-        ("smcmc", Some(m)) => {
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let large_prob = value_t_or_exit!(m.value_of("large_prob"), f32);
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+        Commands::SMCMC {
+            path_length,
+            strategy,
+            large_prob,
+            recons,
+            init,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
             let strategy = match strategy.as_ref() {
                 "all" => {
                     rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
@@ -982,7 +766,6 @@ fn main() {
                 _ => panic!("invalid strategy: {}", strategy),
             };
             assert!(large_prob > 0.0 && large_prob <= 1.0);
-            let recons = value_t_or_exit!(m.value_of("recons"), String);
             let recons = recons.split(":").into_iter().map(|v| v).collect::<Vec<_>>();
             let recons: Box<dyn rustlight::integrators::mcmc::smcmc::Reconstruction> = match &recons
                 [..]
@@ -996,7 +779,6 @@ fn main() {
                 _ => panic!("invalid recons: {:?}", recons),
             };
 
-            let init = value_t_or_exit!(m.value_of("init"), String);
             let init = init.split(":").into_iter().map(|v| v).collect::<Vec<_>>();
             let init: Box<dyn rustlight::integrators::mcmc::smcmc::Initialization> = match &init[..]
             {
@@ -1029,11 +811,14 @@ fn main() {
                 },
             ))
         }
-        ("erpt", Some(m)) => {
-            let min_depth = match_infinity(m.value_of("min").unwrap());
-            let max_depth = match_infinity(m.value_of("max").unwrap());
-            let rr_depth = match_infinity(m.value_of("rr").unwrap());
-            let strategy = value_t_or_exit!(m.value_of("strategy"), String);
+        Commands::ERPT {
+            path_length,
+            stratified,
+            strategy,
+            nb_mc,
+            chain_samples,
+        } => {
+            let (min_depth, max_depth, rr_depth) = path_length.parse();
             let strategy = match strategy.as_ref() {
                 "all" => {
                     rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
@@ -1046,9 +831,6 @@ fn main() {
                 }
                 _ => panic!("invalid strategy: {}", strategy),
             };
-            let nb_mc = value_t_or_exit!(m.value_of("nb_mc"), usize);
-            let chain_samples = value_t_or_exit!(m.value_of("chain_samples"), usize);
-            let stratified = !m.is_present("no_stratified");
             IntegratorType::Primal(Box::new(
                 rustlight::integrators::mcmc::erpt::IntegratorERPT {
                     nb_mc,
@@ -1066,26 +848,29 @@ fn main() {
                 },
             ))
         }
-        ("ao", Some(m)) => {
-            let normal_correction = m.is_present("normal-correction");
-            let dist = match_infinity(m.value_of("distance").unwrap());
+        Commands::AO {
+            distance,
+            normal_correction,
+        } => {
+            let max_distance = match_infinity(distance);
             IntegratorType::Primal(Box::new(rustlight::integrators::ao::IntegratorAO {
-                max_distance: dist,
+                max_distance,
                 normal_correction,
             }))
         }
-        ("direct", Some(m)) => {
-            IntegratorType::Primal(Box::new(rustlight::integrators::direct::IntegratorDirect {
-                nb_bsdf_samples: value_t_or_exit!(m.value_of("bsdf"), u32),
-                nb_light_samples: value_t_or_exit!(m.value_of("light"), u32),
-            }))
-        }
+        Commands::Direct {
+            nb_bsdf_samples,
+            nb_light_samples,
+        } => IntegratorType::Primal(Box::new(rustlight::integrators::direct::IntegratorDirect {
+            nb_bsdf_samples,
+            nb_light_samples,
+        })),
         _ => panic!("unknown integrator"),
     };
 
     // Read the sampler argument
-    let sampler = value_t_or_exit!(matches.value_of("random_number_generator"), String);
-    let sampler = sampler
+    let sampler = cli
+        .random_number_generator
         .split(":")
         .into_iter()
         .map(|v| v)
@@ -1100,13 +885,14 @@ fn main() {
             ),
         }),
         ["stratified"] => Box::new(rustlight::samplers::stratified::StratifiedSampler::create(
-            nb_samples, 4,
+            cli.nbsamples,
+            4,
         )),
         _ => panic!("Wrong sampler type provided {:?}", sampler),
     };
 
-    let img = if matches.is_present("equal_time") {
-        let time_out = value_t_or_exit!(matches.value_of("equal_time"), f32) * 1000.0;
+    let img = if let Some(time_out) = cli.equal_time {
+        let time_out = time_out * 1000.0;
         info!("Time out in ms: {}", time_out);
         let mut int = IntegratorType::Primal(Box::new(
             rustlight::integrators::equal_time::IntegratorEqualTime {
@@ -1115,8 +901,8 @@ fn main() {
             },
         ));
         int.compute(sampler.as_mut(), &scene)
-    } else if matches.is_present("average") {
-        let time_out = match_infinity(matches.value_of("average").unwrap());
+    } else if let Some(v) = cli.average {
+        let time_out = match_infinity(v);
         let mut int =
             IntegratorType::Primal(Box::new(rustlight::integrators::avg::IntegratorAverage {
                 time_out,
@@ -1129,6 +915,6 @@ fn main() {
     };
 
     // Save the image
-    info!("Save final image: {}", imgout_path_str);
-    img.save("primal", imgout_path_str);
+    info!("Save final image: {}", cli.output);
+    img.save("primal", &cli.output);
 }
