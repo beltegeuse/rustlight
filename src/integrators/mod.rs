@@ -277,7 +277,7 @@ impl IntegratorType {
 
         // Naive Acceleration ...
         #[cfg(not(feature = "embree"))]
-        let accel = NaiveAcceleration::new(scene);
+        let accel = BVHAccel::new(scene);
         // or Embree ...
         // TODO: Need to found a work around due to the lifetime issue
         #[cfg(feature = "embree")]

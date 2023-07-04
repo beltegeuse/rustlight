@@ -572,7 +572,7 @@ fn main() {
             path_length,
             recons,
         } => {
-            let (min_depth, max_depth, rr_depth) = path_length.parse();
+            let (min_depth, max_depth, _rr_depth) = path_length.parse();
             let recons = recons.parse(cli.nbsamples);
             IntegratorType::Gradient(Box::new(
                 rustlight::integrators::gradient::path::IntegratorGradientPath {
@@ -587,7 +587,7 @@ fn main() {
             recons,
             min_survival,
         } => {
-            let (min_depth, max_depth, rr_depth) = path_length.parse();
+            let (_min_depth, max_depth, _rr_depth) = path_length.parse();
             if min_survival <= 0.0 || min_survival > 1.0 {
                 panic!("need to specify min_survival in ]0.0,1.0]");
             }
@@ -613,7 +613,7 @@ fn main() {
                 "volume" => rustlight::integrators::explicit::vpl::IntegratorVPLOption::Volume,
                 _ => panic!("Invalid options: [all, surface, volume]"),
             };
-            let (min_depth, max_depth, rr_depth) = path_length.parse();
+            let (_min_depth, max_depth, rr_depth) = path_length.parse();
 
             let option_vpl = get_option(option_vpl);
             let option_lt = get_option(option_lt);
@@ -694,7 +694,7 @@ fn main() {
             nb_primitive,
             primitives,
         } => {
-            let (min_depth, max_depth, rr_depth) = path_length.parse();
+            let (_min_depth, max_depth, rr_depth) = path_length.parse();
             let primitives = match primitives.as_ref() {
                 "bre" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::BRE,
                 "beam" => rustlight::integrators::explicit::vol_primitives::VolPrimitivies::Beams,
@@ -757,7 +757,7 @@ fn main() {
             recons,
             init,
         } => {
-            let (min_depth, max_depth, rr_depth) = path_length.parse();
+            let (min_depth, max_depth, _rr_depth) = path_length.parse();
             let strategy = match strategy.as_ref() {
                 "all" => {
                     rustlight::integrators::explicit::path::IntegratorPathTracingStrategies::All
@@ -870,7 +870,6 @@ fn main() {
             nb_bsdf_samples,
             nb_light_samples,
         })),
-        _ => panic!("unknown integrator"),
     };
 
     // Read the sampler argument

@@ -1,4 +1,5 @@
 use crate::bsdfs;
+use crate::constants::EPSILON;
 use crate::math::{uniform_sample_triangle, Distribution1D, Distribution1DConstruct};
 use crate::structure::*;
 use cgmath::*;
@@ -419,11 +420,39 @@ impl Mesh {
         self.normals = None;
     }
 
+    pub fn compute_aabb_tri(&self, i: usize) -> AABB {
+        let id = self.indices[i];
+        let mut aabb = AABB::default();
+        for s in 0..3 {
+            aabb = aabb.union_vec(&self.vertices[id[s]]);
+        }
+
+        // Make sure the AABB to be non degenerative
+        let s = aabb.size();
+        for i in 0..3 {
+            if s[i] < EPSILON {
+                aabb.p_max[i] += EPSILON;
+                aabb.p_min[i] -= EPSILON;
+            }
+        }
+        aabb
+    }
+
     pub fn compute_aabb(&self) -> AABB {
         let mut aabb = AABB::default();
         for v in &self.vertices {
             aabb = aabb.union_vec(v)
         }
+
+        // Make sure the AABB to be non degenerative
+        let s = aabb.size();
+        for i in 0..3 {
+            if s[i] < EPSILON {
+                aabb.p_max[i] += EPSILON;
+                aabb.p_min[i] -= EPSILON;
+            }
+        }
+
         aabb
     }
 }

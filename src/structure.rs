@@ -3,7 +3,7 @@ use crate::math::Frame;
 use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use cgmath::{EuclideanSpace, InnerSpace, Point2, Point3, Vector2, Vector3};
+use cgmath::{InnerSpace, Point2, Point3, Vector2, Vector3};
 use core::f32;
 #[cfg(feature = "image")]
 use image::{DynamicImage, GenericImage};
@@ -12,6 +12,7 @@ use openexr;
 use std;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::mem::swap;
 use std::ops::*;
 use std::path::Path;
 
@@ -844,22 +845,27 @@ impl AABB {
         self.size() * 0.5 + self.p_min
     }
 
+    /// http://psgraphics.blogspot.de/2016/02/new-simple-ray-box-test-from-andrew.html
     pub fn intersect(&self, r: &Ray) -> Option<f32> {
-        // TODO: direction inverse could be precomputed
-        let t_0 = vec_div(&(self.p_min - r.o.to_vec()), &r.d);
-        let t_1 = vec_div(&(self.p_max - r.o.to_vec()), &r.d);
-        let t_min = vec_max_coords(vec_min(&t_0, &t_1));
-        let t_max = vec_min_coords(vec_max(&t_0, &t_1));
-        if t_min <= t_max {
-            // FIXME: Maybe wrong if tmin is different
-            if t_min >= r.tfar {
-                None
-            } else {
-                Some(t_min)
+        let mut t_max = r.tfar;
+        let mut t_min = r.tnear;
+
+        for d in 0..3 {
+            let inv_d = 1.0 / r.d[d];
+            let mut t0 = (self.p_min[d] - r.o[d]) * inv_d;
+            let mut t1 = (self.p_max[d] - r.o[d]) * inv_d;
+            if inv_d < 0.0 {
+                swap(&mut t0, &mut t1);
             }
-        } else {
-            None
+
+            t_min = if t0 > t_min { t0 } else { t_min };
+            t_max = if t1 < t_max { t1 } else { t_max };
+            if t_max <= t_min {
+                return None;
+            }
         }
+
+        return Some(t_min);
     }
 
     pub fn to_sphere(&self) -> BoundingSphere {
