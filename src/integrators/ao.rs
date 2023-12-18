@@ -7,8 +7,13 @@ pub struct IntegratorAO {
 }
 
 impl Integrator for IntegratorAO {
-    fn compute(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
-        compute_mc(self, accel, scene)
+    fn compute(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
+        compute_mc(self, sampler, accel, scene)
     }
 }
 impl IntegratorMC for IntegratorAO {
@@ -18,7 +23,6 @@ impl IntegratorMC for IntegratorAO {
         accel: &dyn Acceleration,
         scene: &Scene,
         sampler: &mut dyn Sampler,
-        _: &EmitterSampler,
     ) -> Color {
         let pix = Point2::new(ix as f32 + sampler.next(), iy as f32 + sampler.next());
         let ray = scene.camera.generate(pix);
@@ -43,8 +47,13 @@ impl IntegratorMC for IntegratorAO {
             its.frame.to_world(d_local)
         };
 
+        // TODO: A good check in case we have a geometric problem.
+        if !its.frame.valid() {
+            warn!("Invalid frame: {:?}", its.frame);
+        }
+
         // Check the new intersection distance
-        let ray = Ray::new(its.p, d_world);
+        let ray = Ray::spawn_ray(&its, d_world);
         match accel.trace(&ray) {
             None => Color::one(),
             Some(new_its) => match self.max_distance {

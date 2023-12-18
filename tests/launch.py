@@ -30,11 +30,11 @@ if __name__ == "__main__":
     DEFAULT_SPP = 32
     DEFAULT_ANALYSE_SCRIPT = ["python", "interactive-viewer/tools/analyze.py"]
     DEFAULT_SCENE_SCRIPT = ["python", "interactive-viewer/tools/scene.py"]
-    SCENE_DIR = "/home/beltegeuse/projects/pbrt_rs/data/pbrt/"
+    SCENE_DIR = "/home/agruson/projects/pbrt_rs/data/pbrt/"
     EXT = ".exr"
-    DEFAULT_COMMAND = ['cargo', 'run', '--release',
-                       '--features', 'default openexr', '--']
-    GI_ALGO = ["path", "path-explicit", "light-explicit", "pssmlt", "vpl"]
+    DEFAULT_COMMAND = ['cargo', 'run', '--release', '--example', 'cli',
+                       '--features', 'pbrt embree openexr', '--']
+    GI_ALGO = ["path", "light", "pssmlt", "vpl"]
     tests = {
         "cbox_ao":
         RenderTest("ref_cbox_ao_1_0", "cornell-box/scene.pbrt",

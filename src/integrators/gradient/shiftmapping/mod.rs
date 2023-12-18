@@ -1,7 +1,6 @@
-use crate::emitter::*;
+use crate::accel::*;
 use crate::integrators::gradient::explicit::TechniqueGradientPathTracing;
 use crate::paths::path::*;
-use crate::paths::vertex::*;
 use crate::samplers::Sampler;
 use crate::scene::*;
 use crate::structure::Color;
@@ -29,29 +28,26 @@ impl ShiftValue {
     }
 }
 pub trait ShiftMapping {
-    fn base<'scene, 'emitter>(
+    fn base<'scene>(
         &mut self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         sampler: &mut dyn Sampler,
     ) -> (Color, VertexID);
     fn shift<'scene, 'emitter>(
         &mut self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         sampler: &mut dyn Sampler,
         base: VertexID,
     ) -> ShiftValue;
     fn clear(&mut self);
 }
 
-pub mod diffuse;
 pub mod random_replay;

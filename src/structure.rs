@@ -1,17 +1,18 @@
-use crate::constants;
 use crate::geometry::Mesh;
 use crate::math::Frame;
 use crate::tools::*;
 use crate::Scale;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Vector3};
+use cgmath::{InnerSpace, Point2, Point3, Vector2, Vector3};
+use core::f32;
 #[cfg(feature = "image")]
-use image::{DynamicImage, GenericImage, Pixel};
+use image::{DynamicImage, GenericImage};
 #[cfg(feature = "openexr")]
 use openexr;
 use std;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::mem::swap;
 use std::ops::*;
 use std::path::Path;
 
@@ -21,11 +22,50 @@ pub enum PDF {
     Area(f32),
     Discrete(f32),
 }
+impl PDF {
+    // g_ad = cos(x) / d^2
+    pub fn as_solid_angle_geom(self, g_ad: f32) -> Self {
+        match self {
+            PDF::SolidAngle(v) => PDF::SolidAngle(v),
+            PDF::Area(v) => {
+                if g_ad == 0.0 {
+                    PDF::SolidAngle(0.0)
+                } else {
+                    PDF::SolidAngle(v / g_ad)
+                }
+            }
+            PDF::Discrete(_) => panic!("Try to convert discrete to SA"),
+        }
+    }
+    pub fn as_solid_angle(self, p: &Point3<f32>, x: &Point3<f32>, n_x: &Vector3<f32>) -> Self {
+        match self {
+            PDF::SolidAngle(v) => PDF::SolidAngle(v),
+            PDF::Area(v) => {
+                let d = x - p;
+                let l = d.magnitude();
+                assert_ne!(l, 0.0);
+                let d = d / l;
+                let cos = n_x.dot(d).max(0.0);
+                if cos == 0.0 {
+                    PDF::SolidAngle(0.0)
+                } else {
+                    PDF::SolidAngle(v * l * l / cos)
+                }
+            }
+            PDF::Discrete(_) => panic!("Try to convert discrete to SA"),
+        }
+    }
+}
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Domain {
     SolidAngle,
     Discrete,
+}
+#[derive(PartialEq, Clone, Copy)]
+pub enum Transport {
+    Importance, //< From the camera
+    Radiance,   //< From the light
 }
 
 impl PDF {
@@ -56,11 +96,13 @@ impl Mul<f32> for PDF {
 pub struct SampledPosition {
     pub p: Point3<f32>,
     pub n: Vector3<f32>,
+    pub uv: Option<Vector2<f32>>,
     pub pdf: PDF,
+    pub primitive_id: Option<usize>,
 }
 
 /// Pixel color representation
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Copy)]
+#[derive(Clone, PartialEq, Debug, Copy)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
@@ -86,6 +128,13 @@ impl Color {
     pub fn sqrt(self) -> Color {
         Color::new(self.r.sqrt(), self.g.sqrt(), self.b.sqrt())
     }
+    pub fn safe_sqrt(self) -> Color {
+        Color::new(
+            self.r.max(0.0).sqrt(),
+            self.g.max(0.0).sqrt(),
+            self.b.max(0.0).sqrt(),
+        )
+    }
     pub fn avg(&self) -> f32 {
         (self.r + self.g + self.b) / 3.0
     }
@@ -104,15 +153,18 @@ impl Color {
     pub fn is_zero(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0
     }
+    pub fn is_valid(&self) -> bool {
+        self.r >= 0.0 && self.g >= 0.0 && self.b >= 0.0
+    }
 
     #[cfg(feature = "image")]
     pub fn to_rgba(&self) -> image::Rgba<u8> {
-        image::Rgba::from_channels(
+        image::Rgba([
             (self.r.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             (self.g.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             (self.b.min(1.0).powf(1.0 / 2.2) * 255.0) as u8,
             255,
-        )
+        ])
     }
     pub fn channel_max(&self) -> f32 {
         self.r.max(self.g.max(self.b))
@@ -327,6 +379,7 @@ impl<'a> Add<&'a Color> for Color {
     }
 }
 
+#[derive(Clone)]
 pub struct Bitmap {
     pub size: Vector2<u32>,
     pub colors: Vec<Color>,
@@ -360,6 +413,13 @@ impl Bitmap {
             }
         }
     }
+    pub fn gamma(&mut self, v: f32) {
+        for c in &mut self.colors {
+            c.r = c.r.powf(v);
+            c.g = c.g.powf(v);
+            c.b = c.b.powf(v);
+        }
+    }
     pub fn scale(&mut self, v: f32) {
         self.colors.iter_mut().for_each(|x| x.scale(v));
     }
@@ -391,10 +451,16 @@ impl Bitmap {
             self.colors[i]
         }
     }
+
     pub fn pixel(&self, p: Point2<u32>) -> Color {
         assert!(p.x < self.size.x);
         assert!(p.y < self.size.y);
         self.colors[(p.y * self.size.x + p.x) as usize]
+    }
+    pub fn pixel_mut(&mut self, p: Point2<u32>) -> &mut Color {
+        assert!(p.x < self.size.x);
+        assert!(p.y < self.size.y);
+        &mut self.colors[(p.y * self.size.x + p.x) as usize]
     }
 
     // Save functions
@@ -449,8 +515,12 @@ impl Bitmap {
 
         // Create a `FrameBuffer` that points at our pixel data and describes it as
         // RGB data.
-        let mut fb = openexr::FrameBuffer::new(self.size.x, self.size.y);
-        fb.insert_channels(&["R", "G", "B"], &pixel_data);
+        let fb = {
+            // Create the frame buffer
+            let mut fb = openexr::FrameBuffer::new(self.size.x, self.size.y);
+            fb.insert_channels(&["R", "G", "B"], &pixel_data);
+            fb
+        };
 
         // Write pixel data to the file.
         output_file.write_pixels(&fb).unwrap();
@@ -491,6 +561,7 @@ impl Bitmap {
 
     // Load images
     pub fn read_pfm(filename: &str) -> Self {
+        dbg!(filename);
         let f = File::open(Path::new(filename)).unwrap();
         let mut f = BufReader::new(f);
         // Check the flag
@@ -503,24 +574,31 @@ impl Bitmap {
         }
         // Check the dim
         let size = {
-            let mut img_dim_y = String::new();
-            f.read_line(&mut img_dim_y).unwrap();
-            let mut img_dim_x = String::new();
-            f.read_line(&mut img_dim_x).unwrap();
-            Vector2::new(
-                img_dim_x.parse::<u32>().unwrap(),
-                img_dim_y.parse::<u32>().unwrap(),
-            )
+            let mut img_dim = String::new();
+            f.read_line(&mut img_dim).unwrap();
+            let img_dim = img_dim
+                .split(" ")
+                .map(|v| v.trim().parse::<u32>().unwrap())
+                .collect::<Vec<_>>();
+            assert!(img_dim.len() == 2);
+            Vector2::new(img_dim[0], img_dim[1])
         };
+
+        // Check the encoding
+        {
+            let mut encoding = String::new();
+            f.read_line(&mut encoding).unwrap();
+            let encoding = encoding.trim().parse::<f32>().unwrap();
+            assert!(encoding == -1.0);
+        }
 
         let mut colors = vec![Color::zero(); (size.x * size.y) as usize];
         for y in 0..size.y {
             for x in 0..size.x {
+                let p = Point2::new(x, size.y - y - 1);
                 let r = f.read_f32::<LittleEndian>().unwrap();
                 let g = f.read_f32::<LittleEndian>().unwrap();
                 let b = f.read_f32::<LittleEndian>().unwrap();
-                //
-                let p = Point2::new(x, size.y - y - 1);
                 colors[(p.y * size.x + p.x) as usize] = Color::new(r, g, b);
             }
         }
@@ -615,7 +693,7 @@ impl Default for Bitmap {
 }
 
 /// Ray representation
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Ray {
     pub o: Point3<f32>,
     pub d: Vector3<f32>,
@@ -625,10 +703,29 @@ pub struct Ray {
 
 impl Ray {
     pub fn new(o: Point3<f32>, d: Vector3<f32>) -> Ray {
+        // TODO: Check if this assert is not too costly.
+        assert_approx_eq!(d.dot(d), 1.0, 0.0001);
         Ray {
             o,
             d,
-            tnear: constants::EPSILON,
+            // tnear: std::f32::EPSILON,
+            tnear: crate::constants::EPSILON,
+            tfar: std::f32::MAX,
+        }
+    }
+
+    pub fn spawn_ray(its: &Intersection, d_out: Vector3<f32>) -> Ray {
+        // Compute offset ray
+        // let d = crate::math::abs_vec(&its.n_g).dot(its.p_error);
+        // let mut offset = d * its.n_g;
+        // if d_out.dot(its.n_g) < 0.0 {
+        //     offset = -offset;
+        // }
+        // let o = its.p + offset * 100.0;
+        Ray {
+            o: its.p,
+            d: d_out,
+            tnear: crate::constants::EPSILON, // Small epsilon avoiding self intersection
             tfar: std::f32::MAX,
         }
     }
@@ -659,7 +756,7 @@ fn vec_min_coords(v: Vector3<f32>) -> f32 {
     v.x.min(v.y.min(v.z))
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AABB {
     pub p_min: Vector3<f32>,
     pub p_max: Vector3<f32>,
@@ -675,6 +772,10 @@ impl Default for AABB {
 }
 
 impl AABB {
+    pub fn is_valid(&self) -> bool {
+        self.p_max.x >= self.p_min.x && self.p_max.y >= self.p_min.y && self.p_max.z >= self.p_min.z
+    }
+
     pub fn union_aabb(&self, b: &AABB) -> AABB {
         AABB {
             p_min: vec_min(&self.p_min, &b.p_min),
@@ -689,31 +790,143 @@ impl AABB {
         }
     }
 
+    pub fn dist_squared(&self, p: &Point3<f32>) -> f32 {
+        let point = p - self.center();
+        let extent = self.size();
+        (0..3)
+            .map(|i| {
+                if point[i] < -extent[i] {
+                    let delta = point[i] + extent[i];
+                    delta * delta
+                } else if point[i] > extent[i] {
+                    let delta = point[i] - extent[i];
+                    delta * delta
+                } else {
+                    0.0
+                }
+            })
+            .sum()
+    }
+
+    pub fn offset(&self, v: &Vector3<f32>) -> Vector3<f32> {
+        assert!(self.is_valid());
+        let o = v - self.p_min;
+        let s = self.size();
+
+        let x = if s.x != 0.0 { o.x / s.x } else { 0.0 };
+        let y = if s.y != 0.0 { o.y / s.y } else { 0.0 };
+        let z = if s.z != 0.0 { o.z / s.z } else { 0.0 };
+        Vector3::new(x, y, z)
+    }
+
+    pub fn surface_area(&self) -> f32 {
+        let d = self.size();
+        (0..3)
+            .map(|i| {
+                let mut v = 1.0;
+                for j in 0..3 {
+                    if i == j {
+                        continue;
+                    }
+                    v *= d[j];
+                }
+                v
+            })
+            .sum()
+    }
+
+    #[inline]
     pub fn size(&self) -> Vector3<f32> {
         self.p_max - self.p_min
     }
 
+    #[inline]
     pub fn center(&self) -> Vector3<f32> {
         self.size() * 0.5 + self.p_min
     }
 
+    /// http://psgraphics.blogspot.de/2016/02/new-simple-ray-box-test-from-andrew.html
     pub fn intersect(&self, r: &Ray) -> Option<f32> {
-        // TODO: direction inverse could be precomputed
-        let t_0 = vec_div(&(self.p_min - r.o.to_vec()), &r.d);
-        let t_1 = vec_div(&(self.p_max - r.o.to_vec()), &r.d);
-        let t_min = vec_max_coords(vec_min(&t_0, &t_1));
-        let t_max = vec_min_coords(vec_max(&t_0, &t_1));
-        if t_min <= t_max {
-            // FIXME: Maybe wrong if tmin is different
-            if t_min >= r.tfar {
-                None
+        let mut t_max = r.tfar;
+        let mut t_min = r.tnear;
+
+        for d in 0..3 {
+            let inv_d = 1.0 / r.d[d];
+            let mut t0 = (self.p_min[d] - r.o[d]) * inv_d;
+            let mut t1 = (self.p_max[d] - r.o[d]) * inv_d;
+            if inv_d < 0.0 {
+                swap(&mut t0, &mut t1);
+            }
+
+            t_min = if t0 > t_min { t0 } else { t_min };
+            t_max = if t1 < t_max { t1 } else { t_max };
+            if t_max <= t_min {
+                return None;
+            }
+        }
+
+        return Some(t_min);
+    }
+
+    pub fn to_sphere(&self) -> BoundingSphere {
+        let c = self.center();
+        BoundingSphere {
+            center: Point3::new(c.x, c.y, c.z),
+            radius: (c - self.p_max).magnitude(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BoundingSphere {
+    pub center: Point3<f32>,
+    pub radius: f32,
+}
+impl Default for BoundingSphere {
+    fn default() -> Self {
+        Self {
+            center: Point3::new(0.0, 0.0, 0.0),
+            radius: 0.0,
+        }
+    }
+}
+
+impl BoundingSphere {
+    pub fn is_empty(&self) -> bool {
+        self.radius <= 0.0
+    }
+
+    pub fn intersect(&self, r: &Ray) -> Option<f32> {
+        let d_p = self.center - r.o;
+        let a = r.d.magnitude2();
+        let b = 2.0 * d_p.dot(r.d);
+        let c = d_p.magnitude2() - self.radius * self.radius;
+
+        if let Some((t0, t1)) = crate::math::solve_quadratic(a, b, c) {
+            if t0 < r.tnear {
+                if t1 < r.tfar {
+                    Some(t1)
+                } else {
+                    None
+                }
+            } else if t0 < r.tfar {
+                Some(t0)
             } else {
-                Some(t_min)
+                None
             }
         } else {
             None
         }
     }
+}
+
+// Simple intersection primitive
+pub struct IntersectionUV {
+    pub t: f32,
+    pub p: Point3<f32>,
+    pub n: Vector3<f32>,
+    pub u: f32,
+    pub v: f32,
 }
 
 #[derive(Clone)]
@@ -726,6 +939,7 @@ pub struct Intersection<'a> {
     pub n_s: Vector3<f32>,
     /// Intersection point
     pub p: Point3<f32>,
+    pub p_error: Vector3<f32>,
     /// Textures coordinates
     pub uv: Option<Vector2<f32>>,
     /// Mesh which we have intersected
@@ -734,6 +948,8 @@ pub struct Intersection<'a> {
     pub frame: Frame,
     /// Incomming direction in the local coordinates
     pub wi: Vector3<f32>,
+    /// The primitive id
+    pub primitive_id: Option<usize>,
 }
 
 impl<'a> Intersection<'a> {
@@ -746,9 +962,104 @@ impl<'a> Intersection<'a> {
     pub fn to_world(&self, d: &Vector3<f32>) -> Vector3<f32> {
         self.frame.to_world(*d)
     }
+    pub fn fill_intersection(
+        mesh: &'a crate::geometry::Mesh,
+        tri_id: usize,
+        hit_u: f32,
+        hit_v: f32,
+        ray: &Ray,
+        mut n_g: Vector3<f32>,
+        dist: f32,
+        p: Point3<f32>,
+    ) -> Intersection<'a> {
+        let index = mesh.indices[tri_id];
+
+        let n_s = if let Some(normals) = &mesh.normals {
+            let d0 = &normals[index.x];
+            let d1 = &normals[index.y];
+            let d2 = &normals[index.z];
+            let n_s = d0 * (1.0 - hit_u - hit_v) + d1 * hit_u + d2 * hit_v;
+            if n_g.dot(n_s) < 0.0 {
+                n_g = -n_g;
+            }
+            // Normalize the shading normal
+            // TODO: This can be costly, but we want to be sure that the normal are corrects
+            //  But I guess it is the cost to pay to prevent other problem due to bad
+            //  geometry. I need to check what are the other strategies that have been used
+            //  in other rendering engine.
+            let l = n_s.dot(n_s);
+            if l == 0.0 {
+                n_g.clone()
+            } else if l != 1.0 {
+                n_s / l.sqrt()
+            } else {
+                n_s
+            }
+        } else {
+            n_g.clone()
+        };
+
+        // Hack for two sided surfaces
+        // Note that we do not fix the surfaces if:
+        //  - the bsdf is not two sided (like glass where the normal orientation gives us extra information)
+        //  - if it is a light source
+        let (n_s, n_g) = if mesh.bsdf.is_twosided() && !mesh.is_light() && ray.d.dot(n_s) > 0.0 {
+            (
+                Vector3::new(-n_s.x, -n_s.y, -n_s.z),
+                Vector3::new(-n_g.x, -n_g.y, -n_g.z),
+            )
+        } else {
+            (n_s, n_g)
+        };
+
+        // UV interpolation
+        let uv = if let Some(uv_data) = &mesh.uv {
+            let d0 = &uv_data[index.x];
+            let d1 = &uv_data[index.y];
+            let d2 = &uv_data[index.z];
+            Some(d0 * (1.0 - hit_u - hit_v) + d1 * hit_u + d2 * hit_v)
+        } else {
+            None
+        };
+
+        // Compute error position
+        // From PBRT
+        let p_error = {
+            let p0 = &mesh.vertices[index.x];
+            let p1 = &mesh.vertices[index.y];
+            let p2 = &mesh.vertices[index.z];
+
+            let b0 = 1.0 - hit_u - hit_v;
+            let b1 = hit_u;
+            let b2 = hit_v;
+
+            let gamma_7 = (7.0 * std::f32::EPSILON * 0.5) / (1.0 - 7.0 * std::f32::EPSILON * 0.5);
+            gamma_7
+                * Vector3::new(
+                    (p0.x * b0).abs() + (p1.x * b1).abs() + (p2.x * b2).abs(),
+                    (p0.y * b0).abs() + (p1.y * b1).abs() + (p2.y * b2).abs(),
+                    (p0.z * b0).abs() + (p1.z * b1).abs() + (p2.z * b2).abs(),
+                )
+        };
+
+        let frame = Frame::new(n_s);
+        let wi = frame.to_local(-ray.d);
+        Intersection {
+            dist,
+            n_g,
+            n_s,
+            p,
+            p_error,
+            uv,
+            mesh,
+            frame,
+            wi,
+            primitive_id: Some(tri_id),
+        }
+    }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub struct VarianceEstimator {
     pub mean: f32,
     pub mean_sqr: f32,

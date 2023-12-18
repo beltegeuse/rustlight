@@ -1,4 +1,4 @@
-use crate::bsdfs::reflect_vector;
+use crate::bsdfs::utils::reflect_vector;
 use crate::emitter::*;
 use crate::integrators::gradient::*;
 use crate::integrators::*;
@@ -100,110 +100,114 @@ impl IntegratorGradient for IntegratorGradientPath {
         self.recons.as_ref()
     }
 
-    fn compute_gradients(&mut self, accel: &dyn Acceleration, scene: &Scene) -> BufferCollection {
+    fn compute_gradients(
+        &mut self,
+        sampler: &mut dyn Sampler,
+        accel: &dyn Acceleration,
+        scene: &Scene,
+    ) -> BufferCollection {
         let (nb_buffers, buffernames, mut image_blocks, ids) =
-            generate_img_blocks_gradient(scene, self.recons.as_ref());
+            generate_img_blocks_gradient(sampler, scene, self.recons.as_ref());
 
         let progress_bar = Mutex::new(ProgressBar::new(image_blocks.len() as u64));
         let pool = generate_pool(scene);
         pool.install(|| {
-            image_blocks.par_iter_mut().for_each(|(info, im_block)| {
-                let emitters = scene.emitters_sampler();
-                let mut sampler = independent::IndependentSampler::default();
-                for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
-                    for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
-                        for n in 0..scene.nb_samples {
-                            let c = self.compute_pixel(
-                                (ix + im_block.pos.x, iy + im_block.pos.y),
-                                accel,
-                                scene,
-                                &emitters,
-                                &mut sampler,
-                            );
-                            // Accumulate the values inside the buffer
-                            let pos = Point2::new(ix, iy);
-                            let offset_buffers = (n % nb_buffers) * 3; // 3 buffers are in multiple version
-                            im_block.accumulate(
-                                pos,
-                                c.main,
-                                &buffernames[ids.primal + offset_buffers],
-                            );
-                            im_block.accumulate(
-                                pos,
-                                c.very_direct,
-                                &buffernames[ids.very_direct].to_owned(),
-                            );
-                            for i in 0..4 {
-                                // primal reuse
-                                let off = GRADIENT_ORDER[i];
-                                let pos_off = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
-                                im_block.accumulate_safe(
-                                    pos_off,
-                                    c.radiances[i],
+            image_blocks
+                .par_iter_mut()
+                .for_each(|(info, im_block, sampler)| {
+                    for ix in info.x_pos_off..im_block.size.x - info.x_size_off {
+                        for iy in info.y_pos_off..im_block.size.y - info.y_size_off {
+                            for n in 0..scene.nb_samples {
+                                let c = self.compute_pixel(
+                                    (ix + im_block.pos.x, iy + im_block.pos.y),
+                                    accel,
+                                    scene,
+                                    sampler.as_mut(),
+                                );
+                                // Accumulate the values inside the buffer
+                                let pos = Point2::new(ix, iy);
+                                let offset_buffers = (n % nb_buffers) * 3; // 3 buffers are in multiple version
+                                im_block.accumulate(
+                                    pos,
+                                    c.main,
                                     &buffernames[ids.primal + offset_buffers],
                                 );
-                                // gradient
-                                match GRADIENT_DIRECTION[i] {
-                                    GradientDirection::X(v) => match v {
-                                        1 => im_block.accumulate(
-                                            pos,
-                                            c.gradients[i],
-                                            &buffernames[ids.gradient_x + offset_buffers],
-                                        ),
-                                        -1 => im_block.accumulate_safe(
-                                            pos_off,
-                                            c.gradients[i] * -1.0,
-                                            &buffernames[ids.gradient_x + offset_buffers],
-                                        ),
-                                        _ => panic!("wrong displacement X"), // FIXME: Fix the enum
-                                    },
-                                    GradientDirection::Y(v) => match v {
-                                        1 => im_block.accumulate(
-                                            pos,
-                                            c.gradients[i],
-                                            &buffernames[ids.gradient_y + offset_buffers],
-                                        ),
-                                        -1 => im_block.accumulate_safe(
-                                            pos_off,
-                                            c.gradients[i] * -1.0,
-                                            &buffernames[ids.gradient_y + offset_buffers],
-                                        ),
-                                        _ => panic!("wrong displacement Y"),
-                                    },
+                                im_block.accumulate(
+                                    pos,
+                                    c.very_direct,
+                                    &buffernames[ids.very_direct].to_owned(),
+                                );
+                                for i in 0..4 {
+                                    // primal reuse
+                                    let off = GRADIENT_ORDER[i];
+                                    let pos_off = Point2::new(ix as i32 + off.x, iy as i32 + off.y);
+                                    im_block.accumulate_safe(
+                                        pos_off,
+                                        c.radiances[i],
+                                        &buffernames[ids.primal + offset_buffers],
+                                    );
+                                    // gradient
+                                    match GRADIENT_DIRECTION[i] {
+                                        GradientDirection::X(v) => match v {
+                                            1 => im_block.accumulate(
+                                                pos,
+                                                c.gradients[i],
+                                                &buffernames[ids.gradient_x + offset_buffers],
+                                            ),
+                                            -1 => im_block.accumulate_safe(
+                                                pos_off,
+                                                c.gradients[i] * -1.0,
+                                                &buffernames[ids.gradient_x + offset_buffers],
+                                            ),
+                                            _ => panic!("wrong displacement X"), // FIXME: Fix the enum
+                                        },
+                                        GradientDirection::Y(v) => match v {
+                                            1 => im_block.accumulate(
+                                                pos,
+                                                c.gradients[i],
+                                                &buffernames[ids.gradient_y + offset_buffers],
+                                            ),
+                                            -1 => im_block.accumulate_safe(
+                                                pos_off,
+                                                c.gradients[i] * -1.0,
+                                                &buffernames[ids.gradient_y + offset_buffers],
+                                            ),
+                                            _ => panic!("wrong displacement Y"),
+                                        },
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                im_block.scale(1.0 / (scene.nb_samples as f32));
-                // Renormalize correctly the buffer informations
-                for i in 0..nb_buffers {
-                    let offset_buffers = i * 3; // 3 buffer that have multiple entries
-                                                // 4 strategies as reuse primal
-                    im_block.scale_buffer(
-                        0.25 * nb_buffers as f32,
-                        &buffernames[ids.primal + offset_buffers],
-                    );
-                    im_block.scale_buffer(
-                        nb_buffers as f32,
-                        &buffernames[ids.gradient_x + offset_buffers],
-                    );
-                    im_block.scale_buffer(
-                        nb_buffers as f32,
-                        &buffernames[ids.gradient_y + offset_buffers],
-                    );
-                }
+                    im_block.scale(1.0 / (scene.nb_samples as f32));
+                    // Renormalize correctly the buffer informations
+                    for i in 0..nb_buffers {
+                        let offset_buffers = i * 3; // 3 buffer that have multiple entries
+                                                    // 4 strategies as reuse primal
+                        im_block.scale_buffer(
+                            0.25 * nb_buffers as f32,
+                            &buffernames[ids.primal + offset_buffers],
+                        );
+                        im_block.scale_buffer(
+                            nb_buffers as f32,
+                            &buffernames[ids.gradient_x + offset_buffers],
+                        );
+                        im_block.scale_buffer(
+                            nb_buffers as f32,
+                            &buffernames[ids.gradient_y + offset_buffers],
+                        );
+                    }
 
-                {
-                    progress_bar.lock().unwrap().inc();
-                }
-            });
+                    {
+                        progress_bar.lock().unwrap().inc();
+                    }
+                });
         });
 
         // Fill the image & do the reconstruct
         let mut image =
             BufferCollection::new(Point2::new(0, 0), *scene.camera.size(), &buffernames);
-        for (_, im_block) in &image_blocks {
+        for (_, im_block, _) in &image_blocks {
             image.accumulate_bitmap(im_block);
         }
         image
@@ -216,7 +220,6 @@ impl IntegratorGradientPath {
         (ix, iy): (u32, u32),
         accel: &dyn Acceleration,
         scene: &Scene,
-        emitters: &EmitterSampler,
         sampler: &mut dyn Sampler,
     ) -> ColorGradient {
         let mut l_i = ColorGradient::default();
@@ -247,18 +250,20 @@ impl IntegratorGradientPath {
 
             // Add the emission for the light intersection
             if self.min_depth.map_or(true, |min| depth >= min) && depth == 1 {
-                l_i.very_direct += &main.its.mesh.emission; // TODO: Add throughput
+                l_i.very_direct += &main.its.mesh.emit(&main.its.uv); // TODO: Add throughput
             }
 
             /////////////////////////////////
             // Light sampling
             /////////////////////////////////
             // Explict connect to the light source
-            if !main.its.mesh.bsdf.is_smooth() {
+            if !main.its.mesh.bsdf.bsdf_type().is_smooth() {
                 let (r_sel_rand, r_rand, uv_rand) =
                     (sampler.next(), sampler.next(), sampler.next2d());
                 let main_light_record =
-                    emitters.sample_light(&main.its.p, r_sel_rand, r_rand, uv_rand);
+                    scene
+                        .emitters()
+                        .sample_light(&main.its.p, None, r_sel_rand, r_rand, uv_rand);
                 let main_light_visible = accel.visible(&main.its.p, &main_light_record.p);
                 let main_emitter_rad = if main_light_visible {
                     main_light_record.weight
@@ -273,6 +278,7 @@ impl IntegratorGradientPath {
                     &main.its.wi,
                     &main_d_out_local,
                     Domain::SolidAngle,
+                    Transport::Importance,
                 ); // f(...) * cos(...)
                 let main_bsdf_pdf = if main_light_visible {
                     f64::from(
@@ -284,6 +290,7 @@ impl IntegratorGradientPath {
                                 &main.its.wi,
                                 &main_d_out_local,
                                 Domain::SolidAngle,
+                                Transport::Importance,
                             )
                             .value(),
                     )
@@ -324,7 +331,7 @@ impl IntegratorGradientPath {
                                 if shift_d_in_local.z <= 0.0 || (!main_light_visible) {
                                     (0.0, Color::zero())
                                 } else {
-                                    assert!(!main.its.mesh.bsdf.is_smooth());
+                                    assert!(!main.its.mesh.bsdf.bsdf_type().is_smooth());
 
                                     // BSDF
                                     let shift_bsdf_pdf = f64::from(
@@ -336,6 +343,7 @@ impl IntegratorGradientPath {
                                                 &shift_d_in_local,
                                                 &main_d_out_local,
                                                 Domain::SolidAngle,
+                                                Transport::Importance,
                                             )
                                             .value(),
                                     );
@@ -344,6 +352,7 @@ impl IntegratorGradientPath {
                                         &shift_d_in_local,
                                         &main_d_out_local,
                                         Domain::SolidAngle,
+                                        Transport::Importance,
                                     );
                                     // Compute and return
                                     let shift_weight_dem = (s.pdf / main.pdf).powi(MIS_POWER)
@@ -359,12 +368,13 @@ impl IntegratorGradientPath {
                                 let shift_hit_mesh = &s.its.mesh;
                                 let intersectable_light = true;
                                 let main_bsdf_rought = true;
-                                let shift_bsdf_rought = !s.its.mesh.bsdf.is_smooth();
+                                let shift_bsdf_rought = !s.its.mesh.bsdf.bsdf_type().is_smooth();
 
                                 if !intersectable_light || (main_bsdf_rought && shift_bsdf_rought) {
                                     // Sample the light from the point
-                                    let shift_light_record = emitters
-                                        .sample_light(&s.its.p, r_sel_rand, r_rand, uv_rand);
+                                    let shift_light_record = scene
+                                        .emitters()
+                                        .sample_light(&s.its.p, None, r_sel_rand, r_rand, uv_rand);
                                     let shift_light_visible =
                                         accel.visible(&s.its.p, &shift_light_record.p);
                                     let shift_emitter_rad = if shift_light_visible {
@@ -383,6 +393,7 @@ impl IntegratorGradientPath {
                                         &s.its.wi,
                                         &shift_d_out_local,
                                         Domain::SolidAngle, // Already check that we are on a non smooth surface
+                                        Transport::Importance,
                                     );
                                     let shift_bsdf_pdf = if shift_light_visible {
                                         f64::from(
@@ -393,6 +404,7 @@ impl IntegratorGradientPath {
                                                     &s.its.wi,
                                                     &shift_d_out_local,
                                                     Domain::SolidAngle,
+                                                    Transport::Importance,
                                                 )
                                                 .value(),
                                         )
@@ -447,20 +459,19 @@ impl IntegratorGradientPath {
             // BSDF sampling
             /////////////////////////////////
             // Compute an new direction (diffuse)
-            let main_sampled_bsdf =
-                match main
-                    .its
-                    .mesh
-                    .bsdf
-                    .sample(&main.its.uv, &main.its.wi, sampler.next2d())
-                {
-                    Some(x) => x,
-                    None => return l_i,
-                };
+            let main_sampled_bsdf = match main.its.mesh.bsdf.sample(
+                &main.its.uv,
+                &main.its.wi,
+                sampler.next2d(),
+                Transport::Importance,
+            ) {
+                Some(x) => x,
+                None => return l_i,
+            };
 
             // Generate the new ray and do the intersection
             let main_d_out_global = main.its.frame.to_world(main_sampled_bsdf.d);
-            main.ray = Ray::new(main.its.p, main_d_out_global);
+            main.ray = Ray::spawn_ray(&main.its, main_d_out_global);
             let main_pred_its = main.its; // Need to save the previous hit
             main.its = match accel.trace(&main.ray) {
                 Some(x) => x,
@@ -472,11 +483,17 @@ impl IntegratorGradientPath {
             let (main_light_pdf, main_emitter_rad) = {
                 if main_next_mesh.is_light() && main.its.cos_theta() > 0.0 {
                     let light_pdf = f64::from(
-                        emitters
-                            .direct_pdf(main.its.mesh, &LightSamplingPDF::new(&main.ray, &main.its))
+                        scene
+                            .emitters()
+                            .direct_pdf(
+                                main.its.mesh,
+                                &LightSamplingPDF::new(&main.ray, &main.its),
+                                None,
+                                None,
+                            )
                             .value(),
                     );
-                    (light_pdf, main_next_mesh.emission)
+                    (light_pdf, main_next_mesh.emit(&main.its.uv))
                 } else {
                     (0.0, Color::zero())
                 }
@@ -535,7 +552,7 @@ impl IntegratorGradientPath {
                             }
                         }
                         RayState::RecentlyConnected(mut s) => {
-                            if main_pred_its.mesh.bsdf.is_smooth() {
+                            if main_pred_its.mesh.bsdf.bsdf_type().is_smooth() {
                                 ShiftResult::default()
                             } else {
                                 let shift_d_in_global = (s.its.p - main.ray.o).normalize();
@@ -555,6 +572,7 @@ impl IntegratorGradientPath {
                                                 &shift_d_in_local,
                                                 &main_sampled_bsdf.d,
                                                 Domain::SolidAngle,
+                                                Transport::Importance,
                                             )
                                             .value(),
                                     );
@@ -563,6 +581,7 @@ impl IntegratorGradientPath {
                                         &shift_d_in_local,
                                         &main_sampled_bsdf.d,
                                         Domain::SolidAngle,
+                                        Transport::Importance,
                                     );
                                     // Update main path
                                     let shift_pdf_pred = s.pdf;
@@ -584,9 +603,10 @@ impl IntegratorGradientPath {
                             }
                         }
                         RayState::NotConnected(mut s) => {
-                            let main_bsdf_rought = !main_pred_its.mesh.bsdf.is_smooth();
-                            let main_next_bsdf_rought = !main_next_mesh.bsdf.is_smooth();
-                            let shift_bsdf_rought = !s.its.mesh.bsdf.is_smooth();
+                            let main_bsdf_rought = !main_pred_its.mesh.bsdf.bsdf_type().is_smooth();
+                            let main_next_bsdf_rought =
+                                !main_next_mesh.bsdf.bsdf_type().is_smooth();
+                            let shift_bsdf_rought = !s.its.mesh.bsdf.bsdf_type().is_smooth();
                             if main_bsdf_rought && main_next_bsdf_rought && shift_bsdf_rought {
                                 // In this case, we can do the reconnection
                                 if !accel.visible(&s.its.p, &main.its.p) {
@@ -612,6 +632,7 @@ impl IntegratorGradientPath {
                                         &s.its.wi,
                                         &shift_d_out_local,
                                         Domain::SolidAngle, // Already checked that we are not on a smooth surface
+                                        Transport::Importance,
                                     );
                                     let shift_bsdf_pdf = f64::from(
                                         s.its
@@ -622,6 +643,7 @@ impl IntegratorGradientPath {
                                                 &s.its.wi,
                                                 &shift_d_out_local,
                                                 Domain::SolidAngle,
+                                                Transport::Importance,
                                             )
                                             .value(),
                                     );
@@ -640,15 +662,19 @@ impl IntegratorGradientPath {
                                             // FIXME: Do not use the trick of 0 PDF
                                             (Color::zero(), 0.0)
                                         } else {
-                                            let shift_emitter_pdf = emitters
+                                            let shift_emitter_pdf = scene
+                                                .emitters()
                                                 .direct_pdf(
                                                     main_next_mesh,
                                                     &LightSamplingPDF {
                                                         o: s.its.p,
                                                         p: main.its.p,
                                                         n: main.its.n_g,
+                                                        uv: main.its.uv,
                                                         dir: shift_d_out_global,
                                                     },
+                                                    None,
+                                                    None,
                                                 )
                                                 .value();
                                             // FIXME: We return without the cos as the light
@@ -761,22 +787,29 @@ impl IntegratorGradientPath {
                                         &s.its.wi,
                                         &wo,
                                         Domain::Discrete,
+                                        Transport::Importance,
                                     );
                                     s.pdf *= f64::from(
                                         s.its
                                             .mesh
                                             .bsdf
-                                            .pdf(&s.its.uv, &s.its.wi, &wo, Domain::Discrete)
+                                            .pdf(
+                                                &s.its.uv,
+                                                &s.its.wi,
+                                                &wo,
+                                                Domain::Discrete,
+                                                Transport::Importance,
+                                            )
                                             .value(),
                                     );
                                     // Shoot a ray to compute the next intersection
                                     let shift_d_out_global = s.its.frame.to_world(wo);
-                                    s.ray = Ray::new(s.its.p, shift_d_out_global);
+                                    s.ray = Ray::spawn_ray(&s.its, shift_d_out_global);
                                     let new_its = accel.trace(&s.ray);
                                     if let Some(new_its) = new_its {
                                         s.its = new_its;
                                         let shift_emitter_rad = if s.its.mesh.is_light() {
-                                            s.its.mesh.emission
+                                            s.its.mesh.emit(&s.its.uv)
                                         } else {
                                             Color::zero()
                                         };

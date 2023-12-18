@@ -2,8 +2,6 @@
 Rustlight <img src="http://beltegeuse.s3-website-ap-northeast-1.amazonaws.com/rustlight/logo.png" width="96"> 
 </h1>
 
-[![Build Status](https://travis-ci.org/beltegeuse/rustlight.svg?branch=smis-planes)](https://travis-ci.org/beltegeuse/rustlight)
-
 Physically-based rendering engine implemented with **Rust**.
 
 ## How to replicate CMIS Photon planes
@@ -35,14 +33,20 @@ For more information about the available options for this particular integrator:
 $ cargo run --release --features="pbrt openexr" -- -t -2 -n 1 -o ualpha.exr -m 0.2 $SCENE plane_single -h
 ```
 
-## Dependencies
+Other examples (wasm, viewer) are planned.
 
-Optionals : 
+## Optional Features
 
-- [image](https://github.com/image-rs/image) : load and save LDR images
-- [openexr](https://github.com/cessen/openexr-rs) : load and save EXR images
-- [embree-rs](https://github.com/Twinklebear/embree-rs) : fast primitive/ray intersection (* not yet optional)
-- [pbrt_rs](https://github.com/beltegeuse/pbrt_rs) : read PBRT files 
+It is possible to activate/desactivate some features of rustlight depending of your needs:
+
+- **image**(*): load and save LDR images (via [image]((https://github.com/image-rs/image)))
+- **openexr**: load and save EXR images (via [openexr-rs](https://github.com/cessen/openexr-rs))
+- **pbrt**(*): read PBRT files (via [pbrt_rs]((https://github.com/beltegeuse/pbrt_rs))) [Not that only support a subset PBRT primitives]
+- **mitsuba**(*): read Mitsuba files (via [mitsuba_rs]((https://github.com/beltegeuse/mitsuba_rs))) [Not that only support a subset Mitsuba primitives]
+- **progress-bar**(*): show progress bar (via [pbr]((https://crates.io/crates/pbr))) 
+- **embree**: fast intersection (via [embree-rs](https://github.com/Twinklebear/embree-rs))
+
+(*) These features are activated by default.
 
 ## More information
 

@@ -3,13 +3,15 @@ use cgmath::Point2;
 use rand::prelude::*;
 
 pub trait Mutator: Send {
-    fn mutate(&self, v: f32, r: f32) -> f32;
+    fn mutate(&self, v: f32, r: f32, i: usize) -> f32;
+    fn clone_box(&self) -> Box<dyn Mutator>;
 }
 
-struct MutatorKelemen {
+#[derive(Clone)]
+pub struct MutatorKelemen {
     pub s1: f32,
     pub s2: f32,
-    log_ratio: f32,
+    pub log_ratio: f32,
 }
 
 impl MutatorKelemen {
@@ -29,7 +31,7 @@ impl Default for MutatorKelemen {
 }
 
 impl Mutator for MutatorKelemen {
-    fn mutate(&self, v: f32, r: f32) -> f32 {
+    fn mutate(&self, v: f32, r: f32, _: usize) -> f32 {
         let (add, r) = if r < 0.5 {
             (true, r * 2.0)
         } else {
@@ -50,49 +52,69 @@ impl Mutator for MutatorKelemen {
             }
             v
         };
-        //FIXME: See why I need to add this test
+
+        // TODO: This is a dirty fix for now.
         if v == 1.0 {
             v = 0.0;
         }
-
         assert!(v < 1.0);
         assert!(v >= 0.0);
         v
     }
+
+    fn clone_box(&self) -> Box<dyn Mutator> {
+        Box::new(self.clone())
+    }
 }
 
-struct SampleReplayValue {
+#[derive(Copy, Clone)]
+pub struct SampleReplayValue {
     pub value: f32,
     pub modify: usize,
 }
 
 pub struct IndependentSamplerReplay {
-    rnd: StdRng,
-    values: Vec<SampleReplayValue>,
-    backup: Vec<(usize, f32)>,
-    mutator: Box<dyn Mutator>,
-    time: usize,
-    time_large: usize,
-    indice: usize,
+    pub rnd: SmallRng,
+    pub values: Vec<SampleReplayValue>,
+    pub backup: Vec<(usize, SampleReplayValue)>,
+    pub mutator: Box<dyn Mutator>,
+    pub time: usize,
+    pub time_large: usize,
+    pub indice: usize,
     pub large_step: bool,
 }
 
 impl Sampler for IndependentSamplerReplay {
     fn next(&mut self) -> f32 {
-        let i = self.indice;
-        let v = self.sample(i);
+        let v = self.sample(self.indice);
         self.indice += 1;
         v
     }
 
     fn next2d(&mut self) -> Point2<f32> {
-        let i1 = self.indice;
-        let i2 = self.indice + 1;
-        let v1 = self.sample(i1);
-        let v2 = self.sample(i2);
+        let v1 = self.sample(self.indice);
+        let v2 = self.sample(self.indice + 1);
         self.indice += 2;
         Point2::new(v1, v2)
     }
+
+    fn clone_box(&mut self) -> Box<dyn Sampler> {
+        let rnd = rand::rngs::SmallRng::seed_from_u64(self.rnd.next_u64());
+        Box::new(IndependentSamplerReplay {
+            rnd,
+            values: vec![],
+            backup: vec![],
+            mutator: self.mutator.clone_box(),
+            time: 0,
+            time_large: 0,
+            indice: 0,
+            large_step: false,
+        })
+    }
+
+    // Nothing to do here!
+    fn next_sample(&mut self) {}
+    fn next_pixel(&mut self, _: Point2<u32>) {}
 }
 
 impl SamplerMCMC for IndependentSamplerReplay {
@@ -106,19 +128,27 @@ impl SamplerMCMC for IndependentSamplerReplay {
     }
 
     fn reject(&mut self) {
-        for &(i, v) in &self.backup {
-            self.values[i].value = v;
+        if self.time == 0 {
+            // This is just to catch error in case the random number
+            // is wrongly initialize. With proper initialization via resampling
+            // this case should never happens
+            warn!("Reject state with time 0 (Maybe the chain was wrongly initialized)");
+            self.values.clear();
+        } else {
+            for &(i, v) in &self.backup {
+                self.values[i] = v;
+            }
+            self.backup.clear();
         }
-        self.backup.clear();
-        self.time += 1;
         self.indice = 0;
     }
 }
 
 impl Default for IndependentSamplerReplay {
     fn default() -> Self {
+        let rnd = rand::rngs::SmallRng::seed_from_u64(random());
         IndependentSamplerReplay {
-            rnd: rand::rngs::StdRng::from_rng(thread_rng()).unwrap(),
+            rnd,
             values: vec![],
             backup: vec![],
             mutator: Box::new(MutatorKelemen::default()),
@@ -146,27 +176,31 @@ impl IndependentSamplerReplay {
 
         if self.values[i].modify < self.time {
             if self.large_step {
-                self.backup.push((i, self.values[i].value));
-                let value = self.rand();
-                self.values[i].value = value;
+                // In case of large step, we do a independent mutation
+                self.backup.push((i, self.values[i]));
+                self.values[i].value = self.rand();
                 self.values[i].modify = self.time;
             } else {
+                // Check if we need to do a large step
                 if self.values[i].modify < self.time_large {
-                    let value = self.rand();
-                    self.values[i].value = value;
+                    self.values[i].value = self.rand();
                     self.values[i].modify = self.time_large;
                 }
 
+                // Replay previous steps (up to time - 1)
                 while self.values[i].modify + 1 < self.time {
                     let random = self.rand();
-                    self.values[i].value = self.mutator.mutate(self.values[i].value, random);
+                    self.values[i].value = self.mutator.mutate(self.values[i].value, random, i);
                     self.values[i].modify += 1;
                 }
 
-                self.backup.push((i, self.values[i].value));
+                // The chain is now at time - 1 so we need to only
+                // do one mutation
+                self.backup.push((i, self.values[i]));
                 let random = self.rand();
-                self.values[i].value = self.mutator.mutate(self.values[i].value, random);
+                self.values[i].value = self.mutator.mutate(self.values[i].value, random, i);
                 self.values[i].modify += 1;
+                assert_eq!(self.values[i].modify, self.time);
             }
         }
 
@@ -176,5 +210,12 @@ impl IndependentSamplerReplay {
     // FIXME: Do not expose this function
     pub fn rand(&mut self) -> f32 {
         self.rnd.gen()
+    }
+
+    /// Much care need to be taken when calling this function
+    /// indeed, this will replay the random number sequence
+    /// and extend it if necessary
+    pub fn reset_index(&mut self) {
+        self.indice = 0;
     }
 }

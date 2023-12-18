@@ -1,4 +1,5 @@
 use crate::integrators::gradient::shiftmapping::*;
+use crate::paths::strategies::*;
 use crate::samplers::Sampler;
 use crate::scene::Scene;
 use crate::structure::Color;
@@ -37,6 +38,11 @@ impl<'sampler, 'seq> Sampler for ReplaySampler<'sampler, 'seq> {
         let v2 = self.generate();
         Point2::new(v1, v2)
     }
+    fn next_sample(&mut self) {}
+    fn next_pixel(&mut self, _: Point2<u32>) {}
+    fn clone_box(&mut self) -> Box<dyn Sampler> {
+        unimplemented!("Clone replay sampler is not implemented")
+    }
 }
 pub struct RandomReplay {
     pub random_sequence: Vec<f32>,
@@ -51,14 +57,13 @@ impl Default for RandomReplay {
     }
 }
 impl ShiftMapping for RandomReplay {
-    fn base<'scene, 'emitter>(
+    fn base<'scene>(
         &mut self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         sampler: &mut dyn Sampler,
     ) -> (Color, VertexID) {
         // Capture the random numbers
@@ -69,45 +74,36 @@ impl ShiftMapping for RandomReplay {
         };
         // Call the generator on this technique
         // the generator give back the root nodes
-        technique.img_pos = pos;
-        let root = generate(
-            path,
-            accel,
-            scene,
-            emitters,
-            &mut capture_sampler,
-            technique,
-        );
-        let root = root[0].0;
-        self.base_value = technique.evaluate(path, scene, emitters, root);
-        (self.base_value, root)
+        let root = path.from_sensor(pos, scene, &mut capture_sampler);
+        generate(path, root.0, accel, scene, &mut capture_sampler, technique);
+        self.base_value = technique.evaluate(path, scene, root.0);
+        (self.base_value, root.0)
     }
-    fn shift<'scene, 'emitter>(
+    fn shift<'scene>(
         &mut self,
-        path: &mut Path<'scene, 'emitter>,
+        path: &mut Path<'scene>,
         technique: &mut TechniqueGradientPathTracing,
         pos: Point2<u32>,
         accel: &'scene dyn Acceleration,
         scene: &'scene Scene,
-        emitters: &'emitter EmitterSampler,
         sampler: &mut dyn Sampler,
         _base: VertexID,
     ) -> ShiftValue {
-        technique.img_pos = pos;
+        let offset = path.from_sensor(pos, scene, sampler);
         let mut capture_sampler = ReplaySampler {
             sampler,
             random: &mut self.random_sequence,
             indice: 0,
         };
-        let offset = generate(
+        generate(
             path,
+            offset.0,
             accel,
             scene,
-            emitters,
             &mut capture_sampler,
             technique,
         );
-        let offset_contrib = technique.evaluate(path, scene, emitters, offset[0].0);
+        let offset_contrib = technique.evaluate(path, scene, offset.0);
         ShiftValue {
             base: 0.5 * self.base_value,
             offset: 0.5 * offset_contrib,

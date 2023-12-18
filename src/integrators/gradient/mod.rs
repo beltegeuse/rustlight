@@ -5,7 +5,7 @@ use crate::tools::StepRangeInt;
 use cgmath::{Point2, Vector2};
 use std::cmp;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub struct ColorGradient {
     pub very_direct: Color,
     pub main: Color,
@@ -56,12 +56,13 @@ pub struct BufferIDGradient {
     pub gradient_y: usize,
 }
 pub fn generate_img_blocks_gradient(
+    sampler: &mut dyn Sampler,
     scene: &Scene,
     recons: &(dyn PoissonReconstruction + Sync),
 ) -> (
     usize,
     Vec<String>,
-    Vec<(BlockInfoGradient, BufferCollection)>,
+    Vec<(BlockInfoGradient, BufferCollection, Box<dyn Sampler>)>,
     BufferIDGradient,
 ) {
     // The buffers names are always:
@@ -117,7 +118,7 @@ pub fn generate_img_blocks_gradient(
                 x_size_off: if desired_size.x <= max_size.x { 1 } else { 0 },
                 y_size_off: if desired_size.y <= max_size.y { 1 } else { 0 },
             };
-            image_blocks.push((info, block));
+            image_blocks.push((info, block, sampler.clone_box()));
         }
     }
     (

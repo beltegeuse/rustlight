@@ -4,38 +4,43 @@ version = "0.2.0"
 authors = ["Adrien Gruson <adrien.gruson@gmail.com>"]
 edition = "2018"
 
-[[bin]]
-name = "rustlight"
-doc = false
-
 [features]
-# No default features are enable by default
-default = ["image", "embree-accel", "pbrt"]
+default = ["image", "pbrt", "mitsuba"] # "progress-bar"
 pbrt = ["pbrt_rs"]
+mitsuba = ["mitsuba_rs"]
 embree-accel = ["embree"]
+progress-bar = ["pbr"]
 
 [dependencies]
-image = { version =  "*", optional = true }
-rayon = "*"
-rand = "*"
-tobj = "*"
-#embree-rs = { version = "*" , optional = true }
-embree = { git = "https://github.com/beltegeuse/embree-rs", optional = true }
-serde = "1.0"
-serde_derive = "1.0" 
-serde_json = "1.0"
 byteorder = "*"
-clap = "*"
-pbr = "*"
+cgmath = { version = "*" }
+#embree = { version = "*" , optional = true }
+embree = { git = "https://github.com/beltegeuse/embree-rs", optional = true }
+image = { version =  "*", optional = true }
+# openexr = { version = "*", optional = true } # OpenEXR 2
+openexr = { git = "https://github.com/beltegeuse/openexr-rs", optional = true } # Contains Openexr 3 fix
 log = "*"
-env_logger = "*"
-# To know number of threads
-num_cpus = "*"
-# - openexr image format (output)
-openexr = { version = "*", optional = true }
-# - pbrt image format (input)
+rand = { version = "*", features = ["small_rng"] }
+rayon = "*"
+tobj = "*"
+pbr = { version = "*", optional = true }
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs", optional = true }
+# pbrt_rs = { path = "../pbrt_rs", optional = true }
+mitsuba_rs = { git = "https://github.com/beltegeuse/mitsuba_rs", optional = true, features = ["serialized", "ply"] } 
+#mitsuba_rs = { path = "../../mitsuba_rs", optional = true, features = ["serialized", "ply"] }
+lazy_static = "1"
+assert_approx_eq = "1"
+bitflags = "*"
+nalgebra = "0.25.4"
+itertools = "*" # For partition
+float_extras = "*" # For ldexp
+roots = "*"
 
-[dependencies.cgmath]
-version = "*"
-features = ["serde"]
+[dev-dependencies]
+clap = { version = "*", features = ["derive"] }
+num_cpus = "*"
+log4rs = "*"
+
+# For flamegraph if needed
+#[profile.release]
+#debug = true
