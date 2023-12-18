@@ -31,7 +31,7 @@ pub enum Domain {
 impl PDF {
     pub fn is_zero(&self) -> bool {
         match self {
-            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => (*v == 0.0),
+            PDF::Discrete(v) | PDF::SolidAngle(v) | PDF::Area(v) => *v == 0.0,
         }
     }
 

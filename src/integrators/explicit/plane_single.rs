@@ -712,7 +712,7 @@ impl Integrator for IntegratorSinglePlane {
                                         // Default: evaluate and weight the contrib
                                         // plane.contrib(..) =  plane.weight / jacobian
                                         // w: other MIS compute above
-                                        _ => (w * plane.contrib(&ray.d)), // Do nothing and just evaluate the plane
+                                        _ => w * plane.contrib(&ray.d), // Do nothing and just evaluate the plane
                                     };
 
                                     // Compute the rest of the term
