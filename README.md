@@ -24,7 +24,7 @@ $ cargo run --features="pbrt progress-bar" --release --example=cli -- -t -2 -n 1
 $ cargo run --features="pbrt progress-bar" --release --example=cli -- -t -2 -n 1 -o smis_all_k2_stratified.pfm -m 0.2 .\scene\meeting_ply.pbrt plane-single -n 40960 -s smis_all -k 2 -x
 $ cargo run --features="pbrt progress-bar" --release --example=cli -- -t -2 -n 1 -o cmis.pfm -m 0.2 .\scene\meeting_ply.pbrt plane-single -n 40960 -s cmis
 ```
-The precomputed reference is available at: http://data.adrien-gruson.com/research/2020_CMIS/plane_reference.exr
+The precomputed reference is available at: http://data.adrien-gruson.com/research/2020_CMIS/plane_reference.pfm
 
 For more information about the available options for this particular integrator:
 ```shell
