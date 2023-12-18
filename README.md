@@ -19,12 +19,10 @@ $ unzip plane_scene.zip
 
 2) You can regenerate results of figure 11. Note that the first invocation of cargo will build the project:
 ```shell
-$ export SCENE=scene/meeting_ply.pbrt
-$ export NBPLANES=40960
-$ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o ualpha.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s ualpha
-$ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o smis_jacobian_k2_stratified.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s smis_jacobian -k 2 -x
-$ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o smis_all_k2_stratified.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s smis_all -k 2 -x
-$ cargo run --features="pbrt openexr" --release -- -t -2 -n 1 -o cmis.exr -m 0.2 $SCENE plane_single -n $NBPLANES -s cmis
+$ cargo run --features="pbrt progress-bar" --release --example=cli -- -t -2 -n 1 -o ualpha.pfm -m 0.2 .\scene\meeting_ply.pbrt plane-single -n 40960 -s ualpha
+$ cargo run --features="pbrt progress-bar" --release --example=cli -- -t -2 -n 1 -o smis_jacobian_k2_stratified.pfm -m 0.2 .\scene\meeting_ply.pbrt plane_single -n 40960 -s smis_jacobian -k 2 -x
+$ cargo run --features="pbrt progress-bar" --release --example=cli -- -t -2 -n 1 -o smis_all_k2_stratified.pfm -m 0.2 .\scene\meeting_ply.pbrt plane-single -n 40960 -s smis_all -k 2 -x
+$ cargo run --features="pbrt progress-bar" --release --example=cli -- -t -2 -n 1 -o cmis.pfm -m 0.2 .\scene\meeting_ply.pbrt plane-single -n 40960 -s cmis
 ```
 The precomputed reference is available at: http://data.adrien-gruson.com/research/2020_CMIS/plane_reference.exr
 
