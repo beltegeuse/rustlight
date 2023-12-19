@@ -445,15 +445,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "float_extras"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b22b70f8649ea2315955f1a36d964b0e4da482dfaa5f0d04df0d1fb7c338ab7a"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "flume"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1140,7 +1131,6 @@ dependencies = [
  "cgmath",
  "clap",
  "embree",
- "float_extras",
  "image",
  "itertools",
  "lazy_static",

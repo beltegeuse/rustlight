@@ -107,7 +107,7 @@ impl Scene {
             // Assign materials and emissions
             for (i, shape) in scene_info.shapes.iter().enumerate() {
                 match shape.emission {
-                    Some(pbrt_rs::Param::RGB(ref rgb)) => {
+                    Some(pbrt_rs::Value::RGB(ref rgb)) => {
                         // info!("assign emission: RGB({},{},{})", rgb.r, rgb.g, rgb.b);
                         meshes[i].emission = Color::new(rgb.r, rgb.g, rgb.b)
                     }
@@ -124,7 +124,7 @@ impl Scene {
                     match l {
                         pbrt_rs::Light::Infinite(ref infinite) => {
                             match infinite.luminance {
-                                pbrt_rs::Param::RGB(ref rgb) => {
+                                pbrt_rs::Spectrum::RGB(ref rgb) => {
                                     if have_env {
                                         panic!("Multiple env map is NOT supported");
                                     }

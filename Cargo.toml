@@ -33,7 +33,6 @@ assert_approx_eq = "1"
 bitflags = "2.4"
 nalgebra = "0.32"
 itertools = "0.12" # For partition
-float_extras = "0.1" # For ldexp
 roots = "0.0.8"
 
 [dev-dependencies]

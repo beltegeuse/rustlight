@@ -28,6 +28,7 @@ wee_alloc = { version = "*", optional = true }
 rustlight = { path = "../../", default-features = false, features = ["pbrt"] }
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs.git" }
 cgmath = "*"
+getrandom = { version = "0.2", features = ["js"] }
 
 [dependencies.web-sys]
 version = "*"
