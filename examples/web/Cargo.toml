@@ -23,7 +23,7 @@ console_error_panic_hook = { version = "*", optional = true }
 # allocator, however.
 #
 # Unfortunately, `wee_alloc` requires nightly Rust when targeting wasm for now.
-wee_alloc = { version = "*", optional = true }
+# wee_alloc = { version = "*", optional = true } # Removed as it is not maintained anymore
 # Rendering library
 rustlight = { path = "../../", default-features = false, features = ["pbrt"] }
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs.git" }
