@@ -12,34 +12,34 @@ embree-accel = ["embree"]
 progress-bar = ["pbr"]
 
 [dependencies]
-byteorder = "*"
-cgmath = { version = "*" }
+byteorder = "1.5"
+cgmath = { version = "0.18" }
 #embree = { version = "*" , optional = true }
 embree = { git = "https://github.com/beltegeuse/embree-rs", optional = true }
-image = { version =  "*", optional = true }
+image = { version =  "0.24", optional = true }
 # openexr = { version = "*", optional = true } # OpenEXR 2
 openexr = { git = "https://github.com/beltegeuse/openexr-rs", optional = true } # Contains Openexr 3 fix
-log = "*"
-rand = { version = "*", features = ["small_rng"] }
-rayon = "*"
-tobj = "*"
-pbr = { version = "*", optional = true }
+log = "0.4"
+rand = { version = "0.8", features = ["small_rng"] }
+rayon = "1.8"
+tobj = "4"
+pbr = { version = "1", optional = true }
 pbrt_rs = { git = "https://github.com/beltegeuse/pbrt_rs", optional = true }
 # pbrt_rs = { path = "../pbrt_rs", optional = true }
 mitsuba_rs = { git = "https://github.com/beltegeuse/mitsuba_rs", optional = true, features = ["serialized", "ply"] } 
 #mitsuba_rs = { path = "../../mitsuba_rs", optional = true, features = ["serialized", "ply"] }
 lazy_static = "1"
 assert_approx_eq = "1"
-bitflags = "*"
-nalgebra = "0.25.4"
-itertools = "*" # For partition
-float_extras = "*" # For ldexp
-roots = "*"
+bitflags = "2.4"
+nalgebra = "0.32"
+itertools = "0.12" # For partition
+float_extras = "0.1" # For ldexp
+roots = "0.0.8"
 
 [dev-dependencies]
-clap = { version = "*", features = ["derive"] }
-num_cpus = "*"
-log4rs = "*"
+clap = { version = "4.4", features = ["derive"] }
+num_cpus = "1"
+log4rs = "1.2"
 
 # For flamegraph if needed
 #[profile.release]
