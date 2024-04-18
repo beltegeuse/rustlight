@@ -255,7 +255,7 @@ enum Commands {
         strategy: String,
         #[arg(long, short, default_value_t = 0.3)]
         large_prob: f32,
-        #[arg(long, short, default_value = "irls")]
+        #[arg(long, short, default_value = "irls", short = 'p')]
         recons: String,
         #[arg(long, short, default_value = "mcmc")]
         init: String,

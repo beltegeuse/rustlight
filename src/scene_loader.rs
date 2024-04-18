@@ -595,6 +595,74 @@ impl SceneLoader for MTSSceneLoader {
 
                         meshes
                     }
+                    mitsuba_rs::Shape::Sphere { center, radius, option } => {
+                        // Generate sphere position based on the radus
+                        let mut vertices = Vec::new();
+                        let mut normals = Vec::new();
+                        let mut uv = Vec::new();
+                        let mut indices = Vec::new();
+                        const NBSTEP: usize = 32;
+                        for i in 0..NBSTEP {
+                            let theta = i as f32 / (NBSTEP - 1) as f32 * std::f32::consts::PI;
+                            for j in 0..NBSTEP {
+                                let phi = j as f32 / (NBSTEP - 1) as f32 * 2.0 * std::f32::consts::PI;
+                                let x = radius * theta.sin() * phi.cos();
+                                let y = radius * theta.sin() * phi.sin();
+                                let z = radius * theta.cos();
+                                vertices.push(Vector3::new(x, y, z) + center.to_vec());
+                                normals.push(Vector3::new(x, y, z).normalize());
+                                uv.push(Vector2::new(theta / std::f32::consts::PI, phi / (2.0 * std::f32::consts::PI)));
+                            }
+                        }
+
+                        // Generate indices for triangle mesh
+                        // two triangles per quad
+                        for i in 0..NBSTEP - 1 {
+                            for j in 0..NBSTEP - 1 {
+                                let i0 = i * NBSTEP + j;
+                                let i1 = i * NBSTEP + j + 1;
+                                let i2 = (i + 1) * NBSTEP + j + 1;
+                                let i3 = (i + 1) * NBSTEP + j;
+                                indices.push(Vector3::new(i0, i1, i2));
+                                indices.push(Vector3::new(i2, i3, i0));
+                            }
+                        }
+
+                        let mut meshes = vec![geometry::Mesh {
+                            name: "rectangle".to_string(), // Does this is the name to use?
+                            vertices,
+                            indices,
+                            normals: Some(normals),
+                            uv: Some(uv),
+                            bsdf: match &option.bsdf {
+                                Some(bsdf) => crate::bsdfs::bsdf_mts(bsdf, wk),
+                                None => Box::new(crate::bsdfs::diffuse::BSDFDiffuse {
+                                    diffuse: crate::bsdfs::BSDFColor::Constant(Color::value(0.8)),
+                                }),
+                            },
+                            emission: match &option.emitter {
+                                Some(emitter) => {
+                                    let rgb = emitter.radiance.clone().as_rgb().unwrap();
+                                    geometry::EmissionType::Color {
+                                        v: Color {
+                                            r: rgb.r,
+                                            g: rgb.g,
+                                            b: rgb.b,
+                                        },
+                                    }
+                                }
+                                None => geometry::EmissionType::Zero,
+                            },
+                            cdf: None,
+                        }];
+
+                        // Apply transform
+                        for m in &mut meshes {
+                            apply_transform(m, option.to_world.clone());
+                        }
+
+                        meshes
+                    }
                     _ => {
                         warn!("Ignoring shape {:?}", s);
                         vec![]
